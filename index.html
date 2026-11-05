@@ -1,242 +1,274 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>World TG Shop</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <style>
-    :root {
-      --bg-main: #0b0b0e;
-      --card-bg: #14141a;
-      --card-hover: #1c1c26;
-      --border-color: rgba(139, 92, 246, 0.15);
-      --accent-primary: #8b5cf6;
-      --accent-glow: rgba(139, 92, 246, 0.4);
-      --accent-success: #10b981;
-      --accent-danger: #ef4444;
-      --text-main: #ffffff;
-      --text-muted: #9ca3af;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>World TG Shop</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg-color: #0f1115;
+            --card-bg: #181c24;
+            --card-bg-gradient: linear-gradient(135deg, #201e3d 0%, #181c24 100%);
+            --text-color: #ffffff;
+            --text-secondary: #9ca3af;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+            --accent-red: #ef4444;
+            --accent-blue: #3b82f6;
+            --nav-bg: #12151c;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0 0 80px 0;
+        }
+        .container { padding: 16px; max-width: 480px; margin: 0 auto; }
+        .header-section { margin-bottom: 20px; }
+        .welcome-text { font-size: 14px; color: var(--text-secondary); margin-bottom: 4px; }
+        .username-title { font-size: 22px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+        .role-badge { font-size: 11px; padding: 2px 8px; border-radius: 6px; background: #374151; color: #d1d5db; }
+        
+        .balance-card {
+            background: var(--card-bg-gradient);
+            border-radius: 20px; padding: 20px; margin-bottom: 16px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .balance-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .balance-title { font-size: 14px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
+        .balance-amount { font-size: 26px; font-weight: 700; }
+        .btn-topup {
+            background-color: var(--accent-green); color: #fff; border: none;
+            border-radius: 12px; padding: 10px 16px; font-weight: 600; cursor: pointer;
+        }
 
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background-color: var(--bg-main);
-      color: var(--text-main);
-      margin: 0;
-      padding: 16px;
-      padding-bottom: 110px;
-      -webkit-tap-highlight-color: transparent;
-    }
+        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+        .stat-box { background-color: var(--card-bg); border-radius: 14px; padding: 14px 10px; text-align: center; }
+        .stat-value { font-size: 16px; font-weight: 700; margin-bottom: 2px; }
+        .stat-label { font-size: 11px; color: var(--text-secondary); }
 
-    * {
-      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-      box-sizing: border-box;
-    }
+        .card-block { background-color: var(--card-bg); border-radius: 16px; padding: 16px; margin-bottom: 12px; }
+        .link-row { display: flex; justify-content: space-between; align-items: center; text-decoration: none; color: inherit; }
+        
+        /* Навигация */
+        .nav-bar {
+            position: fixed; bottom: 0; left: 0; right: 0; height: 65px;
+            background-color: var(--nav-bg); border-top: 1px solid rgba(255,255,255,0.05);
+            display: flex; justify-content: space-around; align-items: center; z-index: 100;
+        }
+        .nav-item {
+            background: none; border: none; color: var(--text-secondary); font-size: 11px;
+            display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; flex: 1;
+        }
+        .nav-item.active { color: var(--accent-green); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
 
-    .tab-content { display: none; opacity: 0; transform: translateY(8px); }
-    .tab-content.active { display: block; opacity: 1; transform: translateY(0); }
-
-    .card {
-      background: var(--card-bg);
-      border-radius: 22px;
-      padding: 18px;
-      margin-bottom: 16px;
-      border: 1px solid var(--border-color);
-      position: relative;
-      overflow: hidden;
-    }
-
-    .hero-balance {
-      background: linear-gradient(135deg, #3b1875 0%, #180a3a 100%);
-      border-radius: 24px;
-      padding: 22px;
-      box-shadow: 0 10px 50px rgba(139, 92, 246, 0.3);
-      border: 1px solid rgba(167, 139, 250, 0.3);
-      margin-bottom: 16px;
-    }
-
-    .btn-main {
-      background: var(--accent-primary);
-      color: #fff;
-      font-weight: 700;
-      padding: 12px 20px;
-      border-radius: 14px;
-      border: none;
-      cursor: pointer;
-      box-shadow: 0 4px 18px var(--accent-glow);
-      width: 100%;
-      text-align: center;
-      margin-top: 8px;
-      text-decoration: none;
-      display: inline-block;
-    }
-    .btn-main:active { transform: scale(0.97); }
-
-    .btn-secondary {
-      background: rgba(255, 255, 255, 0.06);
-      color: var(--text-main);
-      font-weight: 600;
-      padding: 10px 16px;
-      border-radius: 12px;
-      border: 1px solid var(--border-color);
-      cursor: pointer;
-      width: 100%;
-      text-align: center;
-      margin-bottom: 8px;
-    }
-
-    .bottom-nav {
-      position: fixed;
-      bottom: 0; left: 0; right: 0;
-      background: rgba(11, 11, 14, 0.95);
-      backdrop-filter: blur(20px);
-      border-top: 1px solid var(--border-color);
-      display: flex;
-      justify-content: space-around;
-      padding: 12px 6px 24px;
-      z-index: 1000;
-    }
-    .nav-item {
-      background: none; border: none;
-      color: var(--text-muted);
-      font-size: 10px;
-      display: flex; flex-direction: column; align-items: center; gap: 4px;
-      flex: 1; cursor: pointer;
-    }
-    .nav-item.active { color: var(--accent-primary); }
-
-    input, select, textarea {
-      width: 100%; background: rgba(255, 255, 255, 0.05);
-      border: 1px solid var(--border-color); border-radius: 12px;
-      padding: 10px 14px; color: #fff;
-      margin-top: 4px; margin-bottom: 12px; outline: none;
-    }
-  </style>
+        input, select, textarea {
+            width: 100%; padding: 10px; background: #0f1115; border: 1px solid #374151;
+            border-radius: 8px; color: #fff; box-sizing: border-box; margin-top: 6px; margin-bottom: 12px;
+        }
+        .btn-main { width: 100%; background: var(--accent-green); color: #fff; border: none; padding: 12px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+    </style>
 </head>
 <body>
 
-  <!-- Витрина -->
-  <div id="tab-shop" class="tab-content active">
-    <h2 style="margin-top:0;">Витрина товаров</h2>
-    <div id="products-list">
-      <div class="card">
-        <h3>Telegram Premium (1 год)</h3>
-        <p style="color: var(--text-muted); font-size: 13px;">Официальная подписка на ваш аккаунт</p>
-        <div style="font-size: 18px; font-weight: bold; color: var(--accent-primary); margin-bottom: 12px;">1500 ₽</div>
-        <button class="btn-main" onclick="buyItem('Telegram Premium')">Купить</button>
-      </div>
+<div class="container">
+    
+    <!-- Вкладка: Главная / Витрина -->
+    <div id="tab-main" class="tab-content active">
+        <div class="header-section">
+            <div class="welcome-text">Добро пожаловать,</div>
+            <div class="username-title">
+                <span id="userDisplayName">Пользователь</span>
+                <span id="userRoleBadge" class="role-badge">Пользователь</span>
+            </div>
+        </div>
+
+        <div class="balance-card">
+            <div class="balance-row">
+                <div>
+                    <div class="balance-title">💼 Баланс</div>
+                    <div class="balance-amount" id="mainBalance">0 ₽</div>
+                </div>
+                <button class="btn-topup" onclick="switchTab('profile', document.getElementById('navProfile'))">Пополнить</button>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-box"><div class="stat-value" id="statSpent">0 ₽</div><div class="stat-label">Потрачено</div></div>
+            <div class="stat-box"><div class="stat-value" id="statOrders">0</div><div class="stat-label">Заказов</div></div>
+            <div class="stat-box"><div class="stat-value" id="statRefs">0</div><div class="stat-label">Рефералов</div></div>
+        </div>
+
+        <div class="card-block">
+            <h3>Витрина товаров</h3>
+            <div id="storefrontList">Здесь будут отображаться одобренные товары.</div>
+        </div>
     </div>
-  </div>
 
-  <!-- Профиль -->
-  <div id="tab-profile" class="tab-content">
-    <div class="hero-balance">
-      <span style="font-size:12px; color:var(--text-muted);">Ваш баланс</span>
-      <h1 id="user-balance" style="margin: 4px 0 0 0;">0.00 ₽</h1>
+    <!-- Вкладка: Профиль и Оплата -->
+    <div id="tab-profile" class="tab-content">
+        <div class="header-section">
+            <div class="username-title" id="profileName">Профиль</div>
+            <div style="font-size: 12px; color: var(--text-secondary);" id="profileId">ID: ...</div>
+        </div>
+
+        <!-- Пополнение с выбором методов и лимитами -->
+        <div class="card-block">
+            <h3>Пополнить баланс</h3>
+            <label>Сумма в рублях:</label>
+            <input type="number" id="payAmount" value="100" oninput="calcPayment()">
+            
+            <label>Способ оплаты:</label>
+            <select id="payMethod" onchange="calcPayment()">
+                <option value="stars">Telegram Stars (мин. 1 звезда)</option>
+                <option value="cryptobot">Crypto Bot (мин. 10 руб.)</option>
+                <option value="transfer">Прямой перевод (мин. 10 руб.)</option>
+                <option value="nicepay">NicePay Карты/СБП (мин. 250 руб.)</option>
+            </select>
+            <div id="calcResult" style="font-size: 13px; color: var(--accent-yellow); margin-bottom: 10px;">К зачислению: 100 звёзд</div>
+            <div id="transferWarning" style="font-size: 11px; color: var(--accent-red); display:none; margin-bottom: 10px;">⚠️ Внимание: при прямом переводе суммы менее 10 руб. не возвращаются на баланс!</div>
+            <button class="btn-main" onclick="makePayment()">Перейти к оплате</button>
+        </div>
+
+        <!-- Активация ключа -->
+        <div class="card-block">
+            <h3>Активация ключа</h3>
+            <input type="text" id="keyCode" placeholder="WTS-SELL-ID">
+            <button class="btn-main" onclick="activateKey()">Активировать ключ</button>
+        </div>
+
+        <div class="legal-links" style="margin-top: 15px; display:flex; flex-direction:column; gap:6px; font-size:12px;">
+            <a href="https://telegra.ph/POLITIKA-KONFIDENCIALNOSTI-08-12-99" target="_blank" style="color:var(--text-secondary);">Политика конфиденциальности</a>
+            <a href="https://telegra.ph/PUBLICHNAYA-OFERTA-08-12-15" target="_blank" style="color:var(--text-secondary);">Пользовательское соглашение</a>
+        </div>
     </div>
-    <div class="card">
-      <h3>Пополнить через Crypto Bot</h3>
-      <label style="font-size: 12px; color: var(--text-muted);">Сумма пополнения (USDT)</label>
-      <input type="number" id="deposit-amount" value="5" min="1">
-      <button class="btn-main" id="btn-pay" onclick="createCryptoInvoice()">Оплатить в Crypto Bot</button>
+
+    <!-- Вкладка: История -->
+    <div id="tab-history" class="tab-content">
+        <h3>История заказов и пополнений</h3>
+        <div id="historyList">История пока пуста.</div>
     </div>
-  </div>
 
-  <!-- Продавец -->
-  <div id="tab-seller" class="tab-content">
-    <h2>Кабинет продавца</h2>
-    <div class="card">
-      <h3>Разместить товар</h3>
-      <label>Название</label>
-      <input type="text" id="p-name" placeholder="Введите название">
-      <label>Цена (руб.)</label>
-      <input type="number" id="p-price" placeholder="500">
-      <button class="btn-main" onclick="addProd()">Добавить</button>
+    <!-- Панель Владельца / Поддержки / Продавца (динамическая) -->
+    <div id="tab-admin" class="tab-content">
+        <h3>Панель управления</h3>
+        <div id="adminPanelContent"></div>
     </div>
-  </div>
 
-  <!-- Админ -->
-  <div id="tab-admin" class="tab-content">
-    <h2>Панель администратора</h2>
-    <div class="card">
-      <p style="color: var(--text-muted); font-size: 13px;">Управление системой и мониторинг активных сессий.</p>
-    </div>
-  </div>
+</div>
 
-  <!-- Нижняя навигация -->
-  <div class="bottom-nav">
-    <button class="nav-item active" onclick="switchTab('shop', this)">
-      <span>🛍️</span><span>Витрина</span>
-    </button>
-    <button class="nav-item" onclick="switchTab('profile', this)">
-      <span>👤</span><span>Профиль</span>
-    </button>
-    <button class="nav-item" onclick="switchTab('seller', this)">
-      <span>🏪</span><span>Продавец</span>
-    </button>
-    <button class="nav-item" onclick="switchTab('admin', this)">
-      <span>⚡</span><span>Админ</span>
-    </button>
-  </div>
+<!-- Нижняя навигация -->
+<div class="nav-bar">
+    <button class="nav-item active" onclick="switchTab('main', this)"><span style="font-size:18px;">🏠</span>Главная</button>
+    <button class="nav-item" onclick="switchTab('history', this)"><span style="font-size:18px;">📜</span>История</button>
+    <button class="nav-item" id="navAdmin" style="display:none;" onclick="switchTab('admin', this)"><span style="font-size:18px;">⭐</span>Управление</button>
+    <button class="nav-item" id="navProfile" onclick="switchTab('profile', this)"><span style="font-size:18px;">👤</span>Профиль</button>
+</div>
 
-  <script>
-    const tg = window.Telegram ? window.Telegram.WebApp : null;
-    if(tg) tg.expand();
+<script>
+    const tg = window.Telegram.WebApp;
+    tg.expand();
+    let user = tg.initDataUnsafe?.user;
+    let currentUserId = user ? String(user.id) : "8127900151"; // Тест ID владельца
+    let currentUserName = user ? (user.username ? '@'+user.username : user.first_name) : 'Владелец (Тест)';
 
-    function switchTab(tabId, el) {
-      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-      document.getElementById('tab-' + tabId).classList.add('active');
-      if(el) el.classList.add('active');
+    document.getElementById('userDisplayName').innerText = currentUserName;
+    document.getElementById('profileName').innerText = currentUserName;
+    document.getElementById('profileId').innerText = 'ID: ' + currentUserId;
+
+    // Автоматическое определение владельца по вашему ID
+    if(currentUserId === "8127900151") {
+        document.getElementById('userRoleBadge').innerText = 'Владелец';
+        document.getElementById('navAdmin').style.display = 'flex';
+        renderOwnerPanel();
     }
 
-    function buyItem(name) {
-      if(tg) tg.showAlert('Запрос на покупку: ' + name);
-    }
-
-    async function createCryptoInvoice() {
-      const amountInput = document.getElementById('deposit-amount');
-      const amount = parseFloat(amountInput.value);
-      const btn = document.getElementById('btn-pay');
-
-      if (!amount || amount <= 0) {
-        if(tg) tg.showAlert('Укажите корректную сумму');
-        return;
-      }
-
-      btn.disabled = true;
-      btn.innerText = 'Создание счета...';
-
-      try {
-        const response = await fetch('/api/create-invoice', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ amount, asset: 'USDT' })
-        });
-
-        const data = await response.json();
-
-        if (data.success && data.payUrl) {
-          if (tg && tg.openTelegramLink) {
-            tg.openTelegramLink(data.payUrl);
-          } else {
-            window.location.href = data.payUrl;
-          }
-        } else {
-          if(tg) tg.showAlert('Ошибка: ' + (data.error || 'Не удалось создать счет'));
+    function switchTab(tabId, btn) {
+        document.querySelectorAll('.tab-content').forEach(e => e.classList.remove('active'));
+        document.getElementById('tab-' + tabId).classList.add('active');
+        if(btn) {
+            document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
+            btn.classList.add('active');
         }
-      } catch (e) {
-        if(tg) tg.showAlert('Ошибка сети при запросе к серверу');
-      } finally {
-        btn.disabled = false;
-        btn.innerText = 'Оплатить в Crypto Bot';
-      }
     }
 
-    function addProd() {
-      if(tg) tg.showAlert('Товар отправлен на проверку!');
+    function calcPayment() {
+        let rub = parseFloat(document.getElementById('payAmount').value) || 0;
+        let method = document.getElementById('payMethod').value;
+        let res = document.getElementById('calcResult');
+        let warn = document.getElementById('transferWarning');
+
+        warn.style.display = (method === 'transfer') ? 'block' : 'none';
+
+        if(method === 'stars') res.innerText = `К зачислению: ${rub} Telegram Stars`;
+        else if(method === 'cryptobot') res.innerText = `К зачислению: ~${(rub/100).toFixed(2)} USDT`;
+        else if(method === 'transfer') res.innerText = `К зачислению: ~${(rub/100).toFixed(2)} GRAM`;
+        else if(method === 'nicepay') res.innerText = `К зачислению: ${rub} руб. (NicePay)`;
     }
-  </script>
+
+    function makePayment() {
+        let rub = parseFloat(document.getElementById('payAmount').value) || 0;
+        let method = document.getElementById('payMethod').value;
+        let min = (method === 'stars') ? 1 : (method === 'nicepay' ? 250 : 10);
+        
+        if(rub < min) {
+            alert(`Минимальная сумма пополнения для этого метода: ${min}`);
+            return;
+        }
+        alert(`Создан платеж на ${rub} руб. через метод ${method}`);
+    }
+
+    function activateKey() {
+        let code = document.getElementById('keyCode').value.trim();
+        if(code.startsWith('WTS-')) {
+            alert('Ключ успешно активирован!');
+            document.getElementById('userRoleBadge').innerText = 'Продавец / Сотрудник';
+            document.getElementById('navAdmin').style.display = 'flex';
+        } else {
+            alert('Ошибка: неверный ключ!');
+        }
+    }
+
+    function renderOwnerPanel() {
+        document.getElementById('adminPanelContent').innerHTML = `
+            <div class="card-block">
+                <h4>Генерация ключей сотрудников</h4>
+                <label>Должность:</label>
+                <select id="genRole">
+                    <option value="SELL">Продавец (SELL)</option>
+                    <option value="ADM">Администратор (ADM)</option>
+                    <option value="MOD">Модератор (MOD)</option>
+                    <option value="SUP">Поддержка (SUP)</option>
+                </select>
+                <label>Telegram ID работника:</label>
+                <input type="text" id="genTargetId" placeholder="8127900151">
+                <label>Описание магазина / обязанностей:</label>
+                <input type="text" id="genDetails" placeholder="Описание...">
+                <button class="btn-main" onclick="generateKey()">Сгенерировать ключ</button>
+            </div>
+            <div class="card-block">
+                <h4>Баланс магазина и статистика</h4>
+                <p>Общий баланс всех пользователей: 0 ₽</p>
+                <p>Всего продаж: 0</p>
+            </div>
+        `;
+    }
+
+    function generateKey() {
+        let role = document.getElementById('genRole').value;
+        let targetId = document.getElementById('genTargetId').value;
+        let details = document.getElementById('genDetails').value;
+        if(!targetId) { alert('Введите ID сотрудника!'); return; }
+        let key = `WTS-${role}-${targetId}`;
+        alert(`Сгенерирован ключ: ${key}\nПередайте его сотруднику.`);
+    }
+
+    calcPayment();
+</script>
+
 </body>
 </html>
