@@ -1,13 +1,13 @@
 {
-"name": "world-tg-shop",
-"version": "1.0.0",
-"description": "Telegram Mini App with Crypto Bot payment integration",
-"main": "server.js",
-"scripts": {
-"start": "node server.js"
-},
-"dependencies": {
-"express": "^4.19.2",
-"node-fetch": "^2.7.0"
-}
+  "name": "world-shop",
+  "version": "1.0.0",
+  "description": "World TG Shop Backend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.11.3"
+  }
 }
