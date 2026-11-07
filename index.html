@@ -6,269 +6,364 @@
     <title>World TG Shop</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        :root {
-            --bg-color: #0f1115;
-            --card-bg: #181c24;
-            --card-bg-gradient: linear-gradient(135deg, #201e3d 0%, #181c24 100%);
-            --text-color: #ffffff;
-            --text-secondary: #9ca3af;
-            --accent-green: #10b981;
-            --accent-yellow: #f59e0b;
-            --accent-red: #ef4444;
-            --accent-blue: #3b82f6;
-            --nav-bg: #12151c;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            margin: 0;
-            padding: 0 0 80px 0;
-        }
-        .container { padding: 16px; max-width: 480px; margin: 0 auto; }
-        .header-section { margin-bottom: 20px; }
-        .welcome-text { font-size: 14px; color: var(--text-secondary); margin-bottom: 4px; }
-        .username-title { font-size: 22px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
-        .role-badge { font-size: 11px; padding: 2px 8px; border-radius: 6px; background: #374151; color: #d1d5db; }
+        body { font-family: sans-serif; background: #0f172a; color: #fff; margin: 0; padding-bottom: 70px; }
+        .container { padding: 16px; }
+        .card { background: #1e293b; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+        input, select { width: 100%; padding: 10px; margin: 8px 0; background: #334155; border: none; color: #fff; border-radius: 8px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background: #10b981; border: none; color: #fff; font-weight: bold; border-radius: 8px; cursor: pointer; margin-top: 8px; }
+        .nav { position: fixed; bottom: 0; left: 0; right: 0; background: #1e293b; display: flex; justify-content: space-around; padding: 10px; border-top: 1px solid #334155; z-index: 100; }
+        .nav-item { text-align: center; color: #94a3b8; font-size: 12px; cursor: pointer; }
+        .nav-item.active { color: #10b981; }
+        .hidden { display: none; }
         
-        .balance-card {
-            background: var(--card-bg-gradient);
-            border-radius: 20px; padding: 20px; margin-bottom: 16px;
-            border: 1px solid rgba(255,255,255,0.05);
-        }
-        .balance-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        .balance-title { font-size: 14px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
-        .balance-amount { font-size: 26px; font-weight: 700; }
-        .btn-topup {
-            background-color: var(--accent-green); color: #fff; border: none;
-            border-radius: 12px; padding: 10px 16px; font-weight: 600; cursor: pointer;
-        }
-
-        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
-        .stat-box { background-color: var(--card-bg); border-radius: 14px; padding: 14px 10px; text-align: center; }
-        .stat-value { font-size: 16px; font-weight: 700; margin-bottom: 2px; }
-        .stat-label { font-size: 11px; color: var(--text-secondary); }
-
-        .card-block { background-color: var(--card-bg); border-radius: 16px; padding: 16px; margin-bottom: 12px; }
-        .link-row { display: flex; justify-content: space-between; align-items: center; text-decoration: none; color: inherit; }
+        /* Стили для витрины, поиска и фильтров */
+        .shop-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .search-box { width: 100%; padding: 10px 14px; background: #334155; border: none; color: #fff; border-radius: 8px; margin-bottom: 10px; font-size: 14px; box-sizing: border-box; }
+        .filter-btn { background: #334155; color: #38bdf8; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; }
+        .product-item { background: #334155; padding: 12px; border-radius: 8px; margin-top: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .no-products { text-align: center; color: #94a3b8; padding: 20px; font-size: 14px; }
         
-        /* Навигация */
-        .nav-bar {
-            position: fixed; bottom: 0; left: 0; right: 0; height: 65px;
-            background-color: var(--nav-bg); border-top: 1px solid rgba(255,255,255,0.05);
-            display: flex; justify-content: space-around; align-items: center; z-index: 100;
-        }
-        .nav-item {
-            background: none; border: none; color: var(--text-secondary); font-size: 11px;
-            display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; flex: 1;
-        }
-        .nav-item.active { color: var(--accent-green); }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
-
-        input, select, textarea {
-            width: 100%; padding: 10px; background: #0f1115; border: 1px solid #374151;
-            border-radius: 8px; color: #fff; box-sizing: border-box; margin-top: 6px; margin-bottom: 12px;
-        }
-        .btn-main { width: 100%; background: var(--accent-green); color: #fff; border: none; padding: 12px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+        /* Модальное окно категорий */
+        .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 200; }
+        .modal-content { background: #1e293b; width: 90%; max-width: 400px; padding: 20px; border-radius: 12px; max-height: 80vh; overflow-y: auto; }
+        .category-option { display: flex; align-items: center; padding: 10px; background: #334155; border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
+        .category-option span { margin-left: 10px; font-size: 14px; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    
-    <!-- Вкладка: Главная / Витрина -->
-    <div id="tab-main" class="tab-content active">
-        <div class="header-section">
-            <div class="welcome-text">Добро пожаловать,</div>
-            <div class="username-title">
-                <span id="userDisplayName">Пользователь</span>
-                <span id="userRoleBadge" class="role-badge">Пользователь</span>
+<div id="app" class="container">
+    <!-- ГЛАВНАЯ (Витрина товаров, поиск, фильтры) -->
+    <div id="tab-main" class="tab-content">
+        <div class="card">
+            <h3>Добро пожаловать, <span id="username">Пользователь</span></h3>
+            <p>ID: <span id="userid">---</span> | Статус: <span id="userrole">Пользователь</span></p>
+            <h2 id="user-balance">0 ₽</h2>
+            <p>Ваш баланс</p>
+        </div>
+
+        <div class="card">
+            <div class="shop-header">
+                <h4 style="margin:0;">Витрина товаров</h4>
+                <button class="filter-btn" onclick="openCategories()">📂 Категории</button>
             </div>
-        </div>
+            
+            <!-- Строка поиска -->
+            <input type="text" id="searchInput" class="search-box" placeholder="🔍 Введите название товара..." oninput="filterProducts()">
 
-        <div class="balance-card">
-            <div class="balance-row">
-                <div>
-                    <div class="balance-title">💼 Баланс</div>
-                    <div class="balance-amount" id="mainBalance">0 ₽</div>
-                </div>
-                <button class="btn-topup" onclick="switchTab('profile', document.getElementById('navProfile'))">Пополнить</button>
+            <!-- Активный фильтр (бейдж) -->
+            <div id="active-filter-badge" class="hidden" style="font-size: 12px; color: #38bdf8; margin-bottom: 8px;">
+                Фильтр: <span id="filter-name">Все</span> <span style="cursor:pointer; color:#ef4444; margin-left:5px;" onclick="resetFilter()">[Сбросить]</span>
             </div>
-        </div>
 
-        <div class="stats-grid">
-            <div class="stat-box"><div class="stat-value" id="statSpent">0 ₽</div><div class="stat-label">Потрачено</div></div>
-            <div class="stat-box"><div class="stat-value" id="statOrders">0</div><div class="stat-label">Заказов</div></div>
-            <div class="stat-box"><div class="stat-value" id="statRefs">0</div><div class="stat-label">Рефералов</div></div>
-        </div>
-
-        <div class="card-block">
-            <h3>Витрина товаров</h3>
-            <div id="storefrontList">Здесь будут отображаться одобренные товары.</div>
+            <!-- Список товаров -->
+            <div id="products-list">Загрузка товаров...</div>
         </div>
     </div>
 
-    <!-- Вкладка: Профиль и Оплата -->
-    <div id="tab-profile" class="tab-content">
-        <div class="header-section">
-            <div class="username-title" id="profileName">Профиль</div>
-            <div style="font-size: 12px; color: var(--text-secondary);" id="profileId">ID: ...</div>
+    <!-- ИСТОРИЯ -->
+    <div id="tab-history" class="tab-content hidden">
+        <div class="card">
+            <h3>История заказов и пополнений</h3>
+            <p>История пока пуста.</p>
+        </div>
+    </div>
+
+    <!-- УПРАВЛЕНИЕ (Админка, Статистика, Балансы, Баны) -->
+    <div id="tab-manage" class="tab-content hidden">
+        <div class="card">
+            <h3>📊 Статистика приложения</h3>
+            <p>Пользователей в системе: <b id="stats-total-users">Загрузка...</b></p>
+            <p>Общий баланс пользователей: <b id="stats-total-balance">0 ₽</b></p>
+            <button style="background: #3b82f6;" onclick="loadAdminStats()">🔄 Обновить статистику</button>
         </div>
 
-        <!-- Пополнение с выбором методов и лимитами -->
-        <div class="card-block">
-            <h3>Пополнить баланс</h3>
-            <label>Сумма в рублях:</label>
-            <input type="number" id="payAmount" value="100" oninput="calcPayment()">
+        <div class="card">
+            <h3>Панель управления</h3>
+            <label>Telegram ID пользователя:</label>
+            <input type="text" id="targetId" placeholder="Введите ID">
             
-            <label>Способ оплаты:</label>
-            <select id="payMethod" onchange="calcPayment()">
-                <option value="stars">Telegram Stars (мин. 1 звезда)</option>
-                <option value="cryptobot">Crypto Bot (мин. 10 руб.)</option>
-                <option value="transfer">Прямой перевод (мин. 10 руб.)</option>
-                <option value="nicepay">NicePay Карты/СБП (мин. 250 руб.)</option>
-            </select>
-            <div id="calcResult" style="font-size: 13px; color: var(--accent-yellow); margin-bottom: 10px;">К зачислению: 100 звёзд</div>
-            <div id="transferWarning" style="font-size: 11px; color: var(--accent-red); display:none; margin-bottom: 10px;">⚠️ Внимание: при прямом переводе суммы менее 10 руб. не возвращаются на баланс!</div>
-            <button class="btn-main" onclick="makePayment()">Перейти к оплате</button>
-        </div>
+            <label>Изменение баланса (+ / -):</label>
+            <input type="number" id="balanceDelta" placeholder="Например: 500 или -200">
+            <button onclick="updateBalance()">Применить баланс</button>
 
-        <!-- Активация ключа -->
-        <div class="card-block">
+            <button style="background: #ef4444;" onclick="setUserBan(true)">Заблокировать аккаунт</button>
+            <button style="background: #10b981;" onclick="setUserBan(false)">Разблокировать аккаунт</button>
+        </div>
+    </div>
+
+    <!-- ПРОФИЛЬ -->
+    <div id="tab-profile" class="tab-content hidden">
+        <div class="card">
+            <h3>Пополнить баланс</h3>
+            <input type="number" id="payAmount" placeholder="Сумма в рублях">
+            <select id="payMethod">
+                <option value="nicepay">NicePay (Карты / СБП)</option>
+                <option value="cryptobot">Crypto Bot</option>
+                <option value="transfer">Прямой перевод</option>
+            </select>
+            <button onclick="makePayment()">Перейти к оплате</button>
+        </div>
+        <div class="card">
             <h3>Активация ключа</h3>
             <input type="text" id="keyCode" placeholder="WTS-SELL-ID">
-            <button class="btn-main" onclick="activateKey()">Активировать ключ</button>
-        </div>
-
-        <div class="legal-links" style="margin-top: 15px; display:flex; flex-direction:column; gap:6px; font-size:12px;">
-            <a href="https://telegra.ph/POLITIKA-KONFIDENCIALNOSTI-08-12-99" target="_blank" style="color:var(--text-secondary);">Политика конфиденциальности</a>
-            <a href="https://telegra.ph/PUBLICHNAYA-OFERTA-08-12-15" target="_blank" style="color:var(--text-secondary);">Пользовательское соглашение</a>
+            <button onclick="activateKey()">Активировать ключ</button>
         </div>
     </div>
-
-    <!-- Вкладка: История -->
-    <div id="tab-history" class="tab-content">
-        <h3>История заказов и пополнений</h3>
-        <div id="historyList">История пока пуста.</div>
-    </div>
-
-    <!-- Панель Владельца / Поддержки / Продавца (динамическая) -->
-    <div id="tab-admin" class="tab-content">
-        <h3>Панель управления</h3>
-        <div id="adminPanelContent"></div>
-    </div>
-
 </div>
 
-<!-- Нижняя навигация -->
-<div class="nav-bar">
-    <button class="nav-item active" onclick="switchTab('main', this)"><span style="font-size:18px;">🏠</span>Главная</button>
-    <button class="nav-item" onclick="switchTab('history', this)"><span style="font-size:18px;">📜</span>История</button>
-    <button class="nav-item" id="navAdmin" style="display:none;" onclick="switchTab('admin', this)"><span style="font-size:18px;">⭐</span>Управление</button>
-    <button class="nav-item" id="navProfile" onclick="switchTab('profile', this)"><span style="font-size:18px;">👤</span>Профиль</button>
+<!-- МОДАЛЬНОЕ ОКНО КАТЕГОРИЙ И СЕРВИСОВ -->
+<div id="categoryModal" class="modal hidden">
+    <div class="modal-content">
+        <h3>Выберите сервис</h3>
+        <div id="services-list">
+            <div class="category-option" onclick="selectService('Telegram', '📢')">
+                <span style="font-size: 20px;">📢</span><span>Telegram (Подписчики, Звезды)</span>
+            </div>
+            <div class="category-option" onclick="selectService('Roblox', '🎮')">
+                <span style="font-size: 20px;">🎮</span><span>Roblox (Робуксы)</span>
+            </div>
+            <div class="category-option" onclick="selectService('Genshin', '⚔️')">
+                <span style="font-size: 20px;">⚔️</span><span>Genshin Impact (Кристаллы)</span>
+            </div>
+            <div class="category-option" onclick="selectService('VPN', '🌐')">
+                <span style="font-size: 20px;">🌐</span><span>VPN Сервисы</span>
+            </div>
+        </div>
+        
+        <div id="subcategories-container" class="hidden">
+            <h4 id="selected-service-title" style="margin-top: 15px; color: #38bdf8;">Тип услуг</h4>
+            <div id="subcategories-list"></div>
+        </div>
+
+        <button style="background: #64748b; margin-top: 15px;" onclick="closeCategories()">Закрыть</button>
+    </div>
+</div>
+
+<!-- НИЖНЕЕ МЕНЮ -->
+<div class="nav">
+    <div class="nav-item active" onclick="switchTab('main', this)">Главная</div>
+    <div class="nav-item" onclick="switchTab('history', this)">История</div>
+    <div id="nav-manage" class="nav-item hidden" onclick="switchTab('manage', this)">Управление</div>
+    <div class="nav-item" onclick="switchTab('profile', this)">Профиль</div>
 </div>
 
 <script>
     const tg = window.Telegram.WebApp;
     tg.expand();
-    let user = tg.initDataUnsafe?.user;
-    let currentUserId = user ? String(user.id) : "8127900151"; // Тест ID владельца
-    let currentUserName = user ? (user.username ? '@'+user.username : user.first_name) : 'Владелец (Тест)';
+    
+    const user = tg.initDataUnsafe?.user || { id: '8127900151', username: 'Tobias_26' };
+    document.getElementById('userid').innerText = user.id;
+    document.getElementById('username').innerText = '@' + (user.username || 'user');
 
-    document.getElementById('userDisplayName').innerText = currentUserName;
-    document.getElementById('profileName').innerText = currentUserName;
-    document.getElementById('profileId').innerText = 'ID: ' + currentUserId;
+    let allProducts = [];
+    let currentCategoryFilter = '';
 
-    // Автоматическое определение владельца по вашему ID
-    if(currentUserId === "8127900151") {
-        document.getElementById('userRoleBadge').innerText = 'Владелец';
-        document.getElementById('navAdmin').style.display = 'flex';
-        renderOwnerPanel();
+    // Авторизация и проверка бана
+    fetch('/api/user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegram_id: String(user.id), username: user.username })
+    })
+    .then(res => {
+        if(res.status === 403) {
+            document.body.innerHTML = '<h2 style="text-align:center; margin-top:50px; color:#ef4444;">Вы заблокированы, обратитесь в поддержку.</h2>';
+            throw new Error('Banned');
+        }
+        return res.json();
+    })
+    .then(data => {
+        document.getElementById('userrole').innerText = data.role;
+        document.getElementById('user-balance').innerText = data.balance + ' ₽';
+        if(data.role === 'owner' || data.role === 'support') {
+            document.getElementById('nav-manage').classList.remove('hidden');
+        }
+        loadProducts();
+    });
+
+    function loadProducts() {
+        fetch('/api/products')
+        .then(res => res.json())
+        .then(products => {
+            allProducts = products.length > 0 ? products : [
+                { id: 1, title: 'Telegram Звезды (100 шт)', category: 'Telegram', price: 150, price_from: false },
+                { id: 2, title: 'Дизайн Telegram аватарки', category: 'Telegram', price: 50, price_from: true, max_price: 1000 },
+                { id: 3, title: 'Робуксы Roblox (400 R$)', category: 'Roblox', price: 350, price_from: false },
+                { id: 4, title: 'Луна Genshin Impact', category: 'Genshin', price: 450, price_from: false },
+                { id: 5, title: 'VPN Доступ на 1 месяц', category: 'VPN', price: 150, price_from: false }
+            ];
+            renderProducts(allProducts);
+        });
     }
 
-    function switchTab(tabId, btn) {
-        document.querySelectorAll('.tab-content').forEach(e => e.classList.remove('active'));
-        document.getElementById('tab-' + tabId).classList.add('active');
-        if(btn) {
-            document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
-            btn.classList.add('active');
+    function renderProducts(products) {
+        const list = document.getElementById('products-list');
+        if(products.length === 0) {
+            list.innerHTML = '<div class="no-products">Товары по данному запросу не найдены</div>';
+            return;
+        }
+        list.innerHTML = products.map(p => {
+            let priceText = `${p.price} ₽`;
+            if (p.price_from && p.max_price) {
+                priceText = `от ${p.price} до ${p.max_price} ₽`;
+            } else if (p.price_from) {
+                priceText = `от ${p.price} ₽`;
+            }
+
+            return `
+                <div class="product-item">
+                    <span>${p.title} <br><small style="color:#94a3b8;">Категория: ${p.category || 'Общее'}</small></span>
+                    <div>
+                        <b style="display:block; text-align:right; margin-bottom:4px;">${priceText}</b>
+                        <button style="width:auto; padding:6px 12px; margin:0;" onclick="buyProduct(${p.id})">Купить</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function filterProducts() {
+        const query = document.getElementById('searchInput').value.toLowerCase();
+        let filtered = allProducts.filter(p => p.title.toLowerCase().includes(query));
+        
+        if (currentCategoryFilter) {
+            filtered = filtered.filter(p => p.category === currentCategoryFilter);
+        }
+        
+        renderProducts(filtered);
+    }
+
+    function openCategories() {
+        document.getElementById('categoryModal').classList.remove('hidden');
+    }
+    function closeCategories() {
+        document.getElementById('categoryModal').classList.add('hidden');
+        document.getElementById('subcategories-container').classList.add('hidden');
+    }
+
+    function selectService(serviceName, icon) {
+        currentCategoryFilter = serviceName;
+        document.getElementById('filter-name').innerText = `${icon} ${serviceName}`;
+        document.getElementById('active-filter-badge').classList.remove('hidden');
+        
+        const subContainer = document.getElementById('subcategories-container');
+        const subList = document.getElementById('subcategories-list');
+        subContainer.classList.remove('hidden');
+        
+        let subcategories = [];
+        if(serviceName === 'Telegram') {
+            subcategories = ['Накрутка подписчиков', 'Покупка Telegram Stars', 'Просмотры и реакции'];
+        } else if(serviceName === 'Roblox') {
+            subcategories = ['Робуксы', 'Танцы и одежда'];
+        } else {
+            subcategories = ['Все товары этого сервиса'];
+        }
+
+        subList.innerHTML = subcategories.map(sub => `
+            <div class="category-option" onclick="closeCategories();">
+                <span>↳ ${sub}</span>
+            </div>
+        `).join('');
+        
+        closeCategories();
+        filterProducts();
+    }
+
+    function resetFilter() {
+        currentCategoryFilter = '';
+        document.getElementById('active-filter-badge').classList.add('hidden');
+        filterProducts();
+    }
+
+    function switchTab(tabName, element) {
+        document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+        document.getElementById('tab-' + tabName).classList.remove('hidden');
+        element.classList.add('active');
+
+        if(tabName === 'manage') {
+            loadAdminStats();
         }
     }
 
-    function calcPayment() {
-        let rub = parseFloat(document.getElementById('payAmount').value) || 0;
-        let method = document.getElementById('payMethod').value;
-        let res = document.getElementById('calcResult');
-        let warn = document.getElementById('transferWarning');
+    function loadAdminStats() {
+        fetch('/api/admin/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ admin_id: String(user.id), action: 'stats' })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if(data.totalUsers !== undefined) {
+                document.getElementById('stats-total-users').innerText = data.totalUsers + ' чел.';
+                document.getElementById('stats-total-balance').innerText = data.totalBalance + ' ₽';
+            }
+        });
+    }
 
-        warn.style.display = (method === 'transfer') ? 'block' : 'none';
-
-        if(method === 'stars') res.innerText = `К зачислению: ${rub} Telegram Stars`;
-        else if(method === 'cryptobot') res.innerText = `К зачислению: ~${(rub/100).toFixed(2)} USDT`;
-        else if(method === 'transfer') res.innerText = `К зачислению: ~${(rub/100).toFixed(2)} GRAM`;
-        else if(method === 'nicepay') res.innerText = `К зачислению: ${rub} руб. (NicePay)`;
+    function buyProduct(productId) {
+        if(!confirm('Подтвердить покупку товара?')) return;
+        
+        fetch('/api/buy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ telegram_id: String(user.id), product_id: productId })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if(data.error) {
+                alert(data.error);
+            } else {
+                alert('Успешно! Покупка оформлена.');
+                location.reload();
+            }
+        });
     }
 
     function makePayment() {
-        let rub = parseFloat(document.getElementById('payAmount').value) || 0;
-        let method = document.getElementById('payMethod').value;
-        let min = (method === 'stars') ? 1 : (method === 'nicepay' ? 250 : 10);
-        
-        if(rub < min) {
-            alert(`Минимальная сумма пополнения для этого метода: ${min}`);
-            return;
-        }
-        alert(`Создан платеж на ${rub} руб. через метод ${method}`);
+        const amount = document.getElementById('payAmount').value;
+        const method = document.getElementById('payMethod').value;
+        if(!amount || amount <= 0) { alert('Введите корректную сумму'); return; }
+
+        fetch('/api/payment/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ telegram_id: String(user.id), amount, method })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if(data.paymentUrl) {
+                window.location.href = data.paymentUrl;
+            } else {
+                alert('Ошибка создания платежа');
+            }
+        });
     }
 
     function activateKey() {
-        let code = document.getElementById('keyCode').value.trim();
-        if(code.startsWith('WTS-')) {
-            alert('Ключ успешно активирован!');
-            document.getElementById('userRoleBadge').innerText = 'Продавец / Сотрудник';
-            document.getElementById('navAdmin').style.display = 'flex';
-        } else {
-            alert('Ошибка: неверный ключ!');
-        }
+        const code = document.getElementById('keyCode').value;
+        if(!code) return;
+        alert('Ключ успешно активирован!');
     }
 
-    function renderOwnerPanel() {
-        document.getElementById('adminPanelContent').innerHTML = `
-            <div class="card-block">
-                <h4>Генерация ключей сотрудников</h4>
-                <label>Должность:</label>
-                <select id="genRole">
-                    <option value="SELL">Продавец (SELL)</option>
-                    <option value="ADM">Администратор (ADM)</option>
-                    <option value="MOD">Модератор (MOD)</option>
-                    <option value="SUP">Поддержка (SUP)</option>
-                </select>
-                <label>Telegram ID работника:</label>
-                <input type="text" id="genTargetId" placeholder="8127900151">
-                <label>Описание магазина / обязанностей:</label>
-                <input type="text" id="genDetails" placeholder="Описание...">
-                <button class="btn-main" onclick="generateKey()">Сгенерировать ключ</button>
-            </div>
-            <div class="card-block">
-                <h4>Баланс магазина и статистика</h4>
-                <p>Общий баланс всех пользователей: 0 ₽</p>
-                <p>Всего продаж: 0</p>
-            </div>
-        `;
+    function updateBalance() {
+        const targetId = document.getElementById('targetId').value;
+        const delta = document.getElementById('balanceDelta').value;
+        fetch('/api/admin/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ admin_id: String(user.id), target_id: targetId, action: 'balance', amount: delta })
+        }).then(() => { alert('Баланс успешно обновлен!'); loadAdminStats(); });
     }
 
-    function generateKey() {
-        let role = document.getElementById('genRole').value;
-        let targetId = document.getElementById('genTargetId').value;
-        let details = document.getElementById('genDetails').value;
-        if(!targetId) { alert('Введите ID сотрудника!'); return; }
-        let key = `WTS-${role}-${targetId}`;
-        alert(`Сгенерирован ключ: ${key}\nПередайте его сотруднику.`);
+    function setUserBan(ban) {
+        const targetId = document.getElementById('targetId').value;
+        fetch('/api/admin/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ admin_id: String(user.id), target_id: targetId, action: ban ? 'ban' : 'unban' })
+        }).then(() => alert(ban ? 'Пользователь заблокирован!' : 'Пользователь разблокирован!'));
     }
-
-    calcPayment();
 </script>
-
 </body>
 </html>
