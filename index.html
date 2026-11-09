@@ -16,7 +16,6 @@
         .nav-item.active { color: #10b981; }
         .hidden { display: none; }
         
-        /* Стили для витрины, поиска и фильтров */
         .shop-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         .search-box { width: 100%; padding: 10px 14px; background: #334155; border: none; color: #fff; border-radius: 8px; margin-bottom: 10px; font-size: 14px; box-sizing: border-box; }
         .filter-btn { background: #334155; color: #38bdf8; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; }
@@ -24,10 +23,12 @@
         .no-products { text-align: center; color: #94a3b8; padding: 20px; font-size: 14px; }
         
         /* Модальное окно категорий */
-        .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 200; }
-        .modal-content { background: #1e293b; width: 90%; max-width: 400px; padding: 20px; border-radius: 12px; max-height: 80vh; overflow-y: auto; }
-        .category-option { display: flex; align-items: center; padding: 10px; background: #334155; border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
-        .category-option span { margin-left: 10px; font-size: 14px; }
+        .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 200; }
+        .modal-content { background: #1e293b; width: 92%; max-width: 420px; padding: 20px; border-radius: 12px; max-height: 85vh; overflow-y: auto; box-sizing: border-box; }
+        .category-option { display: flex; align-items: center; padding: 12px; background: #334155; border-radius: 8px; margin-bottom: 8px; cursor: pointer; transition: background 0.2s; }
+        .category-option:hover { background: #475569; }
+        .category-option span { margin-left: 12px; font-size: 14px; font-weight: 500; }
+        .section-title { font-size: 12px; color: #38bdf8; text-transform: uppercase; margin: 15px 0 8px 0; letter-spacing: 0.5px; }
     </style>
 </head>
 <body>
@@ -48,15 +49,12 @@
                 <button class="filter-btn" onclick="openCategories()">📂 Категории</button>
             </div>
             
-            <!-- Строка поиска -->
             <input type="text" id="searchInput" class="search-box" placeholder="🔍 Введите название товара..." oninput="filterProducts()">
 
-            <!-- Активный фильтр (бейдж) -->
             <div id="active-filter-badge" class="hidden" style="font-size: 12px; color: #38bdf8; margin-bottom: 8px;">
                 Фильтр: <span id="filter-name">Все</span> <span style="cursor:pointer; color:#ef4444; margin-left:5px;" onclick="resetFilter()">[Сбросить]</span>
             </div>
 
-            <!-- Список товаров -->
             <div id="products-list">Загрузка товаров...</div>
         </div>
     </div>
@@ -69,7 +67,7 @@
         </div>
     </div>
 
-    <!-- УПРАВЛЕНИЕ (Админка, Статистика, Балансы, Баны) -->
+    <!-- УПРАВЛЕНИЕ (Админка) -->
     <div id="tab-manage" class="tab-content hidden">
         <div class="card">
             <h3>📊 Статистика приложения</h3>
@@ -115,28 +113,57 @@
 <!-- МОДАЛЬНОЕ ОКНО КАТЕГОРИЙ И СЕРВИСОВ -->
 <div id="categoryModal" class="modal hidden">
     <div class="modal-content">
-        <h3>Выберите сервис</h3>
-        <div id="services-list">
+        <h3>Каталог сервисов и игр</h3>
+        
+        <div id="main-categories-view">
+            <div class="section-title">📢 Социальные сети и мессенджеры</div>
             <div class="category-option" onclick="selectService('Telegram', '📢')">
-                <span style="font-size: 20px;">📢</span><span>Telegram (Подписчики, Звезды)</span>
+                <span style="font-size: 20px;">📢</span><span>Telegram (Подписчики, Звезды, Премиум)</span>
             </div>
-            <div class="category-option" onclick="selectService('Roblox', '🎮')">
-                <span style="font-size: 20px;">🎮</span><span>Roblox (Робуксы)</span>
+            <div class="category-option" onclick="selectService('Instagram', '📸')">
+                <span style="font-size: 20px;">📸</span><span>Instagram (Подписчики, Лайки, Просмотры)</span>
+            </div>
+            <div class="category-option" onclick="selectService('VK', '🔵')">
+                <span style="font-size: 20px;">🔵</span><span>ВКонтакте (Подписчики, Лайки, Репосты)</span>
+            </div>
+            <div class="category-option" onclick="selectService('TikTok', '🎵')">
+                <span style="font-size: 20px;">🎵</span><span>TikTok (Просмотры, Лайки, Подписчики)</span>
+            </div>
+            <div class="category-option" onclick="selectService('YouTube', '▶️')">
+                <span style="font-size: 20px;">▶️</span><span>YouTube (Просмотры, Подписчики, Лайки)</span>
+            </div>
+            <div class="category-option" onclick="selectService('Twitter', '✖️')">
+                <span style="font-size: 20px;">✖️</span><span>X (Twitter) / Threads / Facebook</span>
+            </div>
+
+            <div class="section-title">🎮 Игры (Донат и валюта)</div>
+            <div class="category-option" onclick="selectService('Roblox', '🤖')">
+                <span style="font-size: 20px;">🤖</span><span>Roblox (Покупка Робуксов)</span>
             </div>
             <div class="category-option" onclick="selectService('Genshin', '⚔️')">
-                <span style="font-size: 20px;">⚔️</span><span>Genshin Impact (Кристаллы)</span>
+                <span style="font-size: 20px;">⚔️</span><span>Genshin Impact (Кристаллы, Луна)</span>
             </div>
-            <div class="category-option" onclick="selectService('VPN', '🌐')">
-                <span style="font-size: 20px;">🌐</span><span>VPN Сервисы</span>
+            <div class="category-option" onclick="selectService('BrawlStars', '⭐')">
+                <span style="font-size: 20px;">⭐</span><span>Brawl Stars (Гемы, Блек Пас)</span>
+            </div>
+            <div class="category-option" onclick="selectService('PUBG', '🎯')">
+                <span style="font-size: 20px;">🎯</span><span>PUBG Mobile (UC, RP)</span>
+            </div>
+
+            <div class="section-title">🌐 Прочее</div>
+            <div class="category-option" onclick="selectService('VPN', '🛡️')">
+                <span style="font-size: 20px;">🛡️</span><span>VPN Сервисы (Доступ 1-12 месяцев)</span>
             </div>
         </div>
         
+        <!-- Подкатегории услуг -->
         <div id="subcategories-container" class="hidden">
             <h4 id="selected-service-title" style="margin-top: 15px; color: #38bdf8;">Тип услуг</h4>
             <div id="subcategories-list"></div>
+            <button style="background: #475569; margin-top: 10px;" onclick="backToCategories()">⬅️ Назад к списку</button>
         </div>
 
-        <button style="background: #64748b; margin-top: 15px;" onclick="closeCategories()">Закрыть</button>
+        <button style="background: #ef4444; margin-top: 15px;" onclick="closeCategories()">Закрыть</button>
     </div>
 </div>
 
@@ -159,7 +186,6 @@
     let allProducts = [];
     let currentCategoryFilter = '';
 
-    // Авторизация и проверка бана
     fetch('/api/user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -187,10 +213,11 @@
         .then(products => {
             allProducts = products.length > 0 ? products : [
                 { id: 1, title: 'Telegram Звезды (100 шт)', category: 'Telegram', price: 150, price_from: false },
-                { id: 2, title: 'Дизайн Telegram аватарки', category: 'Telegram', price: 50, price_from: true, max_price: 1000 },
-                { id: 3, title: 'Робуксы Roblox (400 R$)', category: 'Roblox', price: 350, price_from: false },
-                { id: 4, title: 'Луна Genshin Impact', category: 'Genshin', price: 450, price_from: false },
-                { id: 5, title: 'VPN Доступ на 1 месяц', category: 'VPN', price: 150, price_from: false }
+                { id: 2, title: 'Накрутка подписчиков в ТГ (1000 шт)', category: 'Telegram', price: 300, price_from: false },
+                { id: 3, title: 'Instagram Подписчики (500 шт)', category: 'Instagram', price: 250, price_from: false },
+                { id: 4, title: 'Робуксы Roblox (400 R$)', category: 'Roblox', price: 350, price_from: false },
+                { id: 5, title: 'Луна Genshin Impact', category: 'Genshin', price: 450, price_from: false },
+                { id: 6, title: 'VPN Доступ на 1 месяц', category: 'VPN', price: 150, price_from: false }
             ];
             renderProducts(allProducts);
         });
@@ -235,10 +262,12 @@
 
     function openCategories() {
         document.getElementById('categoryModal').classList.remove('hidden');
+        document.getElementById('main-categories-view').classList.remove('hidden');
+        document.getElementById('subcategories-container').classList.add('hidden');
     }
+
     function closeCategories() {
         document.getElementById('categoryModal').classList.add('hidden');
-        document.getElementById('subcategories-container').classList.add('hidden');
     }
 
     function selectService(serviceName, icon) {
@@ -246,27 +275,35 @@
         document.getElementById('filter-name').innerText = `${icon} ${serviceName}`;
         document.getElementById('active-filter-badge').classList.remove('hidden');
         
+        const mainView = document.getElementById('main-categories-view');
         const subContainer = document.getElementById('subcategories-container');
         const subList = document.getElementById('subcategories-list');
+        
+        mainView.classList.add('hidden');
         subContainer.classList.remove('hidden');
+        document.getElementById('selected-service-title').innerText = `${icon} Услуги: ${serviceName}`;
         
         let subcategories = [];
         if(serviceName === 'Telegram') {
-            subcategories = ['Накрутка подписчиков', 'Покупка Telegram Stars', 'Просмотры и реакции'];
-        } else if(serviceName === 'Roblox') {
-            subcategories = ['Робуксы', 'Танцы и одежда'];
+            subcategories = ['Накрутка подписчиков', 'Покупка Telegram Stars', 'Просмотры и реакции', 'Комментарии'];
+        } else if(serviceName === 'Instagram') {
+            subcategories = ['Подписчики', 'Лайки', 'Просмотры видео', 'Комментарии'];
+        } else if(serviceName === 'Roblox' || serviceName === 'Genshin' || serviceName === 'BrawlStars' || serviceName === 'PUBG') {
+            subcategories = ['Малый пакет валюты', 'Средний пакет валюты', 'Максимальный донат / Пропуск'];
         } else {
-            subcategories = ['Все товары этого сервиса'];
+            subcategories = ['Все доступные тарифы'];
         }
 
         subList.innerHTML = subcategories.map(sub => `
-            <div class="category-option" onclick="closeCategories();">
+            <div class="category-option" onclick="closeCategories(); filterProducts();">
                 <span>↳ ${sub}</span>
             </div>
         `).join('');
-        
-        closeCategories();
-        filterProducts();
+    }
+
+    function backToCategories() {
+        document.getElementById('main-categories-view').classList.remove('hidden');
+        document.getElementById('subcategories-container').classList.add('hidden');
     }
 
     function resetFilter() {
