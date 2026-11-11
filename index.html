@@ -22,7 +22,6 @@
         .product-item { background: #334155; padding: 12px; border-radius: 8px; margin-top: 8px; display: flex; justify-content: space-between; align-items: center; }
         .no-products { text-align: center; color: #94a3b8; padding: 20px; font-size: 14px; }
         
-        /* Модальное окно категорий */
         .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 200; }
         .modal-content { background: #1e293b; width: 92%; max-width: 420px; padding: 20px; border-radius: 12px; max-height: 85vh; overflow-y: auto; box-sizing: border-box; }
         .category-option { display: flex; align-items: center; padding: 12px; background: #334155; border-radius: 8px; margin-bottom: 8px; cursor: pointer; transition: background 0.2s; }
@@ -34,7 +33,7 @@
 <body>
 
 <div id="app" class="container">
-    <!-- ГЛАВНАЯ (Витрина товаров, поиск, фильтры) -->
+    <!-- ГЛАВНАЯ -->
     <div id="tab-main" class="tab-content">
         <div class="card">
             <h3>Добро пожаловать, <span id="username">Пользователь</span></h3>
@@ -67,7 +66,7 @@
         </div>
     </div>
 
-    <!-- УПРАВЛЕНИЕ (Админка) -->
+    <!-- УПРАВЛЕНИЕ -->
     <div id="tab-manage" class="tab-content hidden">
         <div class="card">
             <h3>📊 Статистика приложения</h3>
@@ -110,53 +109,73 @@
     </div>
 </div>
 
-<!-- МОДАЛЬНОЕ ОКНО КАТЕГОРИЙ И СЕРВИСОВ -->
+<!-- МОДАЛЬНОЕ ОКНО -->
 <div id="categoryModal" class="modal hidden">
     <div class="modal-content">
         <h3>Каталог сервисов и игр</h3>
         
         <div id="main-categories-view">
-            <div class="section-title">📢 Социальные сети и мессенджеры</div>
+            <div class="section-title">📢 Мессенджеры и соцсети</div>
             <div class="category-option" onclick="selectService('Telegram', '📢')">
-                <span style="font-size: 20px;">📢</span><span>Telegram (Подписчики, Звезды, Премиум)</span>
+                <span style="font-size: 20px;">📢</span><span>Telegram (+ Дизайн ТГК, Звезды)</span>
             </div>
             <div class="category-option" onclick="selectService('Instagram', '📸')">
-                <span style="font-size: 20px;">📸</span><span>Instagram (Подписчики, Лайки, Просмотры)</span>
+                <span style="font-size: 20px;">📸</span><span>Instagram (Подписчики, Лайки)</span>
+            </div>
+            <div class="category-option" onclick="selectService('WhatsApp', '🟢')">
+                <span style="font-size: 20px;">🟢</span><span>WhatsApp (Рассылки, Спам-блок)</span>
+            </div>
+            <div class="category-option" onclick="selectService('Discord', '💬')">
+                <span style="font-size: 20px;">💬</span><span>Discord (Нитро, Участники, Бусты)</span>
             </div>
             <div class="category-option" onclick="selectService('VK', '🔵')">
-                <span style="font-size: 20px;">🔵</span><span>ВКонтакте (Подписчики, Лайки, Репосты)</span>
+                <span style="font-size: 20px;">🔵</span><span>ВКонтакте (Подписчики, Лайки)</span>
             </div>
             <div class="category-option" onclick="selectService('TikTok', '🎵')">
-                <span style="font-size: 20px;">🎵</span><span>TikTok (Просмотры, Лайки, Подписчики)</span>
+                <span style="font-size: 20px;">🎵</span><span>TikTok (Просмотры, Лайки)</span>
             </div>
             <div class="category-option" onclick="selectService('YouTube', '▶️')">
-                <span style="font-size: 20px;">▶️</span><span>YouTube (Просмотры, Подписчики, Лайки)</span>
+                <span style="font-size: 20px;">▶️</span><span>YouTube (Просмотры, Сабы)</span>
             </div>
             <div class="category-option" onclick="selectService('Twitter', '✖️')">
                 <span style="font-size: 20px;">✖️</span><span>X (Twitter) / Threads / Facebook</span>
             </div>
 
-            <div class="section-title">🎮 Игры (Донат и валюта)</div>
+            <div class="section-title">🎮 Популярные игры (Донат и Валюта)</div>
             <div class="category-option" onclick="selectService('Roblox', '🤖')">
-                <span style="font-size: 20px;">🤖</span><span>Roblox (Покупка Робуксов)</span>
+                <span style="font-size: 20px;">🤖</span><span>Roblox (Робуксы)</span>
             </div>
             <div class="category-option" onclick="selectService('Genshin', '⚔️')">
                 <span style="font-size: 20px;">⚔️</span><span>Genshin Impact (Кристаллы, Луна)</span>
             </div>
             <div class="category-option" onclick="selectService('BrawlStars', '⭐')">
-                <span style="font-size: 20px;">⭐</span><span>Brawl Stars (Гемы, Блек Пас)</span>
+                <span style="font-size: 20px;">⭐</span><span>Brawl Stars (Гемы, Пасс)</span>
             </div>
             <div class="category-option" onclick="selectService('PUBG', '🎯')">
-                <span style="font-size: 20px;">🎯</span><span>PUBG Mobile (UC, RP)</span>
+                <span style="font-size: 20px;">🎯</span><span>PUBG Mobile (UC)</span>
+            </div>
+            <div class="category-option" onclick="selectService('Fortnite', '🌀')">
+                <span style="font-size: 20px;">🌀</span><span>Fortnite (В-баксы, Наборы)</span>
+            </div>
+            <div class="category-option" onclick="selectService('Valorant', '🎯')">
+                <span style="font-size: 20px;">🎯</span><span>Valorant (Поинты)</span>
+            </div>
+            <div class="category-option" onclick="selectService('CS2', '💣')">
+                <span style="font-size: 20px;">💣</span><span>CS2 (Кейсы, Скины, Баланс)</span>
+            </div>
+            <div class="category-option" onclick="selectService('Minecraft', '🧱')">
+                <span style="font-size: 20px;">🧱</span><span>Minecraft (Лицензии, Донат-привилегии)</span>
+            </div>
+            <div class="category-option" onclick="selectService('Steam', '🎮')">
+                <span style="font-size: 20px;">🎮</span><span>Steam (Пополнение кошелька, Игры)</span>
             </div>
 
-            <div class="section-title">🌐 Прочее</div>
+            <div class="section-title">🛡️ Прочее</div>
             <div class="category-option" onclick="selectService('VPN', '🛡️')">
-                <span style="font-size: 20px;">🛡️</span><span>VPN Сервисы (Доступ 1-12 месяцев)</span>
+                <span style="font-size: 20px;">🛡️</span><span>VPN Доступ</span>
             </div>
         </div>
         
-        <!-- Подкатегории услуг -->
         <div id="subcategories-container" class="hidden">
             <h4 id="selected-service-title" style="margin-top: 15px; color: #38bdf8;">Тип услуг</h4>
             <div id="subcategories-list"></div>
@@ -167,7 +186,6 @@
     </div>
 </div>
 
-<!-- НИЖНЕЕ МЕНЮ -->
 <div class="nav">
     <div class="nav-item active" onclick="switchTab('main', this)">Главная</div>
     <div class="nav-item" onclick="switchTab('history', this)">История</div>
@@ -175,232 +193,233 @@
     <div class="nav-item" onclick="switchTab('profile', this)">Профиль</div>
 </div>
 
-<script>
-    const tg = window.Telegram.WebApp;
-    tg.expand();
-    
-    const user = tg.initDataUnsafe?.user || { id: '8127900151', username: 'Tobias_26' };
-    document.getElementById('userid').innerText = user.id;
-    document.getElementById('username').innerText = '@' + (user.username || 'user');
-
-    let allProducts = [];
-    let currentCategoryFilter = '';
-
-    fetch('/api/user', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telegram_id: String(user.id), username: user.username })
-    })
-    .then(res => {
-        if(res.status === 403) {
-            document.body.innerHTML = '<h2 style="text-align:center; margin-top:50px; color:#ef4444;">Вы заблокированы, обратитесь в поддержку.</h2>';
-            throw new Error('Banned');
-        }
-        return res.json();
-    })
-    .then(data => {
-        document.getElementById('userrole').innerText = data.role;
-        document.getElementById('user-balance').innerText = data.balance + ' ₽';
-        if(data.role === 'owner' || data.role === 'support') {
-            document.getElementById('nav-manage').classList.remove('hidden');
-        }
-        loadProducts();
-    });
-
-    function loadProducts() {
-        fetch('/api/products')
-        .then(res => res.json())
-        .then(products => {
-            allProducts = products.length > 0 ? products : [
-                { id: 1, title: 'Telegram Звезды (100 шт)', category: 'Telegram', price: 150, price_from: false },
-                { id: 2, title: 'Накрутка подписчиков в ТГ (1000 шт)', category: 'Telegram', price: 300, price_from: false },
-                { id: 3, title: 'Instagram Подписчики (500 шт)', category: 'Instagram', price: 250, price_from: false },
-                { id: 4, title: 'Робуксы Roblox (400 R$)', category: 'Roblox', price: 350, price_from: false },
-                { id: 5, title: 'Луна Genshin Impact', category: 'Genshin', price: 450, price_from: false },
-                { id: 6, title: 'VPN Доступ на 1 месяц', category: 'VPN', price: 150, price_from: false }
-            ];
-            renderProducts(allProducts);
-        });
-    }
-
-    function renderProducts(products) {
-        const list = document.getElementById('products-list');
-        if(products.length === 0) {
-            list.innerHTML = '<div class="no-products">Товары по данному запросу не найдены</div>';
-            return;
-        }
-        list.innerHTML = products.map(p => {
-            let priceText = `${p.price} ₽`;
-            if (p.price_from && p.max_price) {
-                priceText = `от ${p.price} до ${p.max_price} ₽`;
-            } else if (p.price_from) {
-                priceText = `от ${p.price} ₽`;
-            }
-
-            return `
-                <div class="product-item">
-                    <span>${p.title} <br><small style="color:#94a3b8;">Категория: ${p.category || 'Общее'}</small></span>
-                    <div>
-                        <b style="display:block; text-align:right; margin-bottom:4px;">${priceText}</b>
-                        <button style="width:auto; padding:6px 12px; margin:0;" onclick="buyProduct(${p.id})">Купить</button>
-                    </div>
-                </div>
-            `;
-        }).join('');
-    }
-
-    function filterProducts() {
-        const query = document.getElementById('searchInput').value.toLowerCase();
-        let filtered = allProducts.filter(p => p.title.toLowerCase().includes(query));
-        
-        if (currentCategoryFilter) {
-            filtered = filtered.filter(p => p.category === currentCategoryFilter);
-        }
-        
-        renderProducts(filtered);
-    }
-
-    function openCategories() {
-        document.getElementById('categoryModal').classList.remove('hidden');
-        document.getElementById('main-categories-view').classList.remove('hidden');
-        document.getElementById('subcategories-container').classList.add('hidden');
-    }
-
-    function closeCategories() {
-        document.getElementById('categoryModal').classList.add('hidden');
-    }
-
-    function selectService(serviceName, icon) {
-        currentCategoryFilter = serviceName;
-        document.getElementById('filter-name').innerText = `${icon} ${serviceName}`;
-        document.getElementById('active-filter-badge').classList.remove('hidden');
-        
-        const mainView = document.getElementById('main-categories-view');
-        const subContainer = document.getElementById('subcategories-container');
-        const subList = document.getElementById('subcategories-list');
-        
-        mainView.classList.add('hidden');
-        subContainer.classList.remove('hidden');
-        document.getElementById('selected-service-title').innerText = `${icon} Услуги: ${serviceName}`;
-        
-        let subcategories = [];
-        if(serviceName === 'Telegram') {
-            subcategories = ['Накрутка подписчиков', 'Покупка Telegram Stars', 'Просмотры и реакции', 'Комментарии'];
-        } else if(serviceName === 'Instagram') {
-            subcategories = ['Подписчики', 'Лайки', 'Просмотры видео', 'Комментарии'];
-        } else if(serviceName === 'Roblox' || serviceName === 'Genshin' || serviceName === 'BrawlStars' || serviceName === 'PUBG') {
-            subcategories = ['Малый пакет валюты', 'Средний пакет валюты', 'Максимальный донат / Пропуск'];
-        } else {
-            subcategories = ['Все доступные тарифы'];
-        }
-
-        subList.innerHTML = subcategories.map(sub => `
-            <div class="category-option" onclick="closeCategories(); filterProducts();">
-                <span>↳ ${sub}</span>
-            </div>
-        `).join('');
-    }
-
-    function backToCategories() {
-        document.getElementById('main-categories-view').classList.remove('hidden');
-        document.getElementById('subcategories-container').classList.add('hidden');
-    }
-
-    function resetFilter() {
-        currentCategoryFilter = '';
-        document.getElementById('active-filter-badge').classList.add('hidden');
-        filterProducts();
-    }
-
-    function switchTab(tabName, element) {
-        document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-        document.getElementById('tab-' + tabName).classList.remove('hidden');
-        element.classList.add('active');
-
-        if(tabName === 'manage') {
-            loadAdminStats();
-        }
-    }
-
-    function loadAdminStats() {
-        fetch('/api/admin/action', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ admin_id: String(user.id), action: 'stats' })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if(data.totalUsers !== undefined) {
-                document.getElementById('stats-total-users').innerText = data.totalUsers + ' чел.';
-                document.getElementById('stats-total-balance').innerText = data.totalBalance + ' ₽';
-            }
-        });
-    }
-
-    function buyProduct(productId) {
-        if(!confirm('Подтвердить покупку товара?')) return;
-        
-        fetch('/api/buy', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ telegram_id: String(user.id), product_id: productId })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if(data.error) {
-                alert(data.error);
-            } else {
-                alert('Успешно! Покупка оформлена.');
-                location.reload();
-            }
-        });
-    }
-
-    function makePayment() {
-        const amount = document.getElementById('payAmount').value;
-        const method = document.getElementById('payMethod').value;
-        if(!amount || amount <= 0) { alert('Введите корректную сумму'); return; }
-
-        fetch('/api/payment/create', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ telegram_id: String(user.id), amount, method })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if(data.paymentUrl) {
-                window.location.href = data.paymentUrl;
-            } else {
-                alert('Ошибка создания платежа');
-            }
-        });
-    }
-
-    function activateKey() {
-        const code = document.getElementById('keyCode').value;
-        if(!code) return;
-        alert('Ключ успешно активирован!');
-    }
-
-    function updateBalance() {
-        const targetId = document.getElementById('targetId').value;
-        const delta = document.getElementById('balanceDelta').value;
-        fetch('/api/admin/action', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ admin_id: String(user.id), target_id: targetId, action: 'balance', amount: delta })
-        }).then(() => { alert('Баланс успешно обновлен!'); loadAdminStats(); });
-    }
-
-    function setUserBan(ban) {
-        const targetId = document.getElementById('targetId').value;
-        fetch('/api/admin/action', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ admin_id: String(user.id), target_id: targetId, action: ban ? 'ban' : 'unban' })
-        }).then(() => alert(ban ? 'Пользователь заблокирован!' : 'Пользователь разблокирован!'));
-    }
-</script>
+<!-- Подключаем логику из отдельного файла -->
+<script src="script.js"></script>
 </body>
 </html>
+const tg = window.Telegram.WebApp;
+tg.expand();
+
+const user = tg.initDataUnsafe?.user || { id: '8127900151', username: 'Tobias_26' };
+document.getElementById('userid').innerText = user.id;
+document.getElementById('username').innerText = '@' + (user.username || 'user');
+
+let allProducts = [];
+let currentCategoryFilter = '';
+
+fetch('/api/user', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ telegram_id: String(user.id), username: user.username })
+})
+.then(res => {
+    if(res.status === 403) {
+        document.body.innerHTML = '<h2 style="text-align:center; margin-top:50px; color:#ef4444;">Вы заблокированы, обратитесь в поддержку.</h2>';
+        throw new Error('Banned');
+    }
+    return res.json();
+})
+.then(data => {
+    document.getElementById('userrole').innerText = data.role;
+    document.getElementById('user-balance').innerText = data.balance + ' ₽';
+    if(data.role === 'owner' || data.role === 'support') {
+        document.getElementById('nav-manage').classList.remove('hidden');
+    }
+    loadProducts();
+});
+
+function loadProducts() {
+    fetch('/api/products')
+    .then(res => res.json())
+    .then(products => {
+        allProducts = products.length > 0 ? products : [
+            { id: 1, title: 'Telegram Звезды (100 шт)', category: 'Telegram', price: 150, price_from: false },
+            { id: 2, title: 'Дизайн ТГК (Аватарки и оформление)', category: 'Telegram', price: 500, price_from: true, max_price: 3000 },
+            { id: 3, title: 'Instagram Подписчики (500 шт)', category: 'Instagram', price: 250, price_from: false },
+            { id: 4, title: 'Робуксы Roblox (400 R$)', category: 'Roblox', price: 350, price_from: false },
+            { id: 5, title: 'Луна Genshin Impact', category: 'Genshin', price: 450, price_from: false },
+            { id: 6, title: 'Steam Пополнение (500 руб)', category: 'Steam', price: 550, price_from: false }
+        ];
+        renderProducts(allProducts);
+    });
+}
+
+function renderProducts(products) {
+    const list = document.getElementById('products-list');
+    if(products.length === 0) {
+        list.innerHTML = '<div class="no-products">Товары по данному запросу не найдены</div>';
+        return;
+    }
+    list.innerHTML = products.map(p => {
+        let priceText = `${p.price} ₽`;
+        if (p.price_from && p.max_price) {
+            priceText = `от ${p.price} до ${p.max_price} ₽`;
+        } else if (p.price_from) {
+            priceText = `от ${p.price} ₽`;
+        }
+
+        return `
+            <div class="product-item">
+                <span>${p.title} <br><small style="color:#94a3b8;">Категория: ${p.category || 'Общее'}</small></span>
+                <div>
+                    <b style="display:block; text-align:right; margin-bottom:4px;">${priceText}</b>
+                    <button style="width:auto; padding:6px 12px; margin:0;" onclick="buyProduct(${p.id})">Купить</button>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function filterProducts() {
+    const query = document.getElementById('searchInput').value.toLowerCase();
+    let filtered = allProducts.filter(p => p.title.toLowerCase().includes(query));
+    
+    if (currentCategoryFilter) {
+        filtered = filtered.filter(p => p.category === currentCategoryFilter);
+    }
+    
+    renderProducts(filtered);
+}
+
+function openCategories() {
+    document.getElementById('categoryModal').classList.remove('hidden');
+    document.getElementById('main-categories-view').classList.remove('hidden');
+    document.getElementById('subcategories-container').classList.add('hidden');
+}
+
+function closeCategories() {
+    document.getElementById('categoryModal').classList.add('hidden');
+}
+
+function selectService(serviceName, icon) {
+    currentCategoryFilter = serviceName;
+    document.getElementById('filter-name').innerText = `${icon} ${serviceName}`;
+    document.getElementById('active-filter-badge').classList.remove('hidden');
+    
+    const mainView = document.getElementById('main-categories-view');
+    const subContainer = document.getElementById('subcategories-container');
+    const subList = document.getElementById('subcategories-list');
+    
+    mainView.classList.add('hidden');
+    subContainer.classList.remove('hidden');
+    document.getElementById('selected-service-title').innerText = `${icon} Выбор: ${serviceName}`;
+    
+    let subcategories = [];
+    if(serviceName === 'Telegram') {
+        subcategories = ['🎨 Дизайн ТГК (Аватарки, Оформление)', 'Накрутка подписчиков', 'Покупка Telegram Stars', 'Просмотры и реакции', 'Комментарии'];
+    } else if(serviceName === 'Instagram') {
+        subcategories = ['Подписчики', 'Лайки', 'Просмотры', 'Комментарии'];
+    } else if(['Roblox', 'Genshin', 'BrawlStars', 'PUBG', 'Fortnite', 'Valorant', 'CS2', 'Minecraft', 'Steam'].includes(serviceName)) {
+        subcategories = ['Малый пакет / Донат', 'Средний пакет / Донат', 'Максимальный донат / Пропуск'];
+    } else {
+        subcategories = ['Все доступные тарифы'];
+    }
+
+    subList.innerHTML = subcategories.map(sub => `
+        <div class="category-option" onclick="closeCategories(); filterProducts();">
+            <span>↳ ${sub}</span>
+        </div>
+    `).join('');
+}
+
+function backToCategories() {
+    document.getElementById('main-categories-view').classList.remove('hidden');
+    document.getElementById('subcategories-container').classList.add('hidden');
+}
+
+function resetFilter() {
+    currentCategoryFilter = '';
+    document.getElementById('active-filter-badge').classList.add('hidden');
+    filterProducts();
+}
+
+function switchTab(tabName, element) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    document.getElementById('tab-' + tabName).classList.remove('hidden');
+    element.classList.add('active');
+
+    if(tabName === 'manage') {
+        loadAdminStats();
+    }
+}
+
+function loadAdminStats() {
+    fetch('/api/admin/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admin_id: String(user.id), action: 'stats' })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.totalUsers !== undefined) {
+            document.getElementById('stats-total-users').innerText = data.totalUsers + ' чел.';
+            document.getElementById('stats-total-balance').innerText = data.totalBalance + ' ₽';
+        }
+    });
+}
+
+function buyProduct(productId) {
+    if(!confirm('Подтвердить покупку товара?')) return;
+    
+    fetch('/api/buy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegram_id: String(user.id), product_id: productId })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.error) {
+            alert(data.error);
+        } else {
+            alert('Успешно! Покупка оформлена.');
+            location.reload();
+        }
+    });
+}
+
+function makePayment() {
+    const amount = document.getElementById('payAmount').value;
+    const method = document.getElementById('payMethod').value;
+    if(!amount || amount <= 0) { alert('Введите корректную сумму'); return; }
+
+    fetch('/api/payment/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegram_id: String(user.id), amount, method })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.paymentUrl) {
+            window.location.href = data.paymentUrl;
+        } else {
+            alert('Ошибка создания платежа');
+        }
+    });
+}
+
+function activateKey() {
+    const code = document.getElementById('keyCode').value;
+    if(!code) return;
+    alert('Ключ успешно активирован!');
+}
+
+function updateBalance() {
+    const targetId = document.getElementById('targetId').value;
+    const delta = document.getElementById('balanceDelta').value;
+    fetch('/api/admin/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admin_id: String(user.id), target_id: targetId, action: 'balance', amount: delta })
+    }).then(() => { alert('Баланс успешно обновлен!'); loadAdminStats(); });
+}
+
+function setUserBan(ban) {
+    const targetId = document.getElementById('targetId').value;
+    fetch('/api/admin/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admin_id: String(user.id), target_id: targetId, action: ban ? 'ban' : 'unban' })
+    }).then(() => alert(ban ? 'Пользователь заблокирован!' : 'Пользователь разблокирован!'));
+}
+        
