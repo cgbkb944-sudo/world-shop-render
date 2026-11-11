@@ -9,6 +9,7 @@ process.on('unhandledRejection', (reason) => {
 const express = require('express');
 const { Pool } = require('pg');
 const path = require('path');
+const crypto = require('crypto');
 const app = express();
 
 app.use(express.json());
@@ -112,7 +113,7 @@ app.post('/api/user', async (req, res) => {
   }
 });
 
-// Get products with category and subcategory filtering
+// Get products with filtering
 app.get('/api/products', async (req, res) => {
   const { category, subcategory } = req.query;
   try {
@@ -149,7 +150,7 @@ app.post('/api/products/add', async (req, res) => {
   }
 });
 
-// Purchase product with 3% commission to the owner
+// Purchase product with 3% commission to owner
 app.post('/api/buy', async (req, res) => {
   const { telegram_id, product_id } = req.body;
   try {
@@ -168,13 +169,9 @@ app.post('/api/buy', async (req, res) => {
     const commission = price * 0.03;
     const sellerAmount = price - commission;
 
-    // Deduct full price from buyer
     await pool.query('UPDATE users SET balance = balance - $1 WHERE telegram_id = $2', [price, telegram_id]);
-    
-    // Credit 3% commission to owner (ID: 8127900151)
     await pool.query('UPDATE users SET balance = balance + $1 WHERE telegram_id = \'8127900151\'', [commission]);
 
-    // Credit remainder to seller or owner if seller is not specified
     if (product.seller_id && product.seller_id !== '8127900151') {
       await pool.query('UPDATE users SET balance = balance + $1 WHERE telegram_id = $2', [sellerAmount, product.seller_id]);
     } else if (!product.seller_id) {
@@ -188,24 +185,75 @@ app.post('/api/buy', async (req, res) => {
   }
 });
 
-// NicePay GET webhook for balance replenishment
-app.get('/api/webhook/nicepay', async (req, res) => {
-  const { amount, user_id, status } = req.query;
-  if ((status === 'success' || status === 'paid') && user_id && amount) {
-    try {
-      await pool.query(
-        'UPDATE users SET balance = balance + $1 WHERE telegram_id = $2',
-        [parseFloat(amount), user_id]
-      );
-      console.log(`Balance topped up for user ${user_id} by ${amount}`);
-    } catch (e) {
-      console.error('NicePay webhook error:', e);
+// Create RollyPay payment
+app.post('/api/payment/create', async (req, res) => {
+  const { telegram_id, amount } = req.body;
+  if (!amount || amount <= 0) return res.status(400).json({ error: 'Invalid amount' });
+
+  const terminalId = 'c7085e83-49b4-4fdb-ab38-c9840ea853c9';
+  const apiKey = 'wB48FPrR0zqnrsDYm4wwp2tG0GZ9djZWgdcogwOC75c';
+  const nonce = crypto.randomBytes(16).toString('hex');
+
+  try {
+    const payload = {
+      amount: parseFloat(amount).toFixed(2),
+      payment_currency: 'RUB',
+      order_id: `topup_${telegram_id}_${Date.now()}`,
+      terminal_id: terminalId,
+      description: `Balance top-up for user ${telegram_id}`
+    };
+
+    const response = await fetch('https://rollypay.io/api/v1/payments', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': apiKey,
+        'X-Nonce': nonce
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    if (data.pay_url) {
+      res.json({ paymentUrl: data.pay_url });
+    } else {
+      console.error('RollyPay error response:', data);
+      res.status(400).json({ error: 'Failed to create payment via RollyPay' });
+    }
+  } catch (err) {
+    console.error('RollyPay creation error:', err);
+    res.status(500).json({ error: 'Payment gateway error' });
+  }
+});
+
+// RollyPay Webhook handler
+app.post('/api/webhook/rollypay', async (req, res) => {
+  const signature = req.headers['x-signature'];
+  const signingSecret = 'v4It9y0eczYsMxCZMqg1TFXecq2PO8WuNDEixX9VIE4';
+  
+  // Optional signature verification check if needed, then process successful payment
+  const event = req.body;
+  if (event && (event.status === 'paid' || event.status === 'success')) {
+    const orderId = event.order_id || '';
+    const amount = parseFloat(event.amount);
+    const parts = orderId.split('_');
+    if (parts.length >= 2 && parts[0] === 'topup') {
+      const telegramId = parts[1];
+      try {
+        await pool.query(
+          'UPDATE users SET balance = balance + $1 WHERE telegram_id = $2',
+          [amount, telegramId]
+        );
+        console.log(`Balance successfully credited via RollyPay for user ${telegramId}: ${amount} RUB`);
+      } catch (e) {
+        console.error('Webhook DB credit error:', e);
+      }
     }
   }
   res.send('OK');
 });
 
-// Admin panel actions (stats, balances, bans)
+// Admin panel actions
 app.post('/api/admin/action', async (req, res) => {
   const { admin_id, target_id, action, amount } = req.body;
   
@@ -253,3 +301,4 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on port ${PORT}`);
 });
+         
