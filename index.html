@@ -9,7 +9,7 @@
         body { font-family: sans-serif; background: #0f172a; color: #fff; margin: 0; padding-bottom: 70px; }
         .container { padding: 16px; }
         .card { background: #1e293b; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
-        input, select, textarea { width: 100%; padding: 10px; margin: 8px 0; background: #334155; border: none; color: #fff; border-radius: 8px; box-sizing: border-box; }
+        input, select { width: 100%; padding: 10px; margin: 8px 0; background: #334155; border: none; color: #fff; border-radius: 8px; box-sizing: border-box; }
         button { width: 100%; padding: 12px; background: #10b981; border: none; color: #fff; font-weight: bold; border-radius: 8px; cursor: pointer; margin-top: 8px; }
         .nav { position: fixed; bottom: 0; left: 0; right: 0; background: #1e293b; display: flex; justify-content: space-around; padding: 10px; border-top: 1px solid #334155; z-index: 100; }
         .nav-item { text-align: center; color: #94a3b8; font-size: 12px; cursor: pointer; }
@@ -59,7 +59,6 @@
         </div>
     </div>
 
-    <!-- ИСТОРИЯ -->
     <div id="tab-history" class="tab-content hidden">
         <div class="card">
             <h3>История заказов</h3>
@@ -67,7 +66,6 @@
         </div>
     </div>
 
-    <!-- УПРАВЛЕНИЕ / АДМИНКА -->
     <div id="tab-manage" class="tab-content hidden">
         <div class="card">
             <h3>📊 Статистика приложения</h3>
@@ -90,7 +88,6 @@
         </div>
     </div>
 
-    <!-- ПРОФИЛЬ И ДОБАВЛЕНИЕ ТОВАРА ПРОДАВЦОМ -->
     <div id="tab-profile" class="tab-content hidden">
         <div class="card">
             <h3>Пополнить баланс</h3>
@@ -105,7 +102,7 @@
         <div class="card">
             <h3>📦 Выставить товар на продажу</h3>
             <label>Название товара:</label>
-            <input type="text" id="newTitle" placeholder="Например: Накрутка 1000 подписчиков">
+            <input type="text" id="newTitle" placeholder="Например: Дизайн ТГК">
             
             <label>Основной отдел (Категория):</label>
             <select id="newCategory" onchange="updateSubcategoryOptions()">
@@ -119,11 +116,12 @@
 
             <label>Услуга / Подкатегория:</label>
             <select id="newSubcategory">
-                <option value="🎨 Дизайн ТГК">🎨 Дизайн ТГК (Аватарки, Оформление)</option>
-                <option value="💎 Аренда NFT">💎 Аренда NFT</option>
-                <option value="🤖 Разработка ТГ ботов">🤖 Разработка ТГ ботов</option>
-                <option value="Накрутка подписчиков">Накрутка подписчиков</option>
-                <option value="Покупка Telegram Stars">Покупка Telegram Stars</option>
+                <option value="Дизайн ТГК">Дизайн ТГК</option>
+                <option value="Аренда NFT">Аренда NFT</option>
+                <option value="Разработка ТГ ботов">Разработка ТГ ботов</option>
+                <option value="Буст">Буст</option>
+                <option value="Аккаунты Roblox">Аккаунты Roblox</option>
+                <option value="Напарник на час">Напарник на час</option>
             </select>
 
             <label>Цена (₽):</label>
@@ -143,7 +141,7 @@
     </div>
 </div>
 
-<!-- КАТАЛОГ (МОДАЛЬНОЕ ОКНО) -->
+<!-- МОДАЛЬНОЕ ОКНО КАТАЛОГА -->
 <div id="categoryModal" class="modal hidden">
     <div class="modal-content">
         <h3 style="margin-top:0;">Каталог сервисов и игр</h3>
@@ -151,20 +149,60 @@
             <div id="main-categories-view">
                 <div class="section-title">📢 Мессенджеры и соцсети</div>
                 <div class="category-option" onclick="selectService('Telegram', '📢')">
-                    <span style="font-size: 20px;">📢</span><span>Telegram (Боты, NFT, Дизайн, Звезды)</span>
+                    <span style="font-size: 20px;">📢</span><span>Telegram</span>
                 </div>
                 <div class="category-option" onclick="selectService('Instagram', '📸')">
-                    <span style="font-size: 20px;">📸</span><span>Instagram (Подписчики, Лайки)</span>
+                    <span style="font-size: 20px;">📸</span><span>Instagram</span>
                 </div>
+                <div class="category-option" onclick="selectService('WhatsApp', '🟢')">
+                    <span style="font-size: 20px;">🟢</span><span>WhatsApp</span>
+                </div>
+                <div class="category-option" onclick="selectService('Discord', '💬')">
+                    <span style="font-size: 20px;">💬</span><span>Discord</span>
+                </div>
+                <div class="category-option" onclick="selectService('VK', '🔵')">
+                    <span style="font-size: 20px;">🔵</span><span>ВКонтакте</span>
+                </div>
+                <div class="category-option" onclick="selectService('TikTok', '🎵')">
+                    <span style="font-size: 20px;">🎵</span><span>TikTok</span>
+                </div>
+                <div class="category-option" onclick="selectService('YouTube', '▶️')">
+                    <span style="font-size: 20px;">▶️</span><span>YouTube</span>
+                </div>
+                <div class="category-option" onclick="selectService('Twitter', '✖️')">
+                    <span style="font-size: 20px;">✖️</span><span>X (Twitter) / Threads / Facebook</span>
+                </div>
+
+                <div class="section-title">🎮 Игры</div>
                 <div class="category-option" onclick="selectService('Roblox', '🤖')">
-                    <span style="font-size: 20px;">🤖</span><span>Roblox (Робуксы)</span>
+                    <span style="font-size: 20px;">🤖</span><span>Roblox</span>
                 </div>
                 <div class="category-option" onclick="selectService('Genshin', '⚔️')">
-                    <span style="font-size: 20px;">⚔️</span><span>Genshin Impact (Кристаллы, Луна)</span>
+                    <span style="font-size: 20px;">⚔️</span><span>Genshin Impact</span>
+                </div>
+                <div class="category-option" onclick="selectService('BrawlStars', '⭐')">
+                    <span style="font-size: 20px;">⭐</span><span>Brawl Stars</span>
+                </div>
+                <div class="category-option" onclick="selectService('PUBG', '🎯')">
+                    <span style="font-size: 20px;">🎯</span><span>PUBG Mobile</span>
+                </div>
+                <div class="category-option" onclick="selectService('Fortnite', '🌀')">
+                    <span style="font-size: 20px;">🌀</span><span>Fortnite</span>
+                </div>
+                <div class="category-option" onclick="selectService('Valorant', '🎯')">
+                    <span style="font-size: 20px;">🎯</span><span>Valorant</span>
+                </div>
+                <div class="category-option" onclick="selectService('CS2', '💣')">
+                    <span style="font-size: 20px;">💣</span><span>CS2</span>
+                </div>
+                <div class="category-option" onclick="selectService('Minecraft', '🧱')">
+                    <span style="font-size: 20px;">🧱</span><span>Minecraft</span>
                 </div>
                 <div class="category-option" onclick="selectService('Steam', '🎮')">
-                    <span style="font-size: 20px;">🎮</span><span>Steam (Пополнение кошелька)</span>
+                    <span style="font-size: 20px;">🎮</span><span>Steam</span>
                 </div>
+
+                <div class="section-title">🛡️ Прочее</div>
                 <div class="category-option" onclick="selectService('VPN', '🛡️')">
                     <span style="font-size: 20px;">🛡️</span><span>VPN Доступ</span>
                 </div>
@@ -189,7 +227,8 @@
 
 <script src="script.js"></script>
 </body>
-</html>const tg = window.Telegram.WebApp;
+</html>
+const tg = window.Telegram.WebApp;
 tg.expand();
 
 const user = tg.initDataUnsafe?.user || { id: '8127900151', username: 'Tobias_26' };
@@ -221,9 +260,12 @@ function loadProducts() {
     .then(products => {
         allProducts = products.length > 0 ? products : [
             { id: 1, title: 'Telegram Звезды (100 шт)', category: 'Telegram', subcategory: 'Покупка Telegram Stars', price: 150, price_from: false },
-            { id: 2, title: 'Дизайн ТГК (Аватарки и оформление)', category: 'Telegram', subcategory: '🎨 Дизайн ТГК', price: 500, price_from: true, max_price: 3000 },
-            { id: 3, title: 'Аренда NFT в Telegram', category: 'Telegram', subcategory: '💎 Аренда NFT', price: 300, price_from: false },
-            { id: 4, title: 'Разработка ТГ ботов под ключ', category: 'Telegram', subcategory: '🤖 Разработка ТГ ботов', price: 1000, price_from: true, max_price: 15000 }
+            { id: 2, title: 'Дизайн ТГК', category: 'Telegram', subcategory: 'Дизайн ТГК', price: 500, price_from: true, max_price: 3000 },
+            { id: 3, title: 'Аренда NFT', category: 'Telegram', subcategory: 'Аренда NFT', price: 300, price_from: false },
+            { id: 4, title: 'Разработка ТГ ботов', category: 'Telegram', subcategory: 'Разработка ТГ ботов', price: 1000, price_from: true, max_price: 15000 },
+            { id: 5, title: 'Буст в Roblox', category: 'Roblox', subcategory: 'Буст', price: 200, price_from: false },
+            { id: 6, title: 'Аккаунты Roblox', category: 'Roblox', subcategory: 'Аккаунты Roblox', price: 400, price_from: false },
+            { id: 7, title: 'Напарник на час в Roblox', category: 'Roblox', subcategory: 'Напарник на час', price: 250, price_from: false }
         ];
         renderProducts(allProducts);
     });
@@ -295,7 +337,9 @@ function selectService(serviceName, icon) {
     
     let subcategories = [];
     if(serviceName === 'Telegram') {
-        subcategories = ['🎨 Дизайн ТГК', '💎 Аренда NFT', '🤖 Разработка ТГ ботов', 'Накрутка подписчиков', 'Покупка Telegram Stars', 'Просмотры и реакции'];
+        subcategories = ['Дизайн ТГК', 'Аренда NFT', 'Разработка ТГ ботов', 'Накрутка подписчиков', 'Покупка Telegram Stars', 'Просмотры и реакции'];
+    } else if(serviceName === 'Roblox') {
+        subcategories = ['Буст', 'Аккаунты Roblox', 'Напарник на час', 'Робуксы'];
     } else if(serviceName === 'Instagram') {
         subcategories = ['Подписчики', 'Лайки', 'Просмотры', 'Комментарии'];
     } else {
@@ -328,11 +372,11 @@ function resetFilter() {
     filterProducts();
 }
 
-// Управление полями добавления товара продавцом
+// Заполнение подкатегорий при добавлении товара продавцом
 const subsByCat = {
-    'Telegram': ['🎨 Дизайн ТГК', '💎 Аренда NFT', '🤖 Разработка ТГ ботов', 'Накрутка подписчиков', 'Покупка Telegram Stars', 'Просмотры и реакции'],
+    'Telegram': ['Дизайн ТГК', 'Аренда NFT', 'Разработка ТГ ботов', 'Накрутка подписчиков', 'Покупка Telegram Stars', 'Просмотры и реакции'],
     'Instagram': ['Подписчики', 'Лайки', 'Просмотры', 'Комментарии'],
-    'Roblox': ['Робуксы (Малый)', 'Робуксы (Средний)', 'Робуксы (Большой)'],
+    'Roblox': ['Буст', 'Аккаунты Roblox', 'Напарник на час', 'Робуксы'],
     'Genshin': ['Кристаллы', 'Луна'],
     'Steam': ['Пополнение кошелька 500₽', 'Пополнение кошелька 1000₽'],
     'VPN': ['Доступ на 1 месяц', 'Доступ на 1 год']
@@ -419,4 +463,3 @@ function buyProduct(productId) {
         else { alert('Успешно оформлено!'); location.reload(); }
     });
 }
-
