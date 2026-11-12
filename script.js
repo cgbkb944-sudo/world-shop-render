@@ -191,7 +191,7 @@ function makePayment() {
     if(!amount || amount <= 0) { alert('Введите корректную сумму'); return; }
 
     if (selectedPaymentMethod === 'direct_transfer') {
-        const wallet = 'UQC...TOBIAS_WALLET_TON_USDT';
+        const wallet = 'UQBVqIZqbAt0CCiboMZ38hdBGjN7RkEZKLUuDX2F5zPRwG1v';
         const comment = `topup_${user.id}_${amount}`;
         document.getElementById('walletAddressText').innerText = wallet;
         document.getElementById('walletCommentText').innerText = comment;
@@ -262,4 +262,4 @@ function buyProduct(productId) {
         if(data.error) alert(data.error);
         else { alert('Успешно оформлено!'); location.reload(); }
     });
-                }
+}
