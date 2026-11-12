@@ -148,7 +148,7 @@ app.post('/api/key/activate', async (req, res) => {
   try {
     const keyRes = await pool.query('SELECT * FROM activation_keys WHERE key = $1 AND is_used = FALSE', [key]);
     if (keyRes.rows.length === 0) {
-      return.status(400).json({ error: 'Неверный или уже использованный ключ!' });
+      return res.status(400).json({ error: 'Неверный или уже использованный ключ!' });
     }
     const role = keyRes.rows[0].role;
     await pool.query('UPDATE users SET role = $1 WHERE telegram_id = $2', [role, telegram_id]);
@@ -272,7 +272,7 @@ app.post('/api/admin/action', async (req, res) => {
       const totalBalance = await pool.query('SELECT SUM(balance) FROM users');
       return res.json({
         totalUsers: parseInt(usersCount.rows[0].count) || 0,
-        totalBalance: parseFloat(usersCount.rows[0].sum) || 0
+        totalBalance: parseFloat(totalBalance.rows[0].sum) || 0
       });
     }
 
