@@ -18,18 +18,8 @@
         
         .shop-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         .search-box { width: 100%; padding: 10px 14px; background: #334155; border: none; color: #fff; border-radius: 8px; margin-bottom: 10px; font-size: 14px; box-sizing: border-box; }
-        .filter-btn { background: #38bdf8; color: #0f172a; border: none; padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: bold; }
         .product-item { background: #334155; padding: 12px; border-radius: 8px; margin-top: 8px; display: flex; justify-content: space-between; align-items: center; }
         .no-products { text-align: center; color: #94a3b8; padding: 20px; font-size: 14px; }
-        
-        .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 200; }
-        .modal-content { background: #1e293b; width: 92%; max-width: 420px; height: 80vh; padding: 20px; border-radius: 12px; display: flex; flex-direction: column; box-sizing: border-box; }
-        .modal-body { flex: 1; overflow-y: auto; padding-right: 4px; margin-bottom: 10px; }
-        
-        .category-option { display: flex; align-items: center; padding: 12px; background: #334155; border-radius: 8px; margin-bottom: 8px; cursor: pointer; transition: background 0.2s; }
-        .category-option:hover { background: #475569; }
-        .category-option span { margin-left: 12px; font-size: 14px; font-weight: 500; }
-        .section-title { font-size: 12px; color: #38bdf8; text-transform: uppercase; margin: 15px 0 8px 0; letter-spacing: 0.5px; }
     </style>
 </head>
 <body>
@@ -43,18 +33,12 @@
             <p>Ваш баланс</p>
         </div>
 
-        <!-- ВИТРИНА СРАЗУ ПРИ ВХОДЕ, КНОПКА КАТЕГОРИЙ СБОКУ -->
         <div class="card">
             <div class="shop-header">
                 <h4 style="margin:0;">Витрина товаров</h4>
-                <button class="filter-btn" onclick="openCategories()">📂 Категории</button>
             </div>
             
             <input type="text" id="searchInput" class="search-box" placeholder="🔍 Введите название товара..." oninput="filterProducts()">
-
-            <div id="active-filter-badge" class="hidden" style="font-size: 12px; color: #38bdf8; margin-bottom: 8px;">
-                Фильтр: <span id="filter-name">Все</span> <span style="cursor:pointer; color:#ef4444; margin-left:5px;" onclick="resetFilter()">[Сбросить]</span>
-            </div>
 
             <div id="products-list">Загрузка товаров...</div>
         </div>
@@ -138,83 +122,6 @@
 
             <button onclick="addNewProduct()" style="background: #3b82f6;">Опубликовать товар</button>
         </div>
-    </div>
-</div>
-
-<!-- МОДАЛЬНОЕ ОКНО КАТАЛОГА С ПРЕМИУМ СТИКЕРАМИ -->
-<div id="categoryModal" class="modal hidden">
-    <div class="modal-content">
-        <h3 style="margin-top:0;">Каталог сервисов и игр</h3>
-        <div class="modal-body">
-            <div id="main-categories-view">
-                <div class="section-title">📢 Мессенджеры и соцсети</div>
-                <div class="category-option" onclick="selectService('Telegram', '💎')">
-                    <span style="font-size: 22px;">💎</span><span>Telegram</span>
-                </div>
-                <div class="category-option" onclick="selectService('Instagram', '📸')">
-                    <span style="font-size: 22px;">📸</span><span>Instagram</span>
-                </div>
-                <div class="category-option" onclick="selectService('WhatsApp', '🟢')">
-                    <span style="font-size: 22px;">🟢</span><span>WhatsApp</span>
-                </div>
-                <div class="category-option" onclick="selectService('Discord', '🚀')">
-                    <span style="font-size: 22px;">🚀</span><span>Discord</span>
-                </div>
-                <div class="category-option" onclick="selectService('VK', '🔵')">
-                    <span style="font-size: 22px;">🔵</span><span>ВКонтакте</span>
-                </div>
-                <div class="category-option" onclick="selectService('TikTok', '✨')">
-                    <span style="font-size: 22px;">✨</span><span>TikTok</span>
-                </div>
-                <div class="category-option" onclick="selectService('YouTube', '🔥')">
-                    <span style="font-size: 22px;">🔥</span><span>YouTube</span>
-                </div>
-                <div class="category-option" onclick="selectService('Twitter', '⚡')">
-                    <span style="font-size: 22px;">⚡</span><span>X (Twitter) / Threads / Facebook</span>
-                </div>
-
-                <div class="section-title">🎮 Игры</div>
-                <div class="category-option" onclick="selectService('Roblox', '👑')">
-                    <span style="font-size: 22px;">👑</span><span>Roblox</span>
-                </div>
-                <div class="category-option" onclick="selectService('Genshin', '⚔️')">
-                    <span style="font-size: 22px;">⚔️</span><span>Genshin Impact</span>
-                </div>
-                <div class="category-option" onclick="selectService('BrawlStars', '🏆')">
-                    <span style="font-size: 22px;">🏆</span><span>Brawl Stars</span>
-                </div>
-                <div class="category-option" onclick="selectService('PUBG', '🎯')">
-                    <span style="font-size: 22px;">🎯</span><span>PUBG Mobile</span>
-                </div>
-                <div class="category-option" onclick="selectService('Fortnite', '🌀')">
-                    <span style="font-size: 22px;">🌀</span><span>Fortnite</span>
-                </div>
-                <div class="category-option" onclick="selectService('Valorant', '🛡️')">
-                    <span style="font-size: 22px;">🛡️</span><span>Valorant</span>
-                </div>
-                <div class="category-option" onclick="selectService('CS2', '💣')">
-                    <span style="font-size: 22px;">💣</span><span>CS2</span>
-                </div>
-                <div class="category-option" onclick="selectService('Minecraft', '🧱')">
-                    <span style="font-size: 22px;">🧱</span><span>Minecraft</span>
-                </div>
-                <div class="category-option" onclick="selectService('Steam', '🌟')">
-                    <span style="font-size: 22px;">🌟</span><span>Steam</span>
-                </div>
-
-                <div class="section-title">🛡️ Прочее</div>
-                <div class="category-option" onclick="selectService('VPN', '🔒')">
-                    <span style="font-size: 22px;">🔒</span><span>VPN Доступ</span>
-                </div>
-            </div>
-            
-            <div id="subcategories-container" class="hidden">
-                <h4 id="selected-service-title" style="margin-top: 5px; color: #38bdf8;">Услуги</h4>
-                <div id="subcategories-list"></div>
-                <button style="background: #475569; margin-top: 10px;" onclick="backToCategories()">⬅️ Назад к списку</button>
-            </div>
-        </div>
-        <button style="background: #ef4444; margin-top: 5px;" onclick="closeCategories()">Закрыть</button>
     </div>
 </div>
 
