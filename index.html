@@ -6,39 +6,200 @@
     <title>World TG Shop</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { font-family: sans-serif; background: #0f172a; color: #fff; margin: 0; padding-bottom: 70px; }
-        .container { padding: 16px; }
-        .card { background: #1e293b; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
-        input, select { width: 100%; padding: 10px; margin: 8px 0; background: #334155; border: none; color: #fff; border-radius: 8px; box-sizing: border-box; }
-        button { width: 100%; padding: 12px; background: #10b981; border: none; color: #fff; font-weight: bold; border-radius: 8px; cursor: pointer; margin-top: 8px; }
-        .nav { position: fixed; bottom: 0; left: 0; right: 0; background: #1e293b; display: flex; justify-content: space-around; padding: 10px; border-top: 1px solid #334155; z-index: 100; }
-        .nav-item { text-align: center; color: #94a3b8; font-size: 12px; cursor: pointer; }
-        .nav-item.active { color: #10b981; }
+        :root {
+            --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --accent: #6366f1;
+            --accent-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --success: #10b981;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-main);
+            margin: 0;
+            padding: 0 0 85px 0;
+            min-height: 100vh;
+        }
+
+        .container { padding: 16px; max-width: 480px; margin: 0 auto; box-sizing: border-box; }
+
+        /* Современные стеклянные карточки */
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        }
+
+        .profile-card {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%), var(--card-bg);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+        }
+
+        h2, h3, h4 { margin: 0 0 8px 0; font-weight: 600; }
+        p { margin: 0 0 12px 0; color: var(--text-muted); font-size: 14px; }
+
+        .balance-amount {
+            font-size: 32px;
+            font-weight: 700;
+            background: var(--accent-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin: 8px 0;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 12px 16px;
+            margin: 8px 0;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--card-border);
+            color: var(--text-main);
+            border-radius: 12px;
+            box-sizing: border-box;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input:focus, select:focus {
+            border-color: var(--accent);
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            background: var(--accent-gradient);
+            border: none;
+            color: #fff;
+            font-weight: 600;
+            border-radius: 14px;
+            cursor: pointer;
+            margin-top: 10px;
+            font-size: 15px;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+            transition: transform 0.1s, opacity 0.2s;
+        }
+
+        button:active { transform: scale(0.98); }
+
+        /* Нижняя панель навигации в премиум стиле */
+        .nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            display: flex;
+            justify-content: space-around;
+            padding: 10px 0;
+            border-top: 1px solid var(--card-border);
+            z-index: 100;
+        }
+
+        .nav-item {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 11px;
+            cursor: pointer;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            transition: color 0.2s;
+        }
+
+        .nav-item svg {
+            width: 22px;
+            height: 22px;
+            fill: currentColor;
+        }
+
+        .nav-item.active {
+            color: #818cf8;
+        }
+
         .hidden { display: none; }
-        
-        .shop-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        .search-box { width: 100%; padding: 10px 14px; background: #334155; border: none; color: #fff; border-radius: 8px; margin-bottom: 10px; font-size: 14px; box-sizing: border-box; }
-        .product-item { background: #334155; padding: 12px; border-radius: 8px; margin-top: 8px; display: flex; justify-content: space-between; align-items: center; }
-        .no-products { text-align: center; color: #94a3b8; padding: 20px; font-size: 14px; }
+
+        .search-box {
+            width: 100%;
+            padding: 12px 16px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--card-border);
+            color: #fff;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            font-size: 14px;
+            box-sizing: border-box;
+            outline: none;
+        }
+
+        .product-item {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--card-border);
+            padding: 14px;
+            border-radius: 14px;
+            margin-top: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        }
+
+        .product-item:hover {
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .no-products {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 24px;
+            font-size: 14px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            background: rgba(99, 102, 241, 0.2);
+            color: #818cf8;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 <body>
 
 <div id="app" class="container">
+    <!-- ГЛАВНАЯ -->
     <div id="tab-main" class="tab-content">
-        <div class="card">
-            <h3>Добро пожаловать, <span id="username">Пользователь</span></h3>
-            <p>ID: <span id="userid">---</span> | Статус: <span id="userrole">Пользователь</span></p>
-            <h2 id="user-balance">0 ₽</h2>
-            <p>Ваш баланс</p>
+        <div class="card profile-card">
+            <span class="badge" id="userrole-badge">Пользователь</span>
+            <h3>@<span id="username">Пользователь</span></h3>
+            <p style="margin: 0 0 4px 0;">ID: <span id="userid">---</span></p>
+            <div class="balance-amount" id="user-balance">0 ₽</div>
+            <p style="margin: 0;">Ваш доступный баланс</p>
         </div>
 
         <div class="card">
             <div class="shop-header">
-                <h4 style="margin:0;">Витрина товаров</h4>
+                <h4 style="margin-bottom: 12px;">🛍️ Витрина товаров</h4>
             </div>
             
-            <input type="text" id="searchInput" class="search-box" placeholder="🔍 Введите название товара..." oninput="filterProducts()">
+            <input type="text" id="searchInput" class="search-box" placeholder="🔍 Найти товар или услугу..." oninput="filterProducts()">
 
             <div id="products-list">Загрузка товаров...</div>
         </div>
@@ -47,22 +208,22 @@
     <!-- ИСТОРИЯ -->
     <div id="tab-history" class="tab-content hidden">
         <div class="card">
-            <h3>История заказов</h3>
-            <p>История пока пуста.</p>
+            <h3>📜 История операций</h3>
+            <p>Здесь будут отображаться ваши покупки и пополнения счета.</p>
         </div>
     </div>
 
-    <!-- УПРАВЛЕНИЕ -->
+    <!-- УПРАВЛЕНИЕ / АДМИНКА -->
     <div id="tab-manage" class="tab-content hidden">
         <div class="card">
-            <h3>📊 Статистика приложения</h3>
-            <p>Пользователей в системе: <b id="stats-total-users">Загрузка...</b></p>
-            <p>Общий баланс пользователей: <b id="stats-total-balance">0 ₽</b></p>
-            <button style="background: #3b82f6;" onclick="loadAdminStats()">🔄 Обновить статистику</button>
+            <h3>📊 Статистика сервиса</h3>
+            <p>Пользователей в системе: <b id="stats-total-users" style="color:#fff;">Загрузка...</b></p>
+            <p>Общий баланс пользователей: <b id="stats-total-balance" style="color:#fff;">0 ₽</b></p>
+            <button style="background: rgba(99,102,241,0.3); border: 1px solid var(--accent);" onclick="loadAdminStats()">🔄 Обновить данные</button>
         </div>
 
         <div class="card">
-            <h3>Панель управления</h3>
+            <h3>⚙️ Панель управления</h3>
             <label>Telegram ID пользователя:</label>
             <input type="text" id="targetId" placeholder="Введите ID">
             
@@ -70,25 +231,41 @@
             <input type="number" id="balanceDelta" placeholder="Например: 500 или -200">
             <button onclick="updateBalance()">Применить баланс</button>
 
-            <button style="background: #ef4444;" onclick="setUserBan(true)">Заблокировать аккаунт</button>
-            <button style="background: #10b981;" onclick="setUserBan(false)">Разблокировать аккаунт</button>
+            <button style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); margin-top: 12px;" onclick="setUserBan(true)">Заблокировать пользователя</button>
+            <button style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);" onclick="setUserBan(false)">Разблокировать</button>
         </div>
     </div>
 
-    <!-- ПРОФИЛЬ -->
+    <!-- ПРОФИЛЬ И АКТИВАЦИЯ КЛЮЧЕЙ -->
     <div id="tab-profile" class="tab-content hidden">
         <div class="card">
-            <h3>Пополнить баланс</h3>
+            <h3>💳 Пополнить баланс</h3>
             <input type="number" id="payAmount" placeholder="Сумма в рублях">
-            <button onclick="makePayment()">Оплатить через RollyPay</button>
+            <select id="payMethod">
+                <option value="sbp">СПБ (Быстрый платеж)</option>
+                <option value="card">Банковская карта (РФ / Мир)</option>
+                <option value="stars">Telegram Stars ⭐</option>
+                <option value="cryptobot">Crypto Bot 🤖</option>
+                <option value="transfer">Прямой перевод</option>
+            </select>
+            <button onclick="makePayment()">Перейти к оплате</button>
         </div>
 
-        <div class="card">
+        <!-- СИСТЕМА АКТИВАЦИИ КЛЮЧЕЙ -->
+        <div class="card" id="key-activation-card">
+            <h3>🔑 Активация ключа</h3>
+            <p>Введите ключ продавца или поддержки для получения прав доступа.</p>
+            <input type="text" id="keyCode" placeholder="WTS-XXXX-XXXX">
+            <button onclick="activateKey()" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">Активировать ключ</button>
+        </div>
+
+        <!-- ДОБАВЛЕНИЕ ТОВАРА (ТОЛЬКО ДЛЯ ПРОДАВЦОВ И ВЛАДЕЛЬЦА) -->
+        <div class="card hidden" id="seller-product-card">
             <h3>📦 Выставить товар на продажу</h3>
             <label>Название товара:</label>
             <input type="text" id="newTitle" placeholder="Например: Буст в Roblox">
             
-            <label>Основной отдел (Категория):</label>
+            <label>Категория:</label>
             <select id="newCategory" onchange="updateSubcategoryOptions()">
                 <option value="Telegram">Telegram</option>
                 <option value="Roblox">Roblox</option>
@@ -111,8 +288,8 @@
             <label>Цена (₽):</label>
             <input type="number" id="newPrice" placeholder="500">
 
-            <div style="margin: 8px 0;">
-                <input type="checkbox" id="newPriceFrom" onchange="toggleMaxPriceField()"> Цена «от» (диапазон)
+            <div style="margin: 8px 0; display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" id="newPriceFrom" onchange="toggleMaxPriceField()" style="width:auto; margin:0;"> Цена «от» (диапазон)
             </div>
 
             <div id="maxPriceContainer" class="hidden">
@@ -120,16 +297,29 @@
                 <input type="number" id="newMaxPrice" placeholder="3000">
             </div>
 
-            <button onclick="addNewProduct()" style="background: #3b82f6;">Опубликовать товар</button>
+            <button onclick="addNewProduct()" style="background: var(--success);">Опубликовать товар</button>
         </div>
     </div>
 </div>
 
+<!-- НИЖНЯЯ ПРЕМИУМ ПАНЕЛЬ НАВИГАЦИИ -->
 <div class="nav">
-    <div class="nav-item active" onclick="switchTab('main', this)">Главная</div>
-    <div class="nav-item" onclick="switchTab('history', this)">История</div>
-    <div id="nav-manage" class="nav-item hidden" onclick="switchTab('manage', this)">Управление</div>
-    <div class="nav-item" onclick="switchTab('profile', this)">Профиль</div>
+    <div class="nav-item active" onclick="switchTab('main', this)">
+        <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+        <span>Главная</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('history', this)">
+        <svg viewBox="0 0 24 24"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>
+        <span>История</span>
+    </div>
+    <div id="nav-manage" class="nav-item hidden" onclick="switchTab('manage', this)">
+        <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36.25c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-.25c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+        <span>Управление</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('profile', this)">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
+        <span>Профиль</span>
+    </div>
 </div>
 
 <script src="script.js"></script>
