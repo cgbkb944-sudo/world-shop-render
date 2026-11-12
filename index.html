@@ -18,7 +18,6 @@
         
         .shop-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         .search-box { width: 100%; padding: 10px 14px; background: #334155; border: none; color: #fff; border-radius: 8px; margin-bottom: 10px; font-size: 14px; box-sizing: border-box; }
-        .filter-btn { background: #334155; color: #38bdf8; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; }
         .product-item { background: #334155; padding: 12px; border-radius: 8px; margin-top: 8px; display: flex; justify-content: space-between; align-items: center; }
         .no-products { text-align: center; color: #94a3b8; padding: 20px; font-size: 14px; }
         
@@ -36,6 +35,13 @@
 
 <div id="app" class="container">
     <div id="tab-main" class="tab-content">
+        <!-- КАТАЛОГ СВЕРХУ -->
+        <div class="card" style="text-align: center; background: linear-gradient(135deg, #1e293b, #334155);">
+            <h3 style="margin-top:0;">📂 Каталог услуг и игр</h3>
+            <p style="font-size: 13px; color: #94a3b8;">Выберите нужный сервис или игру для заказа</p>
+            <button onclick="openCategories()" style="background: #38bdf8; color: #0f172a;">Открыть каталог</button>
+        </div>
+
         <div class="card">
             <h3>Добро пожаловать, <span id="username">Пользователь</span></h3>
             <p>ID: <span id="userid">---</span> | Статус: <span id="userrole">Пользователь</span></p>
@@ -46,7 +52,6 @@
         <div class="card">
             <div class="shop-header">
                 <h4 style="margin:0;">Витрина товаров</h4>
-                <button class="filter-btn" onclick="openCategories()">📂 Категории</button>
             </div>
             
             <input type="text" id="searchInput" class="search-box" placeholder="🔍 Введите название товара..." oninput="filterProducts()">
@@ -59,6 +64,7 @@
         </div>
     </div>
 
+    <!-- ИСТОРИЯ -->
     <div id="tab-history" class="tab-content hidden">
         <div class="card">
             <h3>История заказов</h3>
@@ -66,6 +72,7 @@
         </div>
     </div>
 
+    <!-- УПРАВЛЕНИЕ -->
     <div id="tab-manage" class="tab-content hidden">
         <div class="card">
             <h3>📊 Статистика приложения</h3>
@@ -88,27 +95,24 @@
         </div>
     </div>
 
+    <!-- ПРОФИЛЬ -->
     <div id="tab-profile" class="tab-content hidden">
         <div class="card">
             <h3>Пополнить баланс</h3>
             <input type="number" id="payAmount" placeholder="Сумма в рублях">
-            <select id="payMethod">
-                <option value="nicepay">NicePay (Карты / СБП)</option>
-                <option value="cryptobot">Crypto Bot</option>
-            </select>
-            <button onclick="makePayment()">Перейти к оплате</button>
+            <button onclick="makePayment()">Оплатить через RollyPay</button>
         </div>
 
         <div class="card">
             <h3>📦 Выставить товар на продажу</h3>
             <label>Название товара:</label>
-            <input type="text" id="newTitle" placeholder="Например: Дизайн ТГК">
+            <input type="text" id="newTitle" placeholder="Например: Буст в Roblox">
             
             <label>Основной отдел (Категория):</label>
             <select id="newCategory" onchange="updateSubcategoryOptions()">
                 <option value="Telegram">Telegram</option>
-                <option value="Instagram">Instagram</option>
                 <option value="Roblox">Roblox</option>
+                <option value="Instagram">Instagram</option>
                 <option value="Genshin">Genshin Impact</option>
                 <option value="Steam">Steam</option>
                 <option value="VPN">VPN Сервисы</option>
@@ -228,238 +232,3 @@
 <script src="script.js"></script>
 </body>
 </html>
-const tg = window.Telegram.WebApp;
-tg.expand();
-
-const user = tg.initDataUnsafe?.user || { id: '8127900151', username: 'Tobias_26' };
-document.getElementById('userid').innerText = user.id;
-document.getElementById('username').innerText = '@' + (user.username || 'user');
-
-let allProducts = [];
-let currentCategoryFilter = '';
-let currentSubcategoryFilter = '';
-
-fetch('/api/user', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ telegram_id: String(user.id), username: user.username })
-})
-.then(res => res.json())
-.then(data => {
-    document.getElementById('userrole').innerText = data.role;
-    document.getElementById('user-balance').innerText = data.balance + ' ₽';
-    if(data.role === 'owner' || data.role === 'support') {
-        document.getElementById('nav-manage').classList.remove('hidden');
-    }
-    loadProducts();
-});
-
-function loadProducts() {
-    fetch('/api/products')
-    .then(res => res.json())
-    .then(products => {
-        allProducts = products.length > 0 ? products : [
-            { id: 1, title: 'Telegram Звезды (100 шт)', category: 'Telegram', subcategory: 'Покупка Telegram Stars', price: 150, price_from: false },
-            { id: 2, title: 'Дизайн ТГК', category: 'Telegram', subcategory: 'Дизайн ТГК', price: 500, price_from: true, max_price: 3000 },
-            { id: 3, title: 'Аренда NFT', category: 'Telegram', subcategory: 'Аренда NFT', price: 300, price_from: false },
-            { id: 4, title: 'Разработка ТГ ботов', category: 'Telegram', subcategory: 'Разработка ТГ ботов', price: 1000, price_from: true, max_price: 15000 },
-            { id: 5, title: 'Буст в Roblox', category: 'Roblox', subcategory: 'Буст', price: 200, price_from: false },
-            { id: 6, title: 'Аккаунты Roblox', category: 'Roblox', subcategory: 'Аккаунты Roblox', price: 400, price_from: false },
-            { id: 7, title: 'Напарник на час в Roblox', category: 'Roblox', subcategory: 'Напарник на час', price: 250, price_from: false }
-        ];
-        renderProducts(allProducts);
-    });
-}
-
-function renderProducts(products) {
-    const list = document.getElementById('products-list');
-    if(products.length === 0) {
-        list.innerHTML = '<div class="no-products">Товары по данному запросу не найдены</div>';
-        return;
-    }
-    list.innerHTML = products.map(p => {
-        let priceText = `${p.price} ₽`;
-        if (p.price_from && p.max_price) {
-            priceText = `от ${p.price} до ${p.max_price} ₽`;
-        } else if (p.price_from) {
-            priceText = `от ${p.price} ₽`;
-        }
-
-        return `
-            <div class="product-item">
-                <span><b>${p.title}</b> <br><small style="color:#38bdf8;">${p.category} / ${p.subcategory || 'Общее'}</small></span>
-                <div>
-                    <b style="display:block; text-align:right; margin-bottom:4px;">${priceText}</b>
-                    <button style="width:auto; padding:6px 12px; margin:0;" onclick="buyProduct(${p.id})">Купить</button>
-                </div>
-            </div>
-        `;
-    }).join('');
-}
-
-function filterProducts() {
-    const query = document.getElementById('searchInput').value.toLowerCase();
-    let filtered = allProducts.filter(p => p.title.toLowerCase().includes(query));
-    
-    if (currentCategoryFilter) {
-        filtered = filtered.filter(p => p.category === currentCategoryFilter);
-    }
-    if (currentSubcategoryFilter) {
-        filtered = filtered.filter(p => p.subcategory === currentSubcategoryFilter);
-    }
-    
-    renderProducts(filtered);
-}
-
-function openCategories() {
-    document.getElementById('categoryModal').classList.remove('hidden');
-    document.getElementById('main-categories-view').classList.remove('hidden');
-    document.getElementById('subcategories-container').classList.add('hidden');
-}
-
-function closeCategories() {
-    document.getElementById('categoryModal').classList.add('hidden');
-}
-
-function selectService(serviceName, icon) {
-    currentCategoryFilter = serviceName;
-    currentSubcategoryFilter = '';
-    document.getElementById('filter-name').innerText = `${icon} ${serviceName}`;
-    document.getElementById('active-filter-badge').classList.remove('hidden');
-    
-    const mainView = document.getElementById('main-categories-view');
-    const subContainer = document.getElementById('subcategories-container');
-    const subList = document.getElementById('subcategories-list');
-    
-    mainView.classList.add('hidden');
-    subContainer.classList.remove('hidden');
-    document.getElementById('selected-service-title').innerText = `${icon} Услуги: ${serviceName}`;
-    
-    let subcategories = [];
-    if(serviceName === 'Telegram') {
-        subcategories = ['Дизайн ТГК', 'Аренда NFT', 'Разработка ТГ ботов', 'Накрутка подписчиков', 'Покупка Telegram Stars', 'Просмотры и реакции'];
-    } else if(serviceName === 'Roblox') {
-        subcategories = ['Буст', 'Аккаунты Roblox', 'Напарник на час', 'Робуксы'];
-    } else if(serviceName === 'Instagram') {
-        subcategories = ['Подписчики', 'Лайки', 'Просмотры', 'Комментарии'];
-    } else {
-        subcategories = ['Малый пакет / Донат', 'Средний пакет / Донат', 'Максимальный донат'];
-    }
-
-    subList.innerHTML = subcategories.map(sub => `
-        <div class="category-option" onclick="filterBySubcategory('${sub}')">
-            <span>↳ ${sub}</span>
-        </div>
-    `).join('');
-}
-
-function filterBySubcategory(subName) {
-    currentSubcategoryFilter = subName;
-    document.getElementById('filter-name').innerText += ` -> ${subName}`;
-    closeCategories();
-    filterProducts();
-}
-
-function backToCategories() {
-    document.getElementById('main-categories-view').classList.remove('hidden');
-    document.getElementById('subcategories-container').classList.add('hidden');
-}
-
-function resetFilter() {
-    currentCategoryFilter = '';
-    currentSubcategoryFilter = '';
-    document.getElementById('active-filter-badge').classList.add('hidden');
-    filterProducts();
-}
-
-// Заполнение подкатегорий при добавлении товара продавцом
-const subsByCat = {
-    'Telegram': ['Дизайн ТГК', 'Аренда NFT', 'Разработка ТГ ботов', 'Накрутка подписчиков', 'Покупка Telegram Stars', 'Просмотры и реакции'],
-    'Instagram': ['Подписчики', 'Лайки', 'Просмотры', 'Комментарии'],
-    'Roblox': ['Буст', 'Аккаунты Roblox', 'Напарник на час', 'Робуксы'],
-    'Genshin': ['Кристаллы', 'Луна'],
-    'Steam': ['Пополнение кошелька 500₽', 'Пополнение кошелька 1000₽'],
-    'VPN': ['Доступ на 1 месяц', 'Доступ на 1 год']
-};
-
-function updateSubcategoryOptions() {
-    const cat = document.getElementById('newCategory').value;
-    const subSelect = document.getElementById('newSubcategory');
-    const list = subsByCat[cat] || ['Основная услуга'];
-    subSelect.innerHTML = list.map(s => `<option value="${s}">${s}</option>`).join('');
-}
-
-function toggleMaxPriceField() {
-    const isChecked = document.getElementById('newPriceFrom').checked;
-    document.getElementById('maxPriceContainer').classList.toggle('hidden', !isChecked);
-}
-
-function addNewProduct() {
-    const title = document.getElementById('newTitle').value;
-    const category = document.getElementById('newCategory').value;
-    const subcategory = document.getElementById('newSubcategory').value;
-    const price = document.getElementById('newPrice').value;
-    const price_from = document.getElementById('newPriceFrom').checked;
-    const max_price = document.getElementById('newMaxPrice').value;
-
-    if(!title || !price) {
-        alert('Заполните название и цену!');
-        return;
-    }
-
-    fetch('/api/products/add', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            title, category, subcategory, price, price_from, max_price,
-            seller_id: String(user.id)
-        })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if(data.success) {
-            alert('Товар успешно опубликован в каталоге!');
-            location.reload();
-        } else {
-            alert('Ошибка публикации');
-        }
-    });
-}
-
-function switchTab(tabName, element) {
-    document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-    document.getElementById('tab-' + tabName).classList.remove('hidden');
-    element.classList.add('active');
-
-    if(tabName === 'manage') loadAdminStats();
-}
-
-function loadAdminStats() {
-    fetch('/api/admin/action', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ admin_id: String(user.id), action: 'stats' })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if(data.totalUsers !== undefined) {
-            document.getElementById('stats-total-users').innerText = data.totalUsers + ' чел.';
-            document.getElementById('stats-total-balance').innerText = data.totalBalance + ' ₽';
-        }
-    });
-}
-
-function buyProduct(productId) {
-    if(!confirm('Подтвердить покупку товара?')) return;
-    fetch('/api/buy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telegram_id: String(user.id), product_id: productId })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if(data.error) alert(data.error);
-        else { alert('Успешно оформлено!'); location.reload(); }
-    });
-}
