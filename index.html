@@ -18,6 +18,7 @@
         
         .shop-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         .search-box { width: 100%; padding: 10px 14px; background: #334155; border: none; color: #fff; border-radius: 8px; margin-bottom: 10px; font-size: 14px; box-sizing: border-box; }
+        .filter-btn { background: #38bdf8; color: #0f172a; border: none; padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: bold; }
         .product-item { background: #334155; padding: 12px; border-radius: 8px; margin-top: 8px; display: flex; justify-content: space-between; align-items: center; }
         .no-products { text-align: center; color: #94a3b8; padding: 20px; font-size: 14px; }
         
@@ -35,13 +36,6 @@
 
 <div id="app" class="container">
     <div id="tab-main" class="tab-content">
-        <!-- КАТАЛОГ СВЕРХУ -->
-        <div class="card" style="text-align: center; background: linear-gradient(135deg, #1e293b, #334155);">
-            <h3 style="margin-top:0;">📂 Каталог услуг и игр</h3>
-            <p style="font-size: 13px; color: #94a3b8;">Выберите нужный сервис или игру для заказа</p>
-            <button onclick="openCategories()" style="background: #38bdf8; color: #0f172a;">Открыть каталог</button>
-        </div>
-
         <div class="card">
             <h3>Добро пожаловать, <span id="username">Пользователь</span></h3>
             <p>ID: <span id="userid">---</span> | Статус: <span id="userrole">Пользователь</span></p>
@@ -49,9 +43,11 @@
             <p>Ваш баланс</p>
         </div>
 
+        <!-- ВИТРИНА СРАЗУ ПРИ ВХОДЕ, КНОПКА КАТЕГОРИЙ СБОКУ -->
         <div class="card">
             <div class="shop-header">
                 <h4 style="margin:0;">Витрина товаров</h4>
+                <button class="filter-btn" onclick="openCategories()">📂 Категории</button>
             </div>
             
             <input type="text" id="searchInput" class="search-box" placeholder="🔍 Введите название товара..." oninput="filterProducts()">
@@ -145,70 +141,70 @@
     </div>
 </div>
 
-<!-- МОДАЛЬНОЕ ОКНО КАТАЛОГА -->
+<!-- МОДАЛЬНОЕ ОКНО КАТАЛОГА С ПРЕМИУМ СТИКЕРАМИ -->
 <div id="categoryModal" class="modal hidden">
     <div class="modal-content">
         <h3 style="margin-top:0;">Каталог сервисов и игр</h3>
         <div class="modal-body">
             <div id="main-categories-view">
                 <div class="section-title">📢 Мессенджеры и соцсети</div>
-                <div class="category-option" onclick="selectService('Telegram', '📢')">
-                    <span style="font-size: 20px;">📢</span><span>Telegram</span>
+                <div class="category-option" onclick="selectService('Telegram', '💎')">
+                    <span style="font-size: 22px;">💎</span><span>Telegram</span>
                 </div>
                 <div class="category-option" onclick="selectService('Instagram', '📸')">
-                    <span style="font-size: 20px;">📸</span><span>Instagram</span>
+                    <span style="font-size: 22px;">📸</span><span>Instagram</span>
                 </div>
                 <div class="category-option" onclick="selectService('WhatsApp', '🟢')">
-                    <span style="font-size: 20px;">🟢</span><span>WhatsApp</span>
+                    <span style="font-size: 22px;">🟢</span><span>WhatsApp</span>
                 </div>
-                <div class="category-option" onclick="selectService('Discord', '💬')">
-                    <span style="font-size: 20px;">💬</span><span>Discord</span>
+                <div class="category-option" onclick="selectService('Discord', '🚀')">
+                    <span style="font-size: 22px;">🚀</span><span>Discord</span>
                 </div>
                 <div class="category-option" onclick="selectService('VK', '🔵')">
-                    <span style="font-size: 20px;">🔵</span><span>ВКонтакте</span>
+                    <span style="font-size: 22px;">🔵</span><span>ВКонтакте</span>
                 </div>
-                <div class="category-option" onclick="selectService('TikTok', '🎵')">
-                    <span style="font-size: 20px;">🎵</span><span>TikTok</span>
+                <div class="category-option" onclick="selectService('TikTok', '✨')">
+                    <span style="font-size: 22px;">✨</span><span>TikTok</span>
                 </div>
-                <div class="category-option" onclick="selectService('YouTube', '▶️')">
-                    <span style="font-size: 20px;">▶️</span><span>YouTube</span>
+                <div class="category-option" onclick="selectService('YouTube', '🔥')">
+                    <span style="font-size: 22px;">🔥</span><span>YouTube</span>
                 </div>
-                <div class="category-option" onclick="selectService('Twitter', '✖️')">
-                    <span style="font-size: 20px;">✖️</span><span>X (Twitter) / Threads / Facebook</span>
+                <div class="category-option" onclick="selectService('Twitter', '⚡')">
+                    <span style="font-size: 22px;">⚡</span><span>X (Twitter) / Threads / Facebook</span>
                 </div>
 
                 <div class="section-title">🎮 Игры</div>
-                <div class="category-option" onclick="selectService('Roblox', '🤖')">
-                    <span style="font-size: 20px;">🤖</span><span>Roblox</span>
+                <div class="category-option" onclick="selectService('Roblox', '👑')">
+                    <span style="font-size: 22px;">👑</span><span>Roblox</span>
                 </div>
                 <div class="category-option" onclick="selectService('Genshin', '⚔️')">
-                    <span style="font-size: 20px;">⚔️</span><span>Genshin Impact</span>
+                    <span style="font-size: 22px;">⚔️</span><span>Genshin Impact</span>
                 </div>
-                <div class="category-option" onclick="selectService('BrawlStars', '⭐')">
-                    <span style="font-size: 20px;">⭐</span><span>Brawl Stars</span>
+                <div class="category-option" onclick="selectService('BrawlStars', '🏆')">
+                    <span style="font-size: 22px;">🏆</span><span>Brawl Stars</span>
                 </div>
                 <div class="category-option" onclick="selectService('PUBG', '🎯')">
-                    <span style="font-size: 20px;">🎯</span><span>PUBG Mobile</span>
+                    <span style="font-size: 22px;">🎯</span><span>PUBG Mobile</span>
                 </div>
                 <div class="category-option" onclick="selectService('Fortnite', '🌀')">
-                    <span style="font-size: 20px;">🌀</span><span>Fortnite</span>
+                    <span style="font-size: 22px;">🌀</span><span>Fortnite</span>
                 </div>
-                <div class="category-option" onclick="selectService('Valorant', '🎯')">
-                    <span style="font-size: 20px;">🎯</span><span>Valorant</span>
+                <div class="category-option" onclick="selectService('Valorant', '🛡️')">
+                    <span style="font-size: 22px;">🛡️</span><span>Valorant</span>
                 </div>
                 <div class="category-option" onclick="selectService('CS2', '💣')">
-                    <span style="font-size: 20px;">💣</span><span>CS2</span>
+                    <span style="font-size: 22px;">💣</span><span>CS2</span>
                 </div>
                 <div class="category-option" onclick="selectService('Minecraft', '🧱')">
-                    <span style="font-size: 20px;">🧱</span><span>Minecraft</span>
+                    <span style="font-size: 22px;">🧱</span><span>Minecraft</span>
                 </div>
-                <div class="category-option" onclick="selectService('Steam', '🎮')">
-                    <span style="font-size: 20px;">🎮</span><span>Steam</span>
+                <div class="category-option" onclick="selectService('Steam', '🌟')">
+                    <span style="font-size: 22px;">🌟</span><span>Steam</span>
                 </div>
 
                 <div class="section-title">🛡️ Прочее</div>
-                <div class="category-option" onclick="selectService('VPN', '🛡️')">
-                    <span style="font-size: 20px;">🛡️</span><span>VPN Доступ</span>
+                <div class="category-option" onclick="selectService('VPN', '🔒')">
+                    <span style="font-size: 22px;">🔒</span><span>VPN Доступ</span>
                 </div>
             </div>
             
