@@ -6,6 +6,19 @@ document.getElementById('userid').innerText = user.id;
 document.getElementById('username').innerText = user.username || 'user';
 
 let allProducts = [];
+let selectedPaymentMethod = 'cryptobot';
+
+function setAmount(val) {
+    document.getElementById('payAmount').value = val;
+    document.querySelectorAll('.quick-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+}
+
+function selectMethod(method, element) {
+    selectedPaymentMethod = method;
+    document.querySelectorAll('.pay-method-item').forEach(el => el.classList.remove('selected'));
+    element.classList.add('selected');
+}
 
 fetch('/api/user', {
     method: 'POST',
@@ -17,12 +30,14 @@ fetch('/api/user', {
     document.getElementById('userrole-badge').innerText = data.role.toUpperCase();
     document.getElementById('user-balance').innerText = data.balance + ' ₽';
     
-    // Показываем вкладку управления для owner или support
     if(data.role === 'owner' || data.role === 'support') {
         document.getElementById('nav-manage').classList.remove('hidden');
     }
 
-    // Показываем карточку добавления товаров для продавцов и владельца
+    if(data.role === 'owner') {
+        document.getElementById('owner-key-gen').style.display = 'block';
+    }
+
     if(data.role === 'seller' || data.role === 'owner') {
         document.getElementById('seller-product-card').classList.remove('hidden');
         document.getElementById('key-activation-card').classList.add('hidden');
@@ -37,12 +52,7 @@ function loadProducts() {
     .then(products => {
         allProducts = products.length > 0 ? products : [
             { id: 1, title: 'Telegram Звезды (100 шт)', category: 'Telegram', subcategory: 'Покупка Telegram Stars', price: 150, price_from: false },
-            { id: 2, title: 'Дизайн ТГК', category: 'Telegram', subcategory: 'Дизайн ТГК', price: 500, price_from: true, max_price: 3000 },
-            { id: 3, title: 'Аренда NFT', category: 'Telegram', subcategory: 'Аренда NFT', price: 300, price_from: false },
-            { id: 4, title: 'Разработка ТГ ботов', category: 'Telegram', subcategory: 'Разработка ТГ ботов', price: 1000, price_from: true, max_price: 15000 },
-            { id: 5, title: 'Буст в Roblox', category: 'Roblox', subcategory: 'Буст', price: 200, price_from: false },
-            { id: 6, title: 'Аккаунты Roblox', category: 'Roblox', subcategory: 'Аккаунты Roblox', price: 400, price_from: false },
-            { id: 7, title: 'Напарник на час в Roblox', category: 'Roblox', subcategory: 'Напарник на час', price: 250, price_from: false }
+            { id: 2, title: 'Дизайн ТГК', category: 'Telegram', subcategory: 'Дизайн ТГК', price: 500, price_from: true, max_price: 3000 }
         ];
         renderProducts(allProducts);
     });
@@ -125,14 +135,17 @@ function addNewProduct() {
             seller_id: String(user.id)
         })
     })
-    .then(res => res.json())
-    .then(data => {
-        if(data.success) {
-            alert('Товар успешно опубликован!');
+    .then(async res => {
+        const data = await res.json();
+        if(res.ok && data.success) {
+            alert('Товар успешно отправлен на модерацию и опубликован!');
             location.reload();
         } else {
-            alert(data.error || 'Ошибка публикации');
+            alert(data.error || 'Ошибка публикации товара');
         }
+    })
+    .catch(err => {
+        alert('Ошибка соединения с сервером');
     });
 }
 
@@ -156,24 +169,61 @@ function activateKey() {
     });
 }
 
+function generateKey() {
+    const role = document.getElementById('genRole').value;
+    fetch('/api/key/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admin_id: String(user.id), role })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.success) {
+            document.getElementById('generatedKeyResult').innerText = `Сгенерированный ключ: ${data.key}`;
+        } else {
+            alert(data.error || 'Ошибка генерации');
+        }
+    });
+}
+
 function makePayment() {
     const amount = document.getElementById('payAmount').value;
-    const method = document.getElementById('payMethod').value;
     if(!amount || amount <= 0) { alert('Введите корректную сумму'); return; }
+
+    if (selectedPaymentMethod === 'direct_transfer') {
+        const wallet = 'UQC...TOBIAS_WALLET_TON_USDT';
+        const comment = `topup_${user.id}_${amount}`;
+        document.getElementById('walletAddressText').innerText = wallet;
+        document.getElementById('walletCommentText').innerText = comment;
+        
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(wallet)}`;
+        document.getElementById('qrCodeImg').src = qrUrl;
+        
+        document.getElementById('transferModal').classList.remove('hidden');
+        return;
+    }
 
     fetch('/api/payment/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telegram_id: String(user.id), amount, method })
+        body: JSON.stringify({ telegram_id: String(user.id), amount, method: selectedPaymentMethod })
     })
     .then(res => res.json())
     .then(data => {
         if(data.paymentUrl) {
             window.location.href = data.paymentUrl;
         } else {
-            alert(data.message || data.error || 'Ошибка платежа');
+            alert(data.message || data.error || 'Ошибка создания платежа');
         }
     });
+}
+
+function openWalletApp() {
+    window.location.href = 'https://t.me/CryptoBot';
+}
+
+function closeTransferModal() {
+    document.getElementById('transferModal').classList.add('hidden');
 }
 
 function switchTab(tabName, element) {
@@ -212,4 +262,4 @@ function buyProduct(productId) {
         if(data.error) alert(data.error);
         else { alert('Успешно оформлено!'); location.reload(); }
     });
-}
+                }
