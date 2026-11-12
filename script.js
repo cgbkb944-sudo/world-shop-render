@@ -6,8 +6,6 @@ document.getElementById('userid').innerText = user.id;
 document.getElementById('username').innerText = '@' + (user.username || 'user');
 
 let allProducts = [];
-let currentCategoryFilter = '';
-let currentSubcategoryFilter = '';
 
 fetch('/api/user', {
     method: 'POST',
@@ -70,77 +68,7 @@ function renderProducts(products) {
 function filterProducts() {
     const query = document.getElementById('searchInput').value.toLowerCase();
     let filtered = allProducts.filter(p => p.title.toLowerCase().includes(query));
-    
-    if (currentCategoryFilter) {
-        filtered = filtered.filter(p => p.category === currentCategoryFilter);
-    }
-    if (currentSubcategoryFilter) {
-        filtered = filtered.filter(p => p.subcategory === currentSubcategoryFilter);
-    }
-    
     renderProducts(filtered);
-}
-
-function openCategories() {
-    document.getElementById('categoryModal').classList.remove('hidden');
-    document.getElementById('main-categories-view').classList.remove('hidden');
-    document.getElementById('subcategories-container').classList.add('hidden');
-}
-
-function closeCategories() {
-    document.getElementById('categoryModal').classList.add('hidden');
-}
-
-function selectService(serviceName, icon) {
-    currentCategoryFilter = serviceName;
-    currentSubcategoryFilter = '';
-    document.getElementById('filter-name').innerText = `${icon} ${serviceName}`;
-    document.getElementById('active-filter-badge').classList.remove('hidden');
-    
-    const mainView = document.getElementById('main-categories-view');
-    const subContainer = document.getElementById('subcategories-container');
-    const subList = document.getElementById('subcategories-list');
-    
-    mainView.classList.add('hidden');
-    subContainer.classList.remove('hidden');
-    document.getElementById('selected-service-title').innerText = `${icon} Услуги: ${serviceName}`;
-    
-    let subcategories = [];
-    if(serviceName === 'Telegram') {
-        subcategories = ['Дизайн ТГК', 'Аренда NFT', 'Разработка ТГ ботов', 'Накрутка подписчиков', 'Покупка Telegram Stars', 'Просмотры и реакции'];
-    } else if(serviceName === 'Roblox') {
-        subcategories = ['Буст', 'Аккаунты Roblox', 'Напарник на час', 'Робуксы'];
-    } else if(serviceName === 'Instagram') {
-        subcategories = ['Подписчики', 'Лайки', 'Просмотры', 'Комментарии'];
-    } else {
-        subcategories = ['Малый пакет / Донат', 'Средний пакет / Донат', 'Максимальный донат'];
-    }
-
-    subList.innerHTML = subcategories.map(sub => `
-        <div class="category-option" onclick="filterBySubcategory('${sub}')">
-            <span>↳ ${sub}</span>
-        </div>
-    `).join('');
-}
-
-function filterBySubcategory(subName) {
-    currentSubcategoryFilter = subName;
-    document.getElementById('filter-name').innerText += ` -> ${subName}`;
-    document.getElementById('categoryModal').classList.add('hidden');
-    filterProducts();
-}
-
-function backToCategories() {
-    document.getElementById('main-categories-view').classList.remove('hidden');
-    document.getElementById('subcategories-container').classList.add('hidden');
-}
-
-function resetFilter() {
-    currentCategoryFilter = '';
-    currentSubcategoryFilter = '';
-    document.getElementById('active-filter-badge').classList.add('hidden');
-    document.getElementById('searchInput').value = '';
-    renderProducts(allProducts);
 }
 
 const subsByCat = {
@@ -251,4 +179,4 @@ function buyProduct(productId) {
         if(data.error) alert(data.error);
         else { alert('Успешно оформлено!'); location.reload(); }
     });
-        }
+}
