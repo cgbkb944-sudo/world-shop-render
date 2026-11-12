@@ -28,7 +28,6 @@
 
         .container { padding: 16px; max-width: 480px; margin: 0 auto; box-sizing: border-box; }
 
-        /* Современные стеклянные карточки */
         .card {
             background: var(--card-bg);
             backdrop-filter: blur(12px);
@@ -71,9 +70,7 @@
             transition: border-color 0.2s;
         }
 
-        input:focus, select:focus {
-            border-color: var(--accent);
-        }
+        input:focus, select:focus { border-color: var(--accent); }
 
         button {
             width: 100%;
@@ -92,7 +89,51 @@
 
         button:active { transform: scale(0.98); }
 
-        /* Нижняя панель навигации в премиум стиле */
+        .quick-amounts {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin: 10px 0;
+        }
+        .quick-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--card-border);
+            padding: 10px;
+            border-radius: 10px;
+            color: var(--text-main);
+            font-weight: 500;
+            cursor: pointer;
+            margin: 0;
+            font-size: 14px;
+            box-shadow: none;
+        }
+        .quick-btn:hover, .quick-btn.active {
+            background: rgba(99, 102, 241, 0.3);
+            border-color: var(--accent);
+        }
+
+        .pay-methods {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin: 12px 0;
+        }
+        .pay-method-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .pay-method-item.selected {
+            background: rgba(99, 102, 241, 0.2);
+            border-color: var(--accent);
+        }
+        .pay-method-item span { margin-left: 12px; font-weight: 500; }
+
         .nav {
             position: fixed;
             bottom: 0;
@@ -121,16 +162,8 @@
             transition: color 0.2s;
         }
 
-        .nav-item svg {
-            width: 22px;
-            height: 22px;
-            fill: currentColor;
-        }
-
-        .nav-item.active {
-            color: #818cf8;
-        }
-
+        .nav-item svg { width: 22px; height: 22px; fill: currentColor; }
+        .nav-item.active { color: #818cf8; }
         .hidden { display: none; }
 
         .search-box {
@@ -155,20 +188,9 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            transition: background 0.2s;
         }
 
-        .product-item:hover {
-            background: rgba(255, 255, 255, 0.06);
-        }
-
-        .no-products {
-            text-align: center;
-            color: var(--text-muted);
-            padding: 24px;
-            font-size: 14px;
-        }
-
+        .no-products { text-align: center; color: var(--text-muted); padding: 24px; font-size: 14px; }
         .badge {
             display: inline-block;
             padding: 4px 10px;
@@ -179,12 +201,33 @@
             font-weight: 500;
             margin-bottom: 10px;
         }
+
+        .footer-links {
+            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            text-align: center;
+        }
+        .footer-links a {
+            color: #818cf8;
+            text-decoration: none;
+            font-size: 13px;
+        }
+        .footer-links a:hover { text-decoration: underline; }
+
+        .modal {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 200;
+        }
+        .modal-content {
+            background: #1e293b; width: 92%; max-width: 400px; padding: 24px; border-radius: 20px; text-align: center; border: 1px solid var(--card-border);
+        }
     </style>
 </head>
 <body>
 
 <div id="app" class="container">
-    <!-- ГЛАВНАЯ -->
     <div id="tab-main" class="tab-content">
         <div class="card profile-card">
             <span class="badge" id="userrole-badge">Пользователь</span>
@@ -198,14 +241,11 @@
             <div class="shop-header">
                 <h4 style="margin-bottom: 12px;">🛍️ Витрина товаров</h4>
             </div>
-            
             <input type="text" id="searchInput" class="search-box" placeholder="🔍 Найти товар или услугу..." oninput="filterProducts()">
-
             <div id="products-list">Загрузка товаров...</div>
         </div>
     </div>
 
-    <!-- ИСТОРИЯ -->
     <div id="tab-history" class="tab-content hidden">
         <div class="card">
             <h3>📜 История операций</h3>
@@ -213,53 +253,81 @@
         </div>
     </div>
 
-    <!-- УПРАВЛЕНИЕ / АДМИНКА -->
     <div id="tab-manage" class="tab-content hidden">
         <div class="card">
             <h3>📊 Статистика сервиса</h3>
-            <p>Пользователей в системе: <b id="stats-total-users" style="color:#fff;">Загрузка...</b></p>
-            <p>Общий баланс пользователей: <b id="stats-total-balance" style="color:#fff;">0 ₽</b></p>
-            <button style="background: rgba(99,102,241,0.3); border: 1px solid var(--accent);" onclick="loadAdminStats()">🔄 Обновить данные</button>
+            <p>Пользователей: <b id="stats-total-users" style="color:#fff;">Загрузка...</b></p>
+            <p>Общий баланс: <b id="stats-total-balance" style="color:#fff;">0 ₽</b></p>
+            <button style="background: rgba(99,102,241,0.3); border: 1px solid var(--accent);" onclick="loadAdminStats()">🔄 Обновить</button>
+        </div>
+
+        <div class="card" id="owner-key-gen" style="display:none;">
+            <h3>🔑 Генерация ключей доступа</h3>
+            <label>Роль для ключа:</label>
+            <select id="genRole">
+                <option value="seller">Продавец (Seller)</option>
+                <option value="support">Поддержка (Support)</option>
+            </select>
+            <button onclick="generateKey()" style="background: var(--success);">Сгенерировать ключ</button>
+            <div id="generatedKeyResult" style="margin-top:10px; font-weight:bold; color:#38bdf8;"></div>
         </div>
 
         <div class="card">
-            <h3>⚙️ Панель управления</h3>
-            <label>Telegram ID пользователя:</label>
+            <h3>⚙️ Управление пользователем</h3>
+            <label>Telegram ID:</label>
             <input type="text" id="targetId" placeholder="Введите ID">
-            
             <label>Изменение баланса (+ / -):</label>
-            <input type="number" id="balanceDelta" placeholder="Например: 500 или -200">
-            <button onclick="updateBalance()">Применить баланс</button>
-
-            <button style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); margin-top: 12px;" onclick="setUserBan(true)">Заблокировать пользователя</button>
-            <button style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);" onclick="setUserBan(false)">Разблокировать</button>
+            <input type="number" id="balanceDelta" placeholder="Например: 500">
+            <button onclick="updateBalance()">Применить</button>
+            <button style="background: #ef4444; margin-top: 10px;" onclick="setUserBan(true)">Заблокировать</button>
+            <button style="background: #10b981;" onclick="setUserBan(false)">Разблокировать</button>
         </div>
     </div>
 
-    <!-- ПРОФИЛЬ И АКТИВАЦИЯ КЛЮЧЕЙ -->
     <div id="tab-profile" class="tab-content hidden">
         <div class="card">
             <h3>💳 Пополнить баланс</h3>
-            <input type="number" id="payAmount" placeholder="Сумма в рублях">
-            <select id="payMethod">
-                <option value="sbp">СПБ (Быстрый платеж)</option>
-                <option value="card">Банковская карта (РФ / Мир)</option>
-                <option value="stars">Telegram Stars ⭐</option>
-                <option value="cryptobot">Crypto Bot 🤖</option>
-                <option value="transfer">Прямой перевод</option>
-            </select>
+            <p>Сумма пополнения</p>
+            <input type="number" id="payAmount" placeholder="Введите сумму в ₽" value="100">
+            
+            <div class="quick-amounts">
+                <button class="quick-btn" onclick="setAmount(10)">10 ₽</button>
+                <button class="quick-btn" onclick="setAmount(50)">50 ₽</button>
+                <button class="quick-btn active" onclick="setAmount(100)">100 ₽</button>
+                <button class="quick-btn" onclick="setAmount(250)">250 ₽</button>
+                <button class="quick-btn" onclick="setAmount(500)">500 ₽</button>
+                <button class="quick-btn" onclick="setAmount(1000)">1000 ₽</button>
+            </div>
+
+            <p style="margin-top: 14px;">Способ оплаты</p>
+            <div class="pay-methods">
+                <!-- 1. Crypto Bot -->
+                <div class="pay-method-item selected" onclick="selectMethod('cryptobot', this)" id="method-cryptobot">
+                    <span style="font-size: 20px;">🤖</span>
+                    <span>Crypto Bot (Авто-оплата в USDT/TON)</span>
+                </div>
+                <!-- 2. СБП / Карты -->
+                <div class="pay-method-item" onclick="selectMethod('sbp', this)" id="method-sbp">
+                    <span style="font-size: 20px;">⚡</span>
+                    <span>СБП / Банковская карта</span>
+                </div>
+                <!-- 3. Прямой перевод -->
+                <div class="pay-method-item" onclick="selectMethod('direct_transfer', this)" id="method-direct_transfer">
+                    <span style="font-size: 20px;">💎</span>
+                    <span>Прямой перевод (USDT / Gram)</span>
+                </div>
+            </div>
+
             <button onclick="makePayment()">Перейти к оплате</button>
         </div>
 
-        <!-- СИСТЕМА АКТИВАЦИИ КЛЮЧЕЙ -->
         <div class="card" id="key-activation-card">
             <h3>🔑 Активация ключа</h3>
-            <p>Введите ключ продавца или поддержки для получения прав доступа.</p>
+            <p>Введите ключ продавца или поддержки.</p>
             <input type="text" id="keyCode" placeholder="WTS-XXXX-XXXX">
-            <button onclick="activateKey()" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">Активировать ключ</button>
+            <button onclick="activateKey()" style="background: #f59e0b;">Активировать ключ</button>
         </div>
 
-        <!-- ДОБАВЛЕНИЕ ТОВАРА (ТОЛЬКО ДЛЯ ПРОДАВЦОВ И ВЛАДЕЛЬЦА) -->
         <div class="card hidden" id="seller-product-card">
             <h3>📦 Выставить товар на продажу</h3>
             <label>Название товара:</label>
@@ -299,10 +367,38 @@
 
             <button onclick="addNewProduct()" style="background: var(--success);">Опубликовать товар</button>
         </div>
+
+        <div class="card footer-links">
+            <a href="https://t.me/Tobias_26" target="_blank">💬 Написать в поддержку</a>
+            <a href="https://t.me/" target="_blank">📢 Telegram канал</a>
+            <a href="#" onclick="alert('Политика конфиденциальности сервиса World TG Shop...'); return false;">🔒 Политика конфиденциальности</a>
+            <a href="#" onclick="alert('Пользовательское соглашение и оферта...'); return false;">📄 Пользовательское соглашение</a>
+        </div>
     </div>
 </div>
 
-<!-- НИЖНЯЯ ПРЕМИУМ ПАНЕЛЬ НАВИГАЦИИ -->
+<!-- МОДАЛЬНОЕ ОКНО ДЛЯ ПРЯМОГО ПЕРЕВОДА (QR И КОММЕНТАРИЙ) -->
+<div id="transferModal" class="modal hidden">
+    <div class="modal-content">
+        <h3 style="margin-bottom: 12px; color: #818cf8;">Прямой перевод USDT / Gram</h3>
+        <p style="font-size: 13px; margin-bottom: 14px;">Отсканируйте QR-код или скопируйте реквизиты для оплаты:</p>
+        
+        <div style="background: #fff; padding: 10px; display: inline-block; border-radius: 12px; margin-bottom: 14px;">
+            <img id="qrCodeImg" src="" alt="QR Code" width="160" height="160">
+        </div>
+
+        <div style="text-align: left; background: rgba(15,23,42,0.6); padding: 12px; border-radius: 10px; font-size: 13px; margin-bottom: 14px; word-break: break-all;">
+            <b>Адрес кошелька:</b><br>
+            <span id="walletAddressText" style="color: #38bdf8;">UQC...TOBIAS_WALLET_TON_USDT</span><br><br>
+            <b>Комментарий к платежу:</b><br>
+            <span id="walletCommentText" style="color: #f59e0b;">topup_8127900151</span>
+        </div>
+
+        <button onclick="openWalletApp()">🔗 Перейти в кошелек</button>
+        <button style="background: #475569; margin-top: 8px;" onclick="closeTransferModal()">Закрыть</button>
+    </div>
+</div>
+
 <div class="nav">
     <div class="nav-item active" onclick="switchTab('main', this)">
         <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
@@ -313,7 +409,7 @@
         <span>История</span>
     </div>
     <div id="nav-manage" class="nav-item hidden" onclick="switchTab('manage', this)">
-        <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36.25c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-.25c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+        <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36.25c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-.25c-.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
         <span>Управление</span>
     </div>
     <div class="nav-item" onclick="switchTab('profile', this)">
