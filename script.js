@@ -89,6 +89,7 @@ function openCategories() {
 
 function closeCategories() {
     document.getElementById('categoryModal').classList.add('hidden');
+    resetFilter(); // Сбрасываем фильтры при закрытии каталога
 }
 
 function selectService(serviceName, icon) {
@@ -126,7 +127,9 @@ function selectService(serviceName, icon) {
 function filterBySubcategory(subName) {
     currentSubcategoryFilter = subName;
     document.getElementById('filter-name').innerText += ` -> ${subName}`;
-    closeCategories();
+    
+    // Автоматически закрываем каталог и сразу перекидываем пользователя к товарам этой подкатегории
+    document.getElementById('categoryModal').classList.add('hidden');
     filterProducts();
 }
 
@@ -139,7 +142,8 @@ function resetFilter() {
     currentCategoryFilter = '';
     currentSubcategoryFilter = '';
     document.getElementById('active-filter-badge').classList.add('hidden');
-    filterProducts();
+    document.getElementById('searchInput').value = '';
+    renderProducts(allProducts);
 }
 
 const subsByCat = {
@@ -251,4 +255,3 @@ function buyProduct(productId) {
         else { alert('Успешно оформлено!'); location.reload(); }
     });
 }
-
