@@ -3,7 +3,7 @@ tg.expand();
 
 const user = tg.initDataUnsafe?.user || { id: '8127900151', username: 'Tobias_26' };
 document.getElementById('userid').innerText = user.id;
-document.getElementById('username').innerText = '@' + (user.username || 'user');
+document.getElementById('username').innerText = user.username || 'user';
 
 let allProducts = [];
 
@@ -14,11 +14,20 @@ fetch('/api/user', {
 })
 .then(res => res.json())
 .then(data => {
-    document.getElementById('userrole').innerText = data.role;
+    document.getElementById('userrole-badge').innerText = data.role.toUpperCase();
     document.getElementById('user-balance').innerText = data.balance + ' ₽';
+    
+    // Показываем вкладку управления для owner или support
     if(data.role === 'owner' || data.role === 'support') {
         document.getElementById('nav-manage').classList.remove('hidden');
     }
+
+    // Показываем карточку добавления товаров для продавцов и владельца
+    if(data.role === 'seller' || data.role === 'owner') {
+        document.getElementById('seller-product-card').classList.remove('hidden');
+        document.getElementById('key-activation-card').classList.add('hidden');
+    }
+
     loadProducts();
 });
 
@@ -42,7 +51,7 @@ function loadProducts() {
 function renderProducts(products) {
     const list = document.getElementById('products-list');
     if(products.length === 0) {
-        list.innerHTML = '<div class="no-products">Товары по данному запросу не найдены</div>';
+        list.innerHTML = '<div class="no-products">Товары пока не добавлены</div>';
         return;
     }
     list.innerHTML = products.map(p => {
@@ -55,10 +64,13 @@ function renderProducts(products) {
 
         return `
             <div class="product-item">
-                <span><b>${p.title}</b> <br><small style="color:#38bdf8;">${p.category} / ${p.subcategory || 'Общее'}</small></span>
                 <div>
-                    <b style="display:block; text-align:right; margin-bottom:4px;">${priceText}</b>
-                    <button style="width:auto; padding:6px 12px; margin:0;" onclick="buyProduct(${p.id})">Купить</button>
+                    <b style="font-size: 15px;">${p.title}</b>
+                    <br><small style="color:var(--text-muted);">${p.category} / ${p.subcategory || 'Общее'}</small>
+                </div>
+                <div style="text-align: right;">
+                    <b style="display:block; margin-bottom:6px; color:#818cf8;">${priceText}</b>
+                    <button style="width:auto; padding:6px 14px; margin:0; font-size:13px;" onclick="buyProduct(${p.id})">Купить</button>
                 </div>
             </div>
         `;
@@ -116,29 +128,50 @@ function addNewProduct() {
     .then(res => res.json())
     .then(data => {
         if(data.success) {
-            alert('Товар успешно опубликован в каталоге!');
+            alert('Товар успешно опубликован!');
             location.reload();
         } else {
-            alert('Ошибка публикации');
+            alert(data.error || 'Ошибка публикации');
+        }
+    });
+}
+
+function activateKey() {
+    const key = document.getElementById('keyCode').value;
+    if(!key) { alert('Введите ключ'); return; }
+
+    fetch('/api/key/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegram_id: String(user.id), key })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.success) {
+            alert(`Ключ успешно активирован! Ваша роль: ${data.role}`);
+            location.reload();
+        } else {
+            alert(data.error || 'Неверный ключ');
         }
     });
 }
 
 function makePayment() {
     const amount = document.getElementById('payAmount').value;
+    const method = document.getElementById('payMethod').value;
     if(!amount || amount <= 0) { alert('Введите корректную сумму'); return; }
 
     fetch('/api/payment/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telegram_id: String(user.id), amount })
+        body: JSON.stringify({ telegram_id: String(user.id), amount, method })
     })
     .then(res => res.json())
     .then(data => {
         if(data.paymentUrl) {
             window.location.href = data.paymentUrl;
         } else {
-            alert(data.error || 'Ошибка создания платежа через RollyPay');
+            alert(data.message || data.error || 'Ошибка платежа');
         }
     });
 }
