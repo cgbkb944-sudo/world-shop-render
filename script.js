@@ -93,7 +93,7 @@ apiFetch('/api/user', {
     document.getElementById('userrole-badge').innerText = data.role.toUpperCase();
     document.getElementById('user-balance').innerText = data.balance + ' ₽';
     
-    if(data.role === 'owner' || data.role === 'admin' || data.role === 'support') {
+    if(data.role === 'owner') {
         document.getElementById('nav-manage').classList.remove('hidden');
     }
 
