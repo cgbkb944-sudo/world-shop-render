@@ -533,6 +533,11 @@ async function lookupUser(){
    '<h4>Переводы средств</h4>'+(d.transfers.length?d.transfers.map(x=>'<div class="data-row"><div><b>'+(String(x.sender_id)===id?'Отправлено пользователю':'Получено от пользователя')+'</b><small>'+escapeHtml(x.status)+' · Telegram ID: '+escapeHtml(String(x.sender_id)===id?(x.recipient_id||'ожидает получателя'):x.sender_id)+'</small></div><strong>'+rub(x.amount)+'</strong></div>').join(''):'<p>Переводов нет</p>');
  }catch(e){box.textContent=e.message;}
 }
+async function unbanSupportUser(){
+ const target_id=document.getElementById('banTargetId').value.trim()||document.getElementById('supportLookupId').value.trim();
+ if(!/^\d{1,20}$/.test(target_id)){alert('Введите Telegram ID.');return;}
+ try{const r=await jsonPost('/api/admin/action',{action:'unban',target_id}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');alert('Блокировка снята.');}catch(e){alert(e.message);}
+}
 async function requestBan(){
  const telegram_id=document.getElementById('banTargetId').value.trim(),reason=document.getElementById('banReason').value.trim(),raw=document.getElementById('banDuration').value;
  const duration_hours=raw===''?null:Number(raw),out=document.getElementById('ban-request-result');
