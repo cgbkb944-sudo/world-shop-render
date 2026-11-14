@@ -108,6 +108,7 @@ apiFetch('/api/user', {
     }
 
     loadProducts();
+    resumePendingPayment();
 });
 
 function loadProducts() {
@@ -250,6 +251,29 @@ function generateKey() {
     });
 }
 
+function resumePendingPayment(){
+    let id=new URLSearchParams(window.location.search).get('payment_id');
+    try{if(!id)id=localStorage.getItem('world_tg_pending_payment');}catch(e){}
+    if(!id||!/^\\d+$/.test(String(id)))return;
+    let checks=0;
+    const timer=setInterval(async()=>{
+        checks++;
+        try{
+            const response=await apiFetch('/api/payment/status/'+encodeURIComponent(id));
+            const data=await response.json();
+            if(data.status==='paid'){
+                clearInterval(timer);
+                try{localStorage.removeItem('world_tg_pending_payment');}catch(e){}
+                alert('Оплата подтверждена! Баланс пополнен.');
+                location.href=location.pathname;
+            }else if(data.status==='expired'||data.status==='failed'||checks>=120){
+                clearInterval(timer);
+                try{localStorage.removeItem('world_tg_pending_payment');}catch(e){}
+                if(data.status==='expired'||data.status==='failed')alert('Платёж не подтверждён. Если деньги списались, обратитесь в поддержку.');
+            }
+        }catch(e){if(checks>=120)clearInterval(timer);}
+    },5000);
+}
 function makePayment() {
     const amount = Number(document.getElementById('payAmount').value);
     if(!Number.isFinite(amount) || amount <= 0 || amount > 10000000) { alert('Введите корректную сумму'); return; }
@@ -275,6 +299,7 @@ function makePayment() {
             if(directPaymentPoll) clearInterval(directPaymentPoll);
             directPaymentPoll = setInterval(checkDirectPayment,5000);
         } else if(data.paymentUrl) {
+            try{localStorage.setItem('world_tg_pending_payment',String(data.paymentId));}catch(e){}
             window.location.href = data.paymentUrl;
         } else {
             alert(data.error || 'Платёж создан, но ссылка не получена.');
