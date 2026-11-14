@@ -144,6 +144,7 @@ apiFetch('/api/user', {
     const shownAvatar=data.avatar_url || user.photo_url || '';
     if(shownAvatar){avatar.src=shownAvatar;avatar.style.visibility='visible';}else{avatar.removeAttribute('src');avatar.style.visibility='hidden';}
     if(['owner','support','admin'].includes(data.role)) document.getElementById('nav-manage').classList.remove('hidden');
+    document.getElementById('owner-withdrawals-card').classList.toggle('hidden',data.role!=='owner');
     if(data.role!=='owner'){
       document.querySelector('.owner-heading').classList.add('hidden');
       document.querySelector('.owner-stats-grid').classList.add('hidden');
