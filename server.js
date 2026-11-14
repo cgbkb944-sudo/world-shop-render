@@ -265,6 +265,7 @@ async function createPayment(req,res) {
   if(!['cryptobot','sbp','card','direct_transfer'].includes(method))return res.status(400).json({error:'Неизвестный способ оплаты.'});
   try {
     if(method==='cryptobot'){
+      if(!process.env.CRYPTO_PAY_WEBHOOK_SECRET)throw new Error('Crypto Pay webhook path secret is not configured');
       const row=await pool.query("INSERT INTO payments(provider,telegram_id,amount,currency,status,idempotency_key,expires_at) VALUES ('cryptobot',$1,$2,'RUB','pending',$3,NOW()+INTERVAL '15 minutes') RETURNING id",
         [req.user.telegram_id,amount,crypto.randomUUID()]);
       const invoice=await cryptoPay('createInvoice',{
@@ -278,6 +279,7 @@ async function createPayment(req,res) {
       return res.json({paymentUrl:invoice.bot_invoice_url,paymentId:row.rows[0].id});
     }
     if(method==='sbp'||method==='card'){
+      if(!process.env.ROLLYPAY_WEBHOOK_SECRET)throw new Error('RollyPay webhook signing secret is not configured');
       const row=await pool.query("INSERT INTO payments(provider,telegram_id,amount,currency,status,idempotency_key,expires_at) VALUES ($1,$2,$3,'RUB','pending',$4,NOW()+INTERVAL '30 minutes') RETURNING id",
         [method,req.user.telegram_id,amount,crypto.randomUUID()]);
       const body={amount:amount.toFixed(2),payment_currency:'RUB',payment_method:method,
@@ -297,9 +299,20 @@ async function createPayment(req,res) {
     if(rawBase<=0n)throw new Error('Не удалось рассчитать сумму в криптовалюте.');
     const row=await pool.query("INSERT INTO payments(provider,telegram_id,amount,currency,status,idempotency_key,asset,wallet_address,expires_at) VALUES ('ton_usdt',$1,$2,'RUB','pending',$3,$4,$5,NOW()+INTERVAL '20 minutes') RETURNING id",
       [req.user.telegram_id,amount,crypto.randomUUID(),asset,tonAddress]);
-    const rawAmount=rawBase+BigInt(crypto.randomInt(1,1000)),cryptoAmount=unitsToDecimal(rawAmount,decimals);
-    await pool.query('UPDATE payments SET expected_crypto=$1,provider_payload=$2 WHERE id=$3',
-      [cryptoAmount,JSON.stringify({rate,decimals}),row.rows[0].id]);
+    let cryptoAmount, saved=false;
+    for(let attempt=0;attempt<12&&!saved;attempt++){
+      const rawAmount=rawBase+BigInt(crypto.randomInt(1,1000));
+      cryptoAmount=unitsToDecimal(rawAmount,decimals);
+      try{
+        await pool.query('UPDATE payments SET expected_crypto=$1,provider_payload=$2 WHERE id=$3',
+          [cryptoAmount,JSON.stringify({rate,decimals}),row.rows[0].id]);
+        saved=true;
+      }catch(e){if(e.code!=='23505')throw e;}
+    }
+    if(!saved){
+      await pool.query("UPDATE payments SET status='failed' WHERE id=$1",[row.rows[0].id]);
+      throw new Error('Could not reserve a unique crypto amount for this invoice');
+    }
     return res.json({directTransfer:true,paymentId:row.rows[0].id,asset,cryptoAmount,walletAddress:tonAddress,
       expiresAt:new Date(Date.now()+20*60*1000).toISOString(),rate});
   } catch(e){
@@ -331,15 +344,17 @@ async function pollTonPayments() {
       let candidates=[];
       if(asset==='TON'){
         const data=await tonApi('/transactions',{account:tonAddress,start_utime:start,limit:1000,sort:'desc'});
+        const expectedRaw=new Set(list.map(p=>decimalToUnits(p.expected_crypto,9).toString()));
         candidates=(data.transactions||[]).filter(tx=>{
           const msg=tx.in_msg||{};
-          return Number(tx.mc_block_seqno)>0&&msg.destination&&normalizeTonAddress(msg.destination)===normalizeTonAddress(tonAddress)&&
+          return expectedRaw.has(String(msg.value||'0'))&&Number(tx.mc_block_seqno)>0&&msg.destination&&normalizeTonAddress(msg.destination)===normalizeTonAddress(tonAddress)&&
             BigInt(msg.value||'0')>0n&&tx.description?.aborted!==true;
         }).map(tx=>({raw:BigInt(tx.in_msg.value),hash:String(tx.hash),utime:Number(tx.now||tx.utime||0)}));
       }else{
         const data=await tonApi('/jetton/transfers',{owner_address:tonAddress,jetton_master:USDT_TON_MASTER,direction:'in',start_utime:start,limit:1000,sort:'desc'});
+        const expectedRaw=new Set(list.map(p=>decimalToUnits(p.expected_crypto,6).toString()));
         for(const t of data.jetton_transfers||[]){
-          if(t.transaction_aborted===true||normalizeTonAddress(t.destination)!==normalizeTonAddress(tonAddress)||
+          if(!expectedRaw.has(String(t.amount))||t.transaction_aborted===true||normalizeTonAddress(t.destination)!==normalizeTonAddress(tonAddress)||
             normalizeTonAddress(t.jetton_master)!==normalizeTonAddress(USDT_TON_MASTER))continue;
           const txData=await tonApi('/transactions',{hash:t.transaction_hash,limit:1}),tx=(txData.transactions||[])[0];
           if(!tx||Number(tx.mc_block_seqno)<=0||tx.description?.aborted===true)continue;
