@@ -46,3 +46,10 @@ The user enters a RUB amount. Crypto Pay creates a RUB fiat invoice and calculat
 For direct transfers, the server assigns a unique exact amount (smallest-unit suffix) to each invoice, so a shared wallet address can identify simultaneous payments without depending on a comment/memo. TON deposits are monitored through TON Center API v3. The server checks the recipient, amount, official USDT master contract, successful transaction and masterchain inclusion before crediting the user. Repeated webhook deliveries and repeated chain scans cannot credit the same payment twice.
 
 Before enabling production deposits, deploy the new empty PostgreSQL schema on a separate staging database, configure all provider webhooks, test Crypto Pay and RollyPay sandbox flows, and send small test TON and official USDT deposits. The old database must remain untouched until staging tests pass.
+
+
+## Roles and owner console
+
+The configured owner Telegram ID is `8127900151`. Set `OWNER_TELEGRAM_ID=8127900151` in Render Environment before deploying. Owner access is assigned only after Telegram Mini App initData is validated by the server; a browser-supplied role or ID is never trusted.
+
+The owner console provides service totals, seller list and seller details (products, sales/orders and transaction ledger), role assignment, balance adjustment and account bans. The owner can generate one-time activation codes for `admin`, `support` and `seller` roles. Codes are stored as SHA-256 hashes and can be used once. Admin and seller accounts can publish products; only the owner can access owner statistics, change roles, adjust balances or ban accounts.
