@@ -1,7 +1,16 @@
 const tg = window.Telegram.WebApp;
 tg.expand();
 
-const user = tg.initDataUnsafe?.user || { id: '8127900151', username: 'Tobias_26' };
+const user = tg.initDataUnsafe?.user;
+const initData = tg.initData || '';
+if (!user || !initData) {
+    document.getElementById('products-list').innerText = 'Откройте магазин через Telegram.';
+}
+function apiFetch(url, options = {}) {
+    const headers = new Headers(options.headers || {});
+    headers.set('X-Telegram-Init-Data', initData);
+    return fetch(url, { ...options, headers });
+}
 document.getElementById('userid').innerText = user.id;
 document.getElementById('username').innerText = user.username || 'user';
 
@@ -11,7 +20,7 @@ let selectedPaymentMethod = 'cryptobot';
 function setAmount(val) {
     document.getElementById('payAmount').value = val;
     document.querySelectorAll('.quick-btn').forEach(btn => btn.classList.remove('active'));
-    event.target.classList.add('active');
+    document.querySelectorAll('.quick-btn').forEach(btn => { if (Number(btn.textContent.replace(/[^0-9.]/g, '')) === Number(val)) btn.classList.add('active'); });
 }
 
 function selectMethod(method, element) {
@@ -20,7 +29,7 @@ function selectMethod(method, element) {
     element.classList.add('selected');
 }
 
-fetch('/api/user', {
+apiFetch('/api/user', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ telegram_id: String(user.id), username: user.username })
@@ -187,19 +196,11 @@ function generateKey() {
 }
 
 function makePayment() {
-    const amount = document.getElementById('payAmount').value;
-    if(!amount || amount <= 0) { alert('Введите корректную сумму'); return; }
+    const amount = Number(document.getElementById('payAmount').value);
+    if(!Number.isFinite(amount) || amount <= 0 || amount > 10000000) { alert('Введите корректную сумму'); return; }
 
     if (selectedPaymentMethod === 'direct_transfer') {
-        const wallet = 'UQBVqIZqbAt0CCiboMZ38hdBGjN7RkEZKLUuDX2F5zPRwG1v';
-        const comment = `topup_${user.id}_${amount}`;
-        document.getElementById('walletAddressText').innerText = wallet;
-        document.getElementById('walletCommentText').innerText = comment;
-        
-        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(wallet)}`;
-        document.getElementById('qrCodeImg').src = qrUrl;
-        
-        document.getElementById('transferModal').classList.remove('hidden');
+        alert('Прямой перевод TON / USDT пока не подключён: сначала нужно подтвердить сеть, адрес кошелька и способ автоматической проверки платежа. Не отправляйте средства на старые реквизиты.');
         return;
     }
 
