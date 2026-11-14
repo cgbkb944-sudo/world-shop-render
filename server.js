@@ -811,7 +811,7 @@ app.post('/api/support/ban-request',roles('owner','support'),async(req,res)=>{
 app.post('/api/profile', (req,res)=>res.status(405).json({error:'Используйте PUT /api/profile.'}));
 
 app.post('/api/admin/action',roles('owner','support','admin'),async(req,res)=>{
-  const {action,target_id,amount}=req.body||{};
+  const {action,target_id,amount,duration_hours,reason}=req.body||{};
   try{
     if(action==='stats'&&req.user.role==='owner'){
       const r=await pool.query('SELECT (SELECT COUNT(*) FROM users) total_users,(SELECT COALESCE(SUM(balance),0) FROM users) total_balance');
@@ -830,7 +830,10 @@ app.post('/api/admin/action',roles('owner','support','admin'),async(req,res)=>{
       }catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
     }else if(action==='ban'||action==='unban'){
       if(req.user.role==='support'&&action==='ban')return res.status(403).json({error:'Поддержка отправляет запрос владельцу через форму блокировки.'});
-      await pool.query('UPDATE users SET is_banned=$1,banned_until=NULL,banned_reason=NULL,updated_at=NOW() WHERE telegram_id=$2',[action==='ban',target_id]);
+      const hours=duration_hours===null||duration_hours===undefined||duration_hours===''?null:Number(duration_hours);
+      if(action==='ban'&&(hours!==null&&(!Number.isInteger(hours)||hours<1||hours>8760)))return res.status(400).json({error:'Срок блокировки должен быть от 1 до 8760 часов либо пустым для постоянной блокировки.'});
+      await pool.query('UPDATE users SET is_banned=$1,banned_until=$2,banned_reason=$3,updated_at=NOW() WHERE telegram_id=$4',
+        [action==='ban',action==='ban'&&hours?new Date(Date.now()+hours*3600000):null,action==='ban'?String(reason||'Блокировка администратором').slice(0,500):null,target_id]);
     }else return res.status(400).json({error:'Неизвестное действие.'});
     res.json({success:true});
   }catch(e){console.error(e.message);res.status(400).json({error:e.message||'Ошибка операции.'});}
