@@ -165,6 +165,15 @@
         .nav-item svg { width: 22px; height: 22px; fill: currentColor; }
         .nav-item.active { color: #818cf8; }
         .hidden { display: none; }
+        .balance-hero{margin:18px 0;padding:22px;border-radius:18px;background:linear-gradient(135deg,rgba(99,102,241,.28),rgba(168,85,247,.2));border:1px solid rgba(129,140,248,.35)}
+        .balance-hero small{display:block;color:#c7d2fe;font-size:12px;letter-spacing:1.2px;text-transform:uppercase}
+        .balance-hero strong{display:block;font-size:clamp(34px,9vw,48px);line-height:1.12;font-weight:850;letter-spacing:-1.5px;margin-top:7px;color:#fff;font-variant-numeric:tabular-nums}
+        .transfer-grid{display:grid;grid-template-columns:1fr;gap:12px}
+        .profile-avatar{width:62px;height:62px;border-radius:50%;object-fit:cover;background:#334155;border:2px solid rgba(129,140,248,.6)}
+        .support-result{margin-top:12px;padding:12px;border-radius:12px;background:rgba(15,23,42,.65);overflow-wrap:anywhere}
+        .copy-key{font-family:monospace;font-size:15px;letter-spacing:.5px;padding:12px;background:rgba(15,23,42,.7);border-radius:10px;overflow-wrap:anywhere}
+        .action-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+        .action-row button{flex:1;min-width:110px}
 
         .search-box {
             width: 100%;
@@ -316,7 +325,23 @@
             <div id="owner-sellers-list" class="data-list">Загружаем продавцов…</div>
             <div id="seller-detail" class="seller-detail hidden"></div>
         </div>
-        <div class="card">
+        <div class="card" id="support-tools-card">
+            <div class="section-title"><div><span class="eyebrow">ACCOUNT TOOLS</span><h3>Управление аккаунтом</h3></div><button class="small-action" onclick="loadModeration()">Обновить заявки</button></div>
+            <label>Статистика пользователя по Telegram ID</label>
+            <input id="supportLookupId" inputmode="numeric" placeholder="Например, 123456789">
+            <button onclick="lookupUser()">Посмотреть статистику</button>
+            <div id="support-user-result" class="support-result hidden"></div>
+            <div id="moderation-list" class="data-list" style="margin-top:14px">Заявки на модерацию загрузятся здесь.</div>
+        </div>
+        <div class="card" id="support-ban-card">
+            <h3>Запрос блокировки</h3>
+            <input id="banTargetId" inputmode="numeric" placeholder="Telegram ID пользователя">
+            <input id="banReason" placeholder="Причина блокировки">
+            <input id="banDuration" type="number" min="1" max="8760" placeholder="Срок в часах (пусто — навсегда)">
+            <button class="danger-button" onclick="requestBan()">Отправить запрос владельцу</button>
+            <p id="ban-request-result"></p>
+        </div>
+        <div class="card" id="owner-user-card">
             <div class="section-title"><div><span class="eyebrow">USER MANAGEMENT</span><h3>Пользователи</h3></div></div>
             <div class="admin-user-form"><input type="text" id="targetId" placeholder="Telegram ID пользователя"><select id="assignRole"><option value="user">Пользователь</option><option value="seller">Продавец</option><option value="support">Поддержка</option><option value="admin">Администратор</option></select><button onclick="assignUserRole()">Назначить роль</button></div>
             <div class="admin-user-form"><input type="number" id="balanceDelta" placeholder="Изменение баланса, ₽"><button onclick="updateBalance()">Изменить баланс</button><button class="danger-button" onclick="setUserBan(true)">Заблокировать</button><button class="secondary-button" onclick="setUserBan(false)">Разблокировать</button></div>
@@ -325,7 +350,10 @@
     <!-- Профиль -->
     <div id="tab-profile" class="tab-content hidden">
         <div class="card">
-            <span class="badge" id="userrole-badge">Пользователь</span><h3>💳 Пополнить баланс</h3><p>Баланс: <b id="user-balance">0 ₽</b></p><p>ID: <span id="userid">---</span> · @<span id="username">Пользователь</span></p>
+            <span class="badge" id="userrole-badge">Пользователь</span>
+            <div class="balance-hero"><small>Текущий баланс</small><strong id="user-balance">0 ₽</strong></div>
+            <p>ID: <span id="userid">---</span> · @<span id="username">Пользователь</span></p>
+            <h3>💳 Пополнить баланс</h3>
             <p>Сумма пополнения</p>
             <input type="number" id="payAmount" placeholder="Введите сумму в ₽" value="100">
             
@@ -372,6 +400,28 @@
             <button onclick="makePayment()">Перейти к оплате</button>
         </div>
 
+        <div class="card">
+            <h3>↗️ Передать баланс</h3>
+            <p>Создай одноразовый код на сумму перевода и отправь его получателю. Код действует 24 часа.</p>
+            <div class="transfer-grid">
+                <input id="transferAmount" type="number" min="0.01" step="0.01" placeholder="Сумма перевода, ₽">
+                <button onclick="createTransferCode()">Создать код перевода</button>
+                <div id="transfer-code-result" class="hidden"></div>
+            </div>
+            <div class="divider"></div>
+            <h3>Получить перевод</h3>
+            <input id="redeemTransferCode" placeholder="Вставь код WTS-XXXXXXXXXX">
+            <button onclick="redeemTransferCode()">Активировать код и получить деньги</button>
+            <div id="transfer-redeem-result"></div>
+        </div>
+        <div class="card">
+            <div class="section-title"><div><span class="eyebrow">PROFILE SETTINGS</span><h3>⚙️ Настройки профиля</h3></div></div>
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px"><img id="profile-avatar" class="profile-avatar" alt="Аватар профиля"><span id="profile-display-name">Пользователь</span></div>
+            <label>Название аккаунта</label><input id="profileName" maxlength="40" placeholder="Как вас показывать в магазине">
+            <label>Ссылка на аватар (HTTPS)</label><input id="profileAvatarUrl" type="url" placeholder="https://...">
+            <button onclick="saveProfileSettings()">Сохранить настройки</button>
+            <h4 style="margin-top:18px">Мои покупки и продажи</h4><div id="my-activity" class="data-list">Загрузка истории…</div>
+        </div>
         <div class="card" id="key-activation-card">
             <h3>🔑 Активация ключа</h3>
             <p>Введите ключ продавца или поддержки.</p>
@@ -387,11 +437,9 @@
             <label>Категория:</label>
             <select id="newCategory" onchange="updateSubcategoryOptions()">
                 <option value="Telegram">Telegram</option>
-                <option value="Roblox">Roblox</option>
-                <option value="Instagram">Instagram</option>
-                <option value="Genshin">Genshin Impact</option>
-                <option value="Steam">Steam</option>
-                <option value="VPN">VPN Сервисы</option>
+                <option value="Instagram">Instagram</option><option value="TikTok">TikTok</option><option value="YouTube">YouTube</option><option value="Discord">Discord</option><option value="VK">ВКонтакте</option>
+                <option value="Roblox">Roblox</option><option value="Minecraft">Minecraft</option><option value="Genshin Impact">Genshin Impact</option><option value="PUBG Mobile">PUBG Mobile</option><option value="Free Fire">Free Fire</option><option value="Mobile Legends">Mobile Legends</option><option value="Brawl Stars">Brawl Stars</option><option value="Fortnite">Fortnite</option><option value="Valorant">Valorant</option><option value="CS2">CS2</option><option value="Dota 2">Dota 2</option><option value="Steam">Steam</option><option value="PlayStation">PlayStation</option><option value="Xbox">Xbox</option><option value="Nintendo">Nintendo</option>
+                <option value="VPN">VPN и прокси</option><option value="Подписки">Подписки и премиум</option><option value="Аккаунты">Аккаунты и профили</option><option value="Пополнение">Пополнение баланса и донат</option><option value="Программное обеспечение">Программы и ПО</option><option value="Дизайн">Дизайн и оформление</option><option value="Услуги">Услуги и другое</option>
             </select>
 
             <label>Услуга / Подкатегория:</label>
@@ -422,8 +470,8 @@
         <div class="card footer-links">
             <a href="https://t.me/Tobias_26" target="_blank">💬 Написать в поддержку</a>
             <a href="https://t.me/" target="_blank">📢 Telegram канал</a>
-            <a href="#" onclick="alert('Политика конфиденциальности сервиса World TG Shop...'); return false;">🔒 Политика конфиденциальности</a>
-            <a href="#" onclick="alert('Пользовательское соглашение и оферта...'); return false;">📄 Пользовательское соглашение</a>
+            <a href="https://telegra.ph/POLITIKA-KONFIDENCIALNOSTI-08-12-99" target="_blank" rel="noopener noreferrer">🔒 Политика конфиденциальности</a>
+            <a href="https://telegra.ph/PUBLICHNAYA-OFERTA-08-12-15" target="_blank" rel="noopener noreferrer">📄 Пользовательское соглашение и публичная оферта</a>
         </div>
     </div>
 </div>
