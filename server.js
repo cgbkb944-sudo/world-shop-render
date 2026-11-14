@@ -34,8 +34,8 @@ async function migrateDatabase() {
   }
   const schemaPath = path.join(__dirname, 'database', 'schema.sql');
   const schema = fs.readFileSync(schemaPath, 'utf8')
-    .replace(/^\\s*BEGIN\\s*;?/i, '')
-    .replace(/COMMIT\\s*;?\\s*$/i, '');
+    .replace(/^\s*BEGIN\s*;?/i, '')
+    .replace(/COMMIT\s*;?\s*$/i, '');
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
