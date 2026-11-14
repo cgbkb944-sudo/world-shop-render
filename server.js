@@ -222,7 +222,7 @@ app.get('/health/payments',(req,res)=>res.json({
   telegram_stars:!!(process.env.TELEGRAM_WEBHOOK_SECRET&&appOrigin)
 }));
 app.get('/api/products',async(req,res)=>{
-  try { const r=await pool.query("SELECT id,title,description,price,price_from,max_price,category,subcategory FROM products WHERE status='active' ORDER BY created_at DESC LIMIT 200"); res.json(r.rows); }
+  try { const r=await pool.query("SELECT p.id,p.title,p.description,p.price,p.price_from,p.max_price,p.category,p.subcategory,COALESCE(u.display_name,u.username,'Продавец') AS seller_name FROM products p JOIN users u ON u.telegram_id=p.seller_id WHERE p.status='active' ORDER BY p.created_at DESC LIMIT 200"); res.json(r.rows); }
   catch(e){console.error(e.message);res.status(503).json({error:'Не удалось загрузить товары.'});}
 });
 app.use('/api',auth);
@@ -758,7 +758,7 @@ app.get('/api/support/user/:id',roles('owner','support','admin'),async(req,res)=
       pool.query('SELECT telegram_id,username,role,balance,is_banned,banned_until,banned_reason,created_at FROM users WHERE telegram_id=$1',[id]),
       pool.query('SELECT amount,type,description,created_at FROM transactions WHERE telegram_id=$1 ORDER BY created_at DESC LIMIT 200',[id]),
       pool.query(`SELECT o.id,o.amount,o.status,o.created_at,p.title,COALESCE(s.display_name,s.username,'Продавец') AS store_name FROM orders o JOIN products p ON p.id=o.product_id JOIN users s ON s.telegram_id=o.seller_id WHERE o.buyer_id=$1 ORDER BY o.created_at DESC LIMIT 100`,[id]),
-      pool.query('SELECT o.id,o.amount,o.status,o.created_at,p.title FROM orders o JOIN products p ON p.id=o.product_id WHERE o.seller_id=$1 ORDER BY o.created_at DESC LIMIT 100',[id]),
+      pool.query(`SELECT o.id,o.amount,o.status,o.created_at,p.title,COALESCE(b.display_name,b.username,'Покупатель') AS buyer_name FROM orders o JOIN products p ON p.id=o.product_id JOIN users b ON b.telegram_id=o.buyer_id WHERE o.seller_id=$1 ORDER BY o.created_at DESC LIMIT 100`,[id]),
       pool.query('SELECT id,amount,status,created_at,recipient_id,sender_id FROM balance_transfer_codes WHERE sender_id=$1 OR recipient_id=$1 ORDER BY created_at DESC LIMIT 100',[id])
     ]);
     if(!u.rowCount)return res.status(404).json({error:'Пользователь не найден.'});
