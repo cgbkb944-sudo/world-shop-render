@@ -39,6 +39,7 @@ function loadOwnerStats(){
     document.getElementById('stats-total-users').textContent=d.total_users;
     document.getElementById('stats-sales-volume').textContent=rub(d.sales_volume);
     document.getElementById('stats-shop-revenue').textContent=rub(d.shop_revenue);
+    const shopBalance=document.getElementById('stats-shop-balance');if(shopBalance)shopBalance.textContent=rub(d.shop_balance);
     document.getElementById('stats-total-orders').textContent=d.total_orders;
     document.getElementById('stats-pending-payments').textContent=d.pending_payments;
     document.getElementById('stats-total-balance').textContent=rub(d.total_balance);
@@ -56,8 +57,19 @@ function showSeller(id){
   apiFetch('/api/owner/sellers/'+encodeURIComponent(id)).then(r=>r.json()).then(d=>{
     if(d.error)throw new Error(d.error);
     const u=d.user;
-    box.innerHTML=`<div class="section-title"><h3>${escapeHtml(u.username?'@'+u.username:u.telegram_id)}</h3><button class="small-action" onclick="document.getElementById('seller-detail').classList.add('hidden')">Закрыть</button></div><p>ID: ${escapeHtml(u.telegram_id)} · Роль: ${escapeHtml(u.role)} · Баланс: ${rub(u.balance)}</p><p>Заработано: <b>${rub(d.totalEarned)}</b> · Товаров: ${d.products.length} · Заказов: ${d.orders.length}</p><h4>Товары</h4>${d.products.length?d.products.map(p=>`<div class="data-row"><div><b>${escapeHtml(p.title)}</b><small>${escapeHtml(p.status)} · ${rub(p.price)}</small></div></div>`).join(''):'<p>Нет товаров</p>'}<h4 style="margin-top:14px">Последние продажи</h4>${d.orders.length?d.orders.slice(0,10).map(o=>`<div class="data-row"><div><b>#${o.id} · ${escapeHtml(o.title)}</b><small>${rub(o.amount)} · ${escapeHtml(o.status)}</small></div></div>`).join(''):'<p>Продаж пока нет</p>'}${'<h4 style="margin-top:14px">История операций</h4>'}${d.transactions.length?d.transactions.slice(0,20).map(t=>`<div class="data-row"><div><b>${escapeHtml(t.description)}</b><small>${escapeHtml(t.type)} · ${new Date(t.created_at).toLocaleString('ru-RU')}</small></div><strong>${Number(t.amount)>0?'+':''}${rub(t.amount)}</strong></div>`).join(''):'<p>Операций пока нет</p>'}`;
+    box.innerHTML=`<div class="section-title"><h3>${escapeHtml(u.username?'@'+u.username:u.telegram_id)}</h3><button class="small-action" onclick="document.getElementById('seller-detail').classList.add('hidden')">Закрыть</button></div><p>ID: ${escapeHtml(u.telegram_id)} · Роль: ${escapeHtml(u.role)} · Баланс аккаунта: ${rub(u.balance)} · Баланс продавца: ${rub(u.seller_balance)}</p><p>Заработано: <b>${rub(d.totalEarned)}</b> · Товаров: ${d.products.length} · Заказов: ${d.orders.length}</p><h4>Товары</h4>${d.products.length?d.products.map(p=>`<div class="data-row"><div><b>${escapeHtml(p.title)}</b><small>${escapeHtml(p.status)} · ${rub(p.price)}</small></div></div>`).join(''):'<p>Нет товаров</p>'}<h4 style="margin-top:14px">Последние продажи</h4>${d.orders.length?d.orders.slice(0,10).map(o=>`<div class="data-row"><div><b>#${o.id} · ${escapeHtml(o.title)}</b><small>${rub(o.amount)} · ${escapeHtml(o.status)}</small></div></div>`).join(''):'<p>Продаж пока нет</p>'}${'<h4 style="margin-top:14px">История операций</h4>'}${d.transactions.length?d.transactions.slice(0,20).map(t=>`<div class="data-row"><div><b>${escapeHtml(t.description)}</b><small>${escapeHtml(t.type)} · ${new Date(t.created_at).toLocaleString('ru-RU')}</small></div><strong>${Number(t.amount)>0?'+':''}${rub(t.amount)}</strong></div>`).join(''):'<p>Операций пока нет</p>'}`;
   }).catch(e=>box.textContent=e.message);
+}
+function loadOwnerWithdrawals(){
+ const box=document.getElementById('owner-withdrawals-list');if(!box)return;box.textContent='Загружаем заявки…';
+ apiFetch('/api/owner/withdrawals').then(r=>r.json()).then(rows=>{
+  if(!Array.isArray(rows))throw new Error(rows.error||'Ошибка');
+  box.innerHTML=rows.length?rows.map(w=>{const d=w.payout_details||{};const details=w.method==='stars'?`${d.stars||w.amount} ⭐`:w.method==='rub'?`${d.channel==='phone'?'Телефон':'Электронный кошелёк'}: ${escapeHtml(d.value||'')} · ${escapeHtml(d.bank||'')}`:`${escapeHtml(d.asset||'')} / ${escapeHtml(d.network||'')} · ${escapeHtml(d.address||'')}`;return `<div class="data-row"><div><b>Заявка #${w.id} · ${escapeHtml(w.username?'@'+w.username:w.seller_id)}</b><small>${rub(w.amount)} · ${escapeHtml(w.method)} · ${details} · ${escapeHtml(w.status)}</small></div>${w.status==='pending'?`<button onclick="decideWithdrawal(${w.id},'paid')">Выплачено</button><button class="danger-button" onclick="decideWithdrawal(${w.id},'rejected')">Отклонить</button>`:''}</div>`;}).join(''):'<div class="no-products">Заявок пока нет</div>';
+ }).catch(e=>box.textContent=e.message);
+}
+async function decideWithdrawal(id,decision){
+ const note=decision==='rejected'?prompt('Причина отклонения (необязательно):',''):'';if(note===null)return;
+ try{const r=await jsonPost('/api/owner/withdrawals/'+id+'/decision',{decision,note}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');loadOwnerWithdrawals();alert(decision==='paid'?'Заявка отмечена как выплаченная.':'Заявка отклонена, средства возвращены продавцу.');}catch(e){alert(e.message);}
 }
 function assignUserRole(){
  const id=document.getElementById('targetId').value.trim(),role=document.getElementById('assignRole').value;
@@ -76,6 +88,30 @@ function setUserBan(ban){
  jsonPost('/api/admin/action',{action:ban?'ban':'unban',target_id,duration_hours,reason}).then(async r=>({ok:r.ok,d:await r.json()})).then(x=>{if(!x.ok)throw new Error(x.d.error);alert(ban?'Пользователь заблокирован':'Блокировка снята');}).catch(e=>alert(e.message));
 }
 
+
+async function loadSellerWallet(){
+ try{const r=await apiFetch('/api/seller/wallet'),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');
+  document.getElementById('seller-balance').textContent=rub(d.balance);
+  const box=document.getElementById('seller-withdrawal-history');
+  box.innerHTML=d.withdrawals.length?d.withdrawals.map(w=>`<div class="data-row"><div><b>Заявка #${w.id} · ${rub(w.amount)}</b><small>${escapeHtml(w.method)} · ${escapeHtml(w.status)} · ${new Date(w.created_at).toLocaleString('ru-RU')}${w.decision_note?' · '+escapeHtml(w.decision_note):''}</small></div></div>`).join(''):'<p>Заявок пока нет.</p>';
+ }catch(e){document.getElementById('seller-withdrawal-history').textContent=e.message;}
+}
+function updateWithdrawalFields(){
+ const method=document.getElementById('withdrawMethod').value,asset=document.getElementById('withdrawCryptoAsset').value;
+ document.getElementById('withdraw-rub-fields').classList.toggle('hidden',method!=='rub');
+ document.getElementById('withdraw-crypto-fields').classList.toggle('hidden',method!=='crypto');
+ document.getElementById('withdraw-stars-fields').classList.toggle('hidden',method!=='stars');
+ const network=document.getElementById('withdrawCryptoNetwork');
+ if(asset==='TON'){network.value='TON';network.disabled=true;}else{network.disabled=false;}
+}
+async function submitWithdrawal(){
+ const amount=Number(document.getElementById('withdrawAmount').value),method=document.getElementById('withdrawMethod').value;let details={};
+ if(method==='rub')details={channel:document.getElementById('withdrawRubChannel').value,value:document.getElementById('withdrawRubValue').value,bank:document.getElementById('withdrawRubBank').value};
+ if(method==='crypto')details={asset:document.getElementById('withdrawCryptoAsset').value,network:document.getElementById('withdrawCryptoNetwork').value,address:document.getElementById('withdrawCryptoAddress').value};
+ const result=document.getElementById('withdrawal-result');result.textContent='';
+ if(!Number.isFinite(amount)||amount<=0){result.textContent='Введите корректную сумму.';return;}
+ try{const r=await jsonPost('/api/withdrawals',{amount,method,details}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');result.textContent='Заявка #'+d.request_id+' отправлена владельцу и в группу.';document.getElementById('withdrawAmount').value='';loadSellerWallet();}catch(e){result.textContent=e.message;}
+}
 
 function setAmount(val) {
     document.getElementById('payAmount').value = val;
@@ -108,6 +144,7 @@ apiFetch('/api/user', {
     const shownAvatar=data.avatar_url || user.photo_url || '';
     if(shownAvatar){avatar.src=shownAvatar;avatar.style.visibility='visible';}else{avatar.removeAttribute('src');avatar.style.visibility='hidden';}
     if(['owner','support','admin'].includes(data.role)) document.getElementById('nav-manage').classList.remove('hidden');
+    document.getElementById('owner-withdrawals-card').classList.toggle('hidden',data.role!=='owner');
     if(data.role!=='owner'){
       document.querySelector('.owner-heading').classList.add('hidden');
       document.querySelector('.owner-stats-grid').classList.add('hidden');
@@ -120,6 +157,8 @@ apiFetch('/api/user', {
     if(data.role==='support'||data.role==='admin') document.getElementById('owner-key-gen').classList.add('hidden');
     
     if(data.role === 'owner') document.getElementById('owner-key-gen').style.display = 'block';
+    if(data.role==='seller'||data.role==='admin')document.getElementById('seller-wallet-card').classList.remove('hidden');
+    if(data.role==='seller'||data.role==='admin')loadSellerWallet();
 
     if(data.role === 'seller' || data.role === 'admin' || data.role === 'owner') {
         document.getElementById('seller-product-card').classList.remove('hidden');
@@ -451,7 +490,7 @@ function switchTab(tabName, element) {
     element.classList.add('active');
 
     if(tabName === 'manage') {
-      if(currentRole==='owner'){loadOwnerStats();loadOwnerSellers();loadKeyHistory();}
+      if(currentRole==='owner'){loadOwnerStats();loadOwnerSellers();loadKeyHistory();loadOwnerWithdrawals();}
       if(['owner','support'].includes(currentRole)) loadModeration();
     }
     if(tabName === 'history') loadHistory();

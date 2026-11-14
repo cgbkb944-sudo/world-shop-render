@@ -309,6 +309,7 @@
             <div class="owner-stat"><small>Пользователи</small><strong id="stats-total-users">—</strong></div>
             <div class="owner-stat"><small>Оборот</small><strong id="stats-sales-volume">— ₽</strong></div>
             <div class="owner-stat"><small>Доход магазина</small><strong id="stats-shop-revenue">— ₽</strong></div>
+            <div class="owner-stat"><small>Баланс магазина</small><strong id="stats-shop-balance">— ₽</strong></div>
             <div class="owner-stat"><small>Заказы</small><strong id="stats-total-orders">—</strong></div>
             <div class="owner-stat"><small>Ожидают оплату</small><strong id="stats-pending-payments">—</strong></div>
             <div class="owner-stat"><small>Баланс пользователей</small><strong id="stats-total-balance">— ₽</strong></div>
@@ -333,6 +334,10 @@
             <div class="section-title"><div><span class="eyebrow">SELLER MANAGEMENT</span><h3>Продавцы</h3></div><button class="small-action" onclick="loadOwnerSellers()">Обновить</button></div>
             <div id="owner-sellers-list" class="data-list">Загружаем продавцов…</div>
             <div id="seller-detail" class="seller-detail hidden"></div>
+        </div>
+        <div class="card" id="owner-withdrawals-card">
+            <div class="section-title"><div><span class="eyebrow">PAYOUT REQUESTS</span><h3>Заявки на вывод продавцов</h3></div><button class="small-action" onclick="loadOwnerWithdrawals()">Обновить</button></div>
+            <div id="owner-withdrawals-list" class="data-list">Заявки на вывод появятся здесь.</div>
         </div>
         <div class="card" id="support-tools-card">
             <div class="section-title"><div><span class="eyebrow">ACCOUNT TOOLS</span><h3>Управление аккаунтом</h3></div><button class="small-action" onclick="loadModeration()">Обновить заявки</button></div>
@@ -439,6 +444,29 @@
             <label>Ссылка на аватар (HTTPS)</label><input id="profileAvatarUrl" type="url" placeholder="https://...">
             <button onclick="saveProfileSettings()">Сохранить настройки</button>
             <h4 style="margin-top:18px">Мои покупки и продажи</h4><div id="my-activity" class="data-list">Загрузка истории…</div>
+        </div>
+        <div class="card hidden" id="seller-wallet-card">
+            <h3>💰 Баланс продавца</h3>
+            <div class="balance-hero"><small>Доступно для вывода</small><strong id="seller-balance">0 ₽</strong></div>
+            <p>Это отдельный баланс продавца. Обычный баланс аккаунта для покупок и пополнений не затрагивается.</p>
+            <h4>Запросить вывод средств</h4>
+            <label>Сумма вывода (₽)</label><input id="withdrawAmount" type="number" min="1" step="0.01" placeholder="Например, 500">
+            <label>Способ вывода</label><select id="withdrawMethod" onchange="updateWithdrawalFields()"><option value="rub">Рубли</option><option value="stars">Telegram Stars — 1 ⭐ = 1 ₽</option><option value="crypto">Криптовалюта</option></select>
+            <div id="withdraw-rub-fields">
+                <label>Куда отправить</label><select id="withdrawRubChannel"><option value="phone">На карту по номеру телефона</option><option value="ewallet">Электронный кошелёк</option></select>
+                <label>Номер телефона / реквизиты кошелька</label><input id="withdrawRubValue" placeholder="+7... или реквизиты кошелька">
+                <label>Банк или сервис (необязательно)</label><input id="withdrawRubBank" placeholder="Например, Сбербанк / ЮMoney">
+            </div>
+            <div id="withdraw-crypto-fields" class="hidden">
+                <label>Криптовалюта</label><select id="withdrawCryptoAsset" onchange="updateWithdrawalFields()"><option value="TON">TON</option><option value="USDT">USDT</option></select>
+                <label>Сеть</label><select id="withdrawCryptoNetwork"><option value="TON">TON</option><option value="TRC20">TRC20</option><option value="ERC20">ERC20</option><option value="BEP20">BEP20</option></select>
+                <label>Адрес криптокошелька</label><input id="withdrawCryptoAddress" placeholder="Адрес кошелька">
+                <p>Сумма заявки указывается в рублях. Криптоэквивалент и курс владелец уточнит при выплате.</p>
+            </div>
+            <div id="withdraw-stars-fields" class="hidden"><p>Количество звёзд будет равно сумме заявки: 1 ⭐ = 1 ₽.</p></div>
+            <button onclick="submitWithdrawal()">Отправить заявку владельцу</button>
+            <div id="withdrawal-result" role="status"></div>
+            <h4 style="margin-top:18px">История заявок</h4><div id="seller-withdrawal-history" class="data-list">Загрузка…</div>
         </div>
         <div class="card hidden" id="seller-product-card">
             <h3>📦 Выставить товар на продажу</h3>

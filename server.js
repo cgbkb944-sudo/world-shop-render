@@ -9,6 +9,7 @@ const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const { DATABASE_URL, BOT_TOKEN } = process.env;
 const OWNER_TELEGRAM_ID = process.env.OWNER_TELEGRAM_ID || '8127900151';
+const WITHDRAWAL_GROUP_ID = '-1004497861005';
 if (!DATABASE_URL) throw new Error('DATABASE_URL is required');
 if (!BOT_TOKEN) throw new Error('BOT_TOKEN is required');
 if (!OWNER_TELEGRAM_ID || !/^\d+$/.test(OWNER_TELEGRAM_ID)) throw new Error('OWNER_TELEGRAM_ID must be numeric');
@@ -120,6 +121,34 @@ async function migrateDatabase() {
       reason TEXT NOT NULL DEFAULT '',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS seller_balance NUMERIC(18,2) NOT NULL DEFAULT 0 CHECK (seller_balance >= 0);
+    CREATE TABLE IF NOT EXISTS shop_wallet (
+      id SMALLINT PRIMARY KEY CHECK (id=1),
+      balance NUMERIC(18,2) NOT NULL DEFAULT 0 CHECK (balance >= 0),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    INSERT INTO shop_wallet(id,balance) VALUES (1,0) ON CONFLICT (id) DO NOTHING;
+    CREATE TABLE IF NOT EXISTS shop_ledger (
+      id BIGSERIAL PRIMARY KEY,
+      amount NUMERIC(18,2) NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('commission','refund')),
+      reference TEXT NOT NULL UNIQUE,
+      description TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS withdrawal_requests (
+      id BIGSERIAL PRIMARY KEY,
+      seller_id BIGINT NOT NULL REFERENCES users(telegram_id),
+      amount NUMERIC(18,2) NOT NULL CHECK (amount > 0),
+      method TEXT NOT NULL CHECK (method IN ('stars','rub','crypto')),
+      payout_details JSONB NOT NULL DEFAULT '{}'::jsonb,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','paid','rejected')),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      decided_at TIMESTAMPTZ,
+      decided_by BIGINT REFERENCES users(telegram_id),
+      decision_note TEXT
+    );
+    CREATE INDEX IF NOT EXISTS withdrawal_requests_status_idx ON withdrawal_requests(status,created_at DESC);
   `);
 }
 
@@ -208,7 +237,7 @@ async function auth(req,res,next) {
       "INSERT INTO users (telegram_id,username,role) VALUES ($1,$2,$3) " +
       "ON CONFLICT (telegram_id) DO UPDATE SET username=EXCLUDED.username, " +
       "role=CASE WHEN users.telegram_id=$4 THEN 'owner' ELSE users.role END, updated_at=NOW() " +
-      "RETURNING telegram_id,username,role,balance,is_banned,banned_until,banned_reason",
+      "RETURNING telegram_id,username,role,balance,seller_balance,is_banned,banned_until,banned_reason",
       [u.id,u.username,role,OWNER_TELEGRAM_ID]);
     req.user = r.rows[0];
     if (req.user.is_banned && req.user.banned_until && new Date(req.user.banned_until) <= new Date()) {
@@ -255,7 +284,7 @@ app.get('/api/products',async(req,res)=>{
 app.use('/api',auth);
 app.post('/api/user',async(req,res)=>{
   try{
-    const q=await pool.query('SELECT telegram_id,username,role,balance,is_banned,display_name,avatar_url,banned_until FROM users WHERE telegram_id=$1',[req.user.telegram_id]);
+    const q=await pool.query('SELECT telegram_id,username,role,balance,seller_balance,is_banned,display_name,avatar_url,banned_until FROM users WHERE telegram_id=$1',[req.user.telegram_id]);
     res.json(q.rows[0]||req.user);
   }catch(e){res.status(503).json({error:'Не удалось загрузить профиль.'});}
 });
@@ -420,6 +449,78 @@ app.post('/api/key/generate-topup',roles('owner'),async(req,res)=>{
   }catch(e){console.error('Top-up code generation:',e.message);res.status(500).json({error:'Не удалось создать код пополнения.'});}
 });
 
+app.get('/api/seller/wallet',roles('seller','admin','owner'),async(req,res)=>{
+  try{
+    const [u,w]=await Promise.all([
+      pool.query('SELECT seller_balance FROM users WHERE telegram_id=$1',[req.user.telegram_id]),
+      pool.query('SELECT id,amount,method,payout_details,status,created_at,decided_at,decision_note FROM withdrawal_requests WHERE seller_id=$1 ORDER BY created_at DESC LIMIT 50',[req.user.telegram_id])
+    ]);
+    res.json({balance:Number(u.rows[0]?.seller_balance||0),withdrawals:w.rows});
+  }catch(e){console.error('Seller wallet:',e.message);res.status(503).json({error:'Не удалось загрузить баланс продавца.'});}
+});
+app.post('/api/withdrawals',roles('seller','admin','owner'),async(req,res)=>{
+  const amount=money(req.body?.amount),method=String(req.body?.method||'');
+  const details=req.body?.details&&typeof req.body.details==='object'?req.body.details:{};
+  if(!amount)return res.status(400).json({error:'Введите корректную сумму вывода.'});
+  if(method==='stars'&&!Number.isInteger(amount))return res.status(400).json({error:'Для вывода в Telegram Stars укажите целое количество рублей/звёзд.'});
+  if(!['stars','rub','crypto'].includes(method))return res.status(400).json({error:'Выберите способ вывода.'});
+  let payout={};
+  if(method==='stars') payout={currency:'XTR',stars:amount,rate:'1 звезда = 1 ₽'};
+  if(method==='rub'){
+    const channel=String(details.channel||'');
+    const value=String(details.value||'').trim().slice(0,250);
+    if(!['phone','ewallet'].includes(channel)||value.length<5)return res.status(400).json({error:'Укажите номер телефона или реквизиты электронного кошелька.'});
+    payout={channel,value,bank:String(details.bank||'').trim().slice(0,100)};
+  }
+  if(method==='crypto'){
+    const asset=String(details.asset||''),network=String(details.network||''),address=String(details.address||'').trim().slice(0,250);
+    if(!['TON','USDT'].includes(asset)||!['TON','TRC20','ERC20','BEP20'].includes(network)||address.length<12)return res.status(400).json({error:'Укажите криптовалюту, сеть и корректный адрес кошелька.'});
+    if(asset==='TON'&&network!=='TON')return res.status(400).json({error:'Для TON доступна только сеть TON.'});
+    payout={asset,network,address,settlement:'Эквивалент в криптовалюте рассчитывает владелец при выплате'};
+  }
+  const db=await pool.connect();
+  try{
+    await db.query('BEGIN');
+    const debit=await db.query('UPDATE users SET seller_balance=seller_balance-$1,updated_at=NOW() WHERE telegram_id=$2 AND seller_balance >= $1 RETURNING seller_balance',[amount,req.user.telegram_id]);
+    if(!debit.rowCount){await db.query('ROLLBACK');return res.status(400).json({error:'Недостаточно средств на балансе продавца.'});}
+    const q=await db.query('INSERT INTO withdrawal_requests(seller_id,amount,method,payout_details) VALUES($1,$2,$3,$4) RETURNING id,created_at',[req.user.telegram_id,amount,method,payout]);
+    await db.query('COMMIT');
+    const id=q.rows[0].id;
+    const methodName=method==='stars'?'Telegram Stars':method==='rub'?'Рубли':'Криптовалюта';
+    const detailText=method==='stars'?`Количество: ${amount} ⭐ (1 ⭐ = 1 ₽)`:method==='rub'?`Канал: ${payout.channel==='phone'?'по номеру телефона':'электронный кошелёк'}\nРеквизиты: ${payout.value}\nБанк/сервис: ${payout.bank||'не указан'}`:`Актив: ${payout.asset}\nСеть: ${payout.network}\nАдрес: ${payout.address}\nСумма указана в рублях; криптоэквивалент рассчитывает владелец.`;
+    const msg=`💸 Заявка на вывод средств #${id}\nПродавец: ${req.user.username?'@'+req.user.username:'без username'}\nTelegram ID: ${req.user.telegram_id}\nСумма: ${amount.toFixed(2)} ₽\nСпособ: ${methodName}\n${detailText}\nСтатус: ожидает решения`;
+    await notifyOwner(msg);
+    try{await telegramRequest('sendMessage',{chat_id:WITHDRAWAL_GROUP_ID,text:msg,disable_web_page_preview:true});}
+    catch(e){console.error('Withdrawal group notification failed:',e.message);}
+    res.json({success:true,request_id:id,balance:Number(debit.rows[0].seller_balance),message:'Заявка отправлена владельцу.'});
+  }catch(e){await db.query('ROLLBACK');console.error('Withdrawal request:',e.message);res.status(503).json({error:'Не удалось создать заявку на вывод.'});}
+  finally{db.release();}
+});
+app.get('/api/owner/withdrawals',roles('owner'),async(req,res)=>{
+  try{
+    const q=await pool.query(`SELECT w.*,u.username FROM withdrawal_requests w JOIN users u ON u.telegram_id=w.seller_id ORDER BY CASE WHEN w.status='pending' THEN 0 ELSE 1 END,w.created_at DESC LIMIT 100`);
+    res.json(q.rows);
+  }catch(e){res.status(503).json({error:'Не удалось загрузить заявки на вывод.'});}
+});
+app.post('/api/owner/withdrawals/:id/decision',roles('owner'),async(req,res)=>{
+  const id=Number(req.params.id),decision=String(req.body?.decision||''),note=String(req.body?.note||'').trim().slice(0,500);
+  if(!Number.isSafeInteger(id)||id<1||!['paid','rejected'].includes(decision))return res.status(400).json({error:'Некорректное решение по заявке.'});
+  const db=await pool.connect();
+  try{
+    await db.query('BEGIN');
+    const q=await db.query("SELECT * FROM withdrawal_requests WHERE id=$1 AND status='pending' FOR UPDATE",[id]);
+    if(!q.rowCount){await db.query('ROLLBACK');return res.status(404).json({error:'Заявка уже обработана или не найдена.'});}
+    const w=q.rows[0];
+    if(decision==='rejected')await db.query('UPDATE users SET seller_balance=seller_balance+$1,updated_at=NOW() WHERE telegram_id=$2',[w.amount,w.seller_id]);
+    await db.query('UPDATE withdrawal_requests SET status=$1,decided_at=NOW(),decided_by=$2,decision_note=$3 WHERE id=$4',[decision,req.user.telegram_id,note||null,id]);
+    await db.query('COMMIT');
+    const message=decision==='paid'?`Заявка на вывод #${id} отмечена как выплаченная.`:`Заявка на вывод #${id} отклонена. ${w.amount} ₽ возвращены на баланс продавца.${note?' Причина: '+note:''}`;
+    await telegramRequest('sendMessage',{chat_id:String(w.seller_id),text:message}).catch(e=>console.error('Notify seller withdrawal:',e.message));
+    res.json({success:true,status:decision});
+  }catch(e){await db.query('ROLLBACK');console.error('Withdrawal decision:',e.message);res.status(503).json({error:'Не удалось обработать заявку.'});}
+  finally{db.release();}
+});
+
 app.post('/api/buy',async(req,res)=>{
   const id=Number(req.body?.product_id);if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'Неверный товар.'});
   const c=await pool.connect();
@@ -431,12 +532,13 @@ app.post('/api/buy',async(req,res)=>{
     const amount=Number(product.price), fee=Math.round(amount*3)/100, sellerAmount=Math.round((amount-fee)*100)/100;
     const debit=await c.query('UPDATE users SET balance=balance-$1,updated_at=NOW() WHERE telegram_id=$2 AND balance >= $1 RETURNING telegram_id',[amount,req.user.telegram_id]);
     if(!debit.rowCount){await c.query('ROLLBACK');return res.status(400).json({error:'Недостаточно средств на балансе.'});}
-    await c.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2',[sellerAmount,product.seller_id]);
-    await c.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2',[fee,OWNER_TELEGRAM_ID]);
+    await c.query('UPDATE users SET seller_balance=seller_balance+$1,updated_at=NOW() WHERE telegram_id=$2',[sellerAmount,product.seller_id]);
+    await c.query('UPDATE shop_wallet SET balance=balance+$1,updated_at=NOW() WHERE id=1',[fee]);
     const order=await c.query("INSERT INTO orders (buyer_id,seller_id,product_id,amount,commission,status) VALUES ($1,$2,$3,$4,$5,'paid') RETURNING id",[req.user.telegram_id,product.seller_id,id,amount,fee]);
+    await c.query('INSERT INTO shop_ledger(amount,kind,reference,description) VALUES($1,\'commission\',$2,$3)',[fee,'order_'+order.rows[0].id+'_fee','Комиссия 3% по заказу #'+order.rows[0].id]);
     const ref='order_'+order.rows[0].id;
-    await c.query("INSERT INTO transactions (telegram_id,amount,type,reference,description) VALUES ($1,$2,'purchase',$3,$4),($5,$6,'sale',$7,$8),($9,$10,'commission',$11,$12)",
-      [req.user.telegram_id,-amount,ref,'Покупка товара #'+order.rows[0].id,product.seller_id,sellerAmount,ref+'_seller','Продажа товара #'+order.rows[0].id,OWNER_TELEGRAM_ID,fee,ref+'_fee','Комиссия магазина']);
+    await c.query("INSERT INTO transactions (telegram_id,amount,type,reference,description) VALUES ($1,$2,'purchase',$3,$4),($5,$6,'sale',$7,$8)",
+      [req.user.telegram_id,-amount,ref,'Покупка товара #'+order.rows[0].id,product.seller_id,sellerAmount,ref+'_seller','Продажа товара #'+order.rows[0].id]);
     await c.query('COMMIT');res.json({success:true,message:'Покупка успешно совершена!',order_id:order.rows[0].id});
   }catch(e){await c.query('ROLLBACK');console.error('Purchase:',e.message);res.status(500).json({error:'Не удалось оформить покупку.'});}
   finally{c.release();}
@@ -810,19 +912,20 @@ app.post('/api/orders/:id/refund',roles('owner','support'),async(req,res)=>{
     if(o.status==='refunded'){await db.query('ROLLBACK');return res.status(400).json({error:'Этот заказ уже возвращён.'});}
     if(!['paid','delivered','completed','disputed'].includes(o.status)){await db.query('ROLLBACK');return res.status(400).json({error:'Текущий статус заказа не позволяет оформить возврат.'});}
     const sellerShare=Number(o.amount)-Number(o.commission);
-    const sellerDebit=await db.query('UPDATE users SET balance=balance-$1,updated_at=NOW() WHERE telegram_id=$2 AND balance >= $1 RETURNING telegram_id',[sellerShare,o.seller_id]);
+    const sellerDebit=await db.query('UPDATE users SET seller_balance=seller_balance-$1,updated_at=NOW() WHERE telegram_id=$2 AND seller_balance >= $1 RETURNING telegram_id',[sellerShare,o.seller_id]);
     if(!sellerDebit.rowCount){await db.query('ROLLBACK');return res.status(409).json({error:'У продавца недостаточно средств для возврата. Требуется ручное решение владельца.'});}
     if(Number(o.commission)>0){
-      const feeDebit=await db.query('UPDATE users SET balance=balance-$1,updated_at=NOW() WHERE telegram_id=$2 AND balance >= $1 RETURNING telegram_id',[o.commission,OWNER_TELEGRAM_ID]);
-      if(!feeDebit.rowCount){await db.query('ROLLBACK');return res.status(409).json({error:'На балансе магазина недостаточно средств для возврата комиссии. Требуется решение владельца.'});}
+      const feeDebit=await db.query('UPDATE shop_wallet SET balance=balance-$1,updated_at=NOW() WHERE id=1 AND balance >= $1 RETURNING id',[o.commission]);
+      if(!feeDebit.rowCount){await db.query('ROLLBACK');return res.status(409).json({error:'В отдельном балансе магазина недостаточно средств для возврата комиссии. Требуется решение владельца.'});}
     }
     await db.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2',[o.amount,o.buyer_id]);
     await db.query("UPDATE orders SET status='refunded' WHERE id=$1",[orderId]);
     await db.query("UPDATE products SET status='active' WHERE id=$1",[o.product_id]);
     const rf=await db.query('INSERT INTO order_refunds(order_id,refunded_by,amount,reason) VALUES ($1,$2,$3,$4) RETURNING id',[orderId,req.user.telegram_id,o.amount,reason]);
     const ref='refund_'+rf.rows[0].id;
-    await db.query("INSERT INTO transactions(telegram_id,amount,type,reference,description) VALUES ($1,$2,'refund',$3,$4),($5,$6,'admin_adjustment',$7,$8),($9,$10,'admin_adjustment',$11,$12)",
-      [o.buyer_id,o.amount,ref+'_buyer','Возврат за заказ #'+orderId+' — '+o.title,o.seller_id,-sellerShare,ref+'_seller','Списание средств при возврате заказа #'+orderId,OWNER_TELEGRAM_ID,-Number(o.commission),ref+'_fee','Возврат комиссии по заказу #'+orderId]);
+    await db.query("INSERT INTO transactions(telegram_id,amount,type,reference,description) VALUES ($1,$2,'refund',$3,$4),($5,$6,'admin_adjustment',$7,$8)",
+      [o.buyer_id,o.amount,ref+'_buyer','Возврат за заказ #'+orderId+' — '+o.title,o.seller_id,-sellerShare,ref+'_seller','Списание средств с баланса продавца при возврате заказа #'+orderId]);
+    if(Number(o.commission)>0)await db.query("INSERT INTO shop_ledger(amount,kind,reference,description) VALUES($1,'refund',$2,$3)",[Number(o.commission),'refund_'+rf.rows[0].id+'_fee','Возврат комиссии по заказу #'+orderId]);
     await db.query('COMMIT');
     res.json({success:true,refund_id:rf.rows[0].id,amount:Number(o.amount),message:'Возврат зачислен покупателю, товар возвращён продавцу.'});
   }catch(e){await db.query('ROLLBACK');console.error('Refund:',e.message);res.status(503).json({error:'Не удалось оформить возврат.'});}
@@ -931,6 +1034,7 @@ app.get('/api/owner/overview',roles('owner'),async(req,res)=>{
         (SELECT COUNT(*) FROM products) ::int AS total_products,
         (SELECT COUNT(*) FROM orders) ::int AS total_orders,
         (SELECT COALESCE(SUM(amount),0) FROM orders) AS sales_volume,
+        (SELECT balance FROM shop_wallet WHERE id=1) AS shop_balance,
         (SELECT COALESCE(SUM(commission),0) FROM orders) AS shop_revenue,
         (SELECT COUNT(*) FROM payments WHERE status='pending')::int AS pending_payments,
         (SELECT COUNT(*) FROM payments WHERE status='paid')::int AS paid_payments
@@ -942,7 +1046,7 @@ app.get('/api/owner/overview',roles('owner'),async(req,res)=>{
 app.get('/api/owner/sellers',roles('owner'),async(req,res)=>{
   try{
     const q=await pool.query(`
-      SELECT u.telegram_id,u.username,u.role,u.balance,u.created_at,
+      SELECT u.telegram_id,u.username,u.role,u.balance,u.seller_balance,u.created_at,
         (SELECT COUNT(*)::int FROM products p WHERE p.seller_id=u.telegram_id) AS products_count,
         (SELECT COUNT(*)::int FROM orders o WHERE o.seller_id=u.telegram_id) AS orders_count,
         (SELECT COALESCE(SUM(o.amount),0) FROM orders o WHERE o.seller_id=u.telegram_id) AS sales_volume,
@@ -959,7 +1063,7 @@ app.get('/api/owner/sellers/:id',roles('owner'),async(req,res)=>{
   if(!/^\d{1,20}$/.test(id))return res.status(400).json({error:'Некорректный Telegram ID.'});
   try{
     const [u,p,o,t,ledger]=await Promise.all([
-      pool.query('SELECT telegram_id,username,role,balance,is_banned,created_at FROM users WHERE telegram_id=$1',[id]),
+      pool.query('SELECT telegram_id,username,role,balance,seller_balance,is_banned,created_at FROM users WHERE telegram_id=$1',[id]),
       pool.query('SELECT id,title,price,status,created_at FROM products WHERE seller_id=$1 ORDER BY created_at DESC LIMIT 100',[id]),
       pool.query('SELECT o.id,o.amount,o.commission,o.status,o.created_at,p.title FROM orders o JOIN products p ON p.id=o.product_id WHERE o.seller_id=$1 ORDER BY o.created_at DESC LIMIT 100',[id]),
       pool.query("SELECT COALESCE(SUM(amount),0) AS total FROM transactions WHERE telegram_id=$1 AND type='sale'",[id]),
