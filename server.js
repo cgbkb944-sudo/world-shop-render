@@ -533,8 +533,8 @@ app.post('/api/buy',async(req,res)=>{
     if(!debit.rowCount){await c.query('ROLLBACK');return res.status(400).json({error:'Недостаточно средств на балансе.'});}
     await c.query('UPDATE users SET seller_balance=seller_balance+$1,updated_at=NOW() WHERE telegram_id=$2',[sellerAmount,product.seller_id]);
     await c.query('UPDATE shop_wallet SET balance=balance+$1,updated_at=NOW() WHERE id=1',[fee]);
-    await c.query('INSERT INTO shop_ledger(amount,kind,reference,description) VALUES($1,\'commission\',$2,$3)',[fee,'order_'+id,'Комиссия 3% по заказу #'+id]);
     const order=await c.query("INSERT INTO orders (buyer_id,seller_id,product_id,amount,commission,status) VALUES ($1,$2,$3,$4,$5,'paid') RETURNING id",[req.user.telegram_id,product.seller_id,id,amount,fee]);
+    await c.query('INSERT INTO shop_ledger(amount,kind,reference,description) VALUES($1,\'commission\',$2,$3)',[fee,'order_'+order.rows[0].id+'_fee','Комиссия 3% по заказу #'+order.rows[0].id]);
     const ref='order_'+order.rows[0].id;
     await c.query("INSERT INTO transactions (telegram_id,amount,type,reference,description) VALUES ($1,$2,'purchase',$3,$4),($5,$6,'sale',$7,$8)",
       [req.user.telegram_id,-amount,ref,'Покупка товара #'+order.rows[0].id,product.seller_id,sellerAmount,ref+'_seller','Продажа товара #'+order.rows[0].id]);
