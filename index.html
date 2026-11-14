@@ -220,6 +220,45 @@
             position: fixed; top: 0; left: 0; right: 0; bottom: 0;
             background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 200;
         }
+        .modal.hidden { display: none !important; }
+
+        body{background:radial-gradient(ellipse at 85% -10%,rgba(89,72,220,.22),transparent 38%),#080d1c;color:#f7f8ff}
+        .container{max-width:560px;padding:18px 16px 100px}
+        .store-header{display:flex;align-items:center;gap:12px;margin:4px 2px 24px}
+        .brand-mark{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;background:linear-gradient(140deg,#8b7bff,#5d55dc);font-size:23px;font-weight:900;box-shadow:0 8px 28px #6658e555}
+        .brand-copy{display:flex;flex-direction:column;gap:3px;flex:1}.brand-copy strong{font-size:14px;letter-spacing:1.5px}.brand-copy small{color:#8994b5;font-size:11px}
+        .header-profile{width:40px;height:40px;padding:0;margin:0;border-radius:13px;background:#171f37;border:1px solid #303a5b;box-shadow:none;font-size:20px}
+        .welcome-block{padding:23px 21px 20px;border:1px solid #34325f;border-radius:24px;background:linear-gradient(125deg,#22234d 0%,#171d3c 55%,#13253c 100%);margin-bottom:26px;position:relative;overflow:hidden}
+        .welcome-block:after{content:"";position:absolute;width:190px;height:190px;border-radius:50%;right:-65px;top:-80px;background:radial-gradient(circle,#8c7aff55,transparent 70%)}
+        .eyebrow{font-size:9px;letter-spacing:2px;color:#9b91ff;font-weight:800}
+        .welcome-block h1{font-size:31px;line-height:1.08;margin:10px 0 10px;letter-spacing:-1px}.welcome-block h1 em{font-style:normal;color:#a99cff}
+        .welcome-block p{max-width:290px;line-height:1.5;color:#aeb7d1}
+        .welcome-meta{display:flex;gap:14px;color:#d2d5f2;font-size:10px;margin-top:18px}
+        .catalog-heading,.section-title{display:flex;align-items:center;justify-content:space-between;gap:10px}
+        .catalog-heading{margin:0 3px 12px}.catalog-heading h2{font-size:21px;margin:5px 0 0}.catalog-count{font-size:11px;color:#929cba}
+        .catalog-card{background:rgba(17,25,47,.9);border:1px solid #293451;box-shadow:0 15px 40px #0003}
+        .product-item{background:#111a31;border:1px solid #293653;border-radius:16px;padding:15px;gap:12px;transition:transform .18s,border-color .18s}
+        .product-item:active{transform:scale(.99)}.product-item b{line-height:1.35}.product-item button{border-radius:11px;padding:9px 13px;background:linear-gradient(130deg,#8172ff,#6258df)}
+        .search-box{background:#0b1327;border-color:#293653}
+        .card{background:rgba(17,25,47,.92);border-color:#293451;box-shadow:0 12px 35px #0002}
+        .profile-card{background:linear-gradient(135deg,#28245a,#17233e)}
+        .owner-heading{padding:10px 3px 18px}.owner-heading h2{font-size:26px;margin:7px 0}.owner-heading p{margin:0}
+        .owner-stats-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:15px}
+        .owner-stat{padding:15px;border:1px solid #2b3654;border-radius:16px;background:linear-gradient(145deg,#192541,#111a30)}
+        .owner-stat small{display:block;color:#9ca8c7;font-size:10px;margin-bottom:9px}.owner-stat strong{font-size:20px;letter-spacing:-.5px}
+        .section-title h3{margin:5px 0 0}.mini-icon{color:#9e92ff;font-size:22px}.small-action{width:auto;margin:0;padding:8px 12px;font-size:11px;box-shadow:none;background:#252d4d}
+        .generated-key{margin-top:12px;color:#a99cff;overflow-wrap:anywhere;font-size:12px}
+        .data-list{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+        .data-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#101a30;border:1px solid #293653;border-radius:13px;padding:12px}
+        .data-row button{width:auto;margin:0;padding:8px 10px;font-size:11px;box-shadow:none}
+        .data-row small{display:block;color:#96a2c1;margin-top:4px}.seller-detail{margin-top:14px;padding:14px;border:1px solid #4c4686;border-radius:15px;background:#141b36}
+        .admin-user-form{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.admin-user-form input,.admin-user-form select{margin:0;min-width:0}.admin-user-form button{margin:0;padding:10px;font-size:12px}
+        .danger-button{background:#7e2d46}.secondary-button{background:#2d3b58}
+        .loading-state{text-align:center;padding:25px;color:#9ca8c7;font-size:13px}
+        .nav{background:rgba(8,13,28,.92);border-color:#27324c;padding:12px 0 calc(12px + env(safe-area-inset-bottom))}
+        .nav-item.active{color:#a99cff}
+        @media(min-width:520px){.owner-stats-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
     </style>
 </head>
 <body>
@@ -227,20 +266,21 @@
 <div id="app" class="container">
     <!-- Главная вкладка -->
     <div id="tab-main" class="tab-content">
-        <div class="card profile-card">
-            <span class="badge" id="userrole-badge">Пользователь</span>
-            <h3>@<span id="username">Пользователь</span></h3>
-            <p style="margin: 0 0 4px 0;">ID: <span id="userid">---</span></p>
-            <div class="balance-amount" id="user-balance">0 ₽</div>
-            <p style="margin: 0;">Ваш доступный баланс</p>
-        </div>
-
-        <div class="card">
-            <div class="shop-header">
-                <h4 style="margin-bottom: 12px;">🛍️ Витрина товаров</h4>
-            </div>
+        <header class="store-header">
+            <div class="brand-mark">W</div>
+            <div class="brand-copy"><strong>WORLD TG SHOP</strong><small>Цифровые товары и услуги</small></div>
+            <button class="header-profile" onclick="switchTab('profile', document.querySelector('.nav-item[data-tab=profile]'))" aria-label="Профиль">◉</button>
+        </header>
+        <section class="welcome-block">
+            <span class="eyebrow">МАРКЕТПЛЕЙС</span>
+            <h1>Найди то, что<br><em>тебе нужно</em></h1>
+            <p>Выбирай товары, сравнивай предложения и покупай в пару нажатий.</p>
+            <div class="welcome-meta"><span>✦ Быстро</span><span>✦ Удобно</span><span>✦ Безопасно</span></div>
+        </section>
+        <div class="catalog-heading"><div><span class="eyebrow">ВИТРИНА</span><h2>Каталог товаров</h2></div><span class="catalog-count" id="catalog-count">Загрузка…</span></div>
+        <div class="card catalog-card">
             <input type="text" id="searchInput" class="search-box" placeholder="🔍 Найти товар или услугу..." oninput="filterProducts()">
-            <div id="products-list">Загрузка товаров...</div>
+            <div id="products-list"><div class="loading-state">Загружаем предложения…</div></div>
         </div>
     </div>
 
@@ -248,44 +288,44 @@
     <div id="tab-history" class="tab-content hidden">
         <div class="card">
             <h3>📜 История операций</h3>
-            <p>Здесь будут отображаться ваши покупки и пополнения счета.</p>
+            <p>Ваши покупки и пополнения в одном месте.</p><div id="history-list" class="data-list">История появится после первой операции.</div>
         </div>
     </div>
 
-    <!-- Управление -->
+    <!-- Панель управления -->
     <div id="tab-manage" class="tab-content hidden">
-        <div class="card">
-            <h3>📊 Статистика сервиса</h3>
-            <p>Пользователей: <b id="stats-total-users" style="color:#fff;">Загрузка...</b></p>
-            <p>Общий баланс: <b id="stats-total-balance" style="color:#fff;">0 ₽</b></p>
-            <button style="background: rgba(99,102,241,0.3); border: 1px solid var(--accent);" onclick="loadAdminStats()">🔄 Обновить</button>
+        <div class="owner-heading"><span class="eyebrow">CONTROL CENTER</span><h2>Панель владельца</h2><p>Полный обзор работы WORLD TG SHOP</p></div>
+        <div class="owner-stats-grid">
+            <div class="owner-stat"><small>Пользователи</small><strong id="stats-total-users">—</strong></div>
+            <div class="owner-stat"><small>Оборот</small><strong id="stats-sales-volume">— ₽</strong></div>
+            <div class="owner-stat"><small>Доход магазина</small><strong id="stats-shop-revenue">— ₽</strong></div>
+            <div class="owner-stat"><small>Заказы</small><strong id="stats-total-orders">—</strong></div>
+            <div class="owner-stat"><small>Ожидают оплату</small><strong id="stats-pending-payments">—</strong></div>
+            <div class="owner-stat"><small>Баланс пользователей</small><strong id="stats-total-balance">— ₽</strong></div>
         </div>
-
         <div class="card" id="owner-key-gen" style="display:none;">
-            <h3>🔑 Генерация ключей доступа</h3>
-            <label>Роль для ключа:</label>
-            <select id="genRole">
-                <option value="seller">Продавец (Seller)</option>
-                <option value="support">Поддержка (Support)</option>
-            </select>
-            <button onclick="generateKey()" style="background: var(--success);">Сгенерировать ключ</button>
-            <div id="generatedKeyResult" style="margin-top:10px; font-weight:bold; color:#38bdf8;"></div>
+            <div class="section-title"><div><span class="eyebrow">ACCESS CONTROL</span><h3>Коды приглашения</h3></div><span class="mini-icon">⌘</span></div>
+            <p>Создавай одноразовые коды для сотрудников и выдавай нужные права.</p>
+            <label>Роль сотрудника</label>
+            <select id="genRole"><option value="admin">Администратор</option><option value="support">Поддержка</option><option value="seller">Продавец</option></select>
+            <button onclick="generateKey()">＋ Создать код</button>
+            <div id="generatedKeyResult" class="generated-key"></div>
         </div>
-
         <div class="card">
-            <h3>⚙️ Управление пользователем</h3>
-            <label>Telegram ID:</label>
-            <input type="text" id="targetId" placeholder="Введите ID">
-            <label>Изменение баланса (+ / -):</label>
-            <input type="number" id="balanceDelta" placeholder="Например: 500">
-            <button onclick="updateBalance()">Применить</button>
-            <button style="background: #ef4444; margin-top: 10px;" onclick="setUserBan(true)">Заблокировать</button>
-            <button style="background: #10b981;" onclick="setUserBan(false)">Разблокировать</button>
+            <div class="section-title"><div><span class="eyebrow">SELLER MANAGEMENT</span><h3>Продавцы</h3></div><button class="small-action" onclick="loadOwnerSellers()">Обновить</button></div>
+            <div id="owner-sellers-list" class="data-list">Загружаем продавцов…</div>
+            <div id="seller-detail" class="seller-detail hidden"></div>
         </div>
-    </div>    <!-- Профиль -->
+        <div class="card">
+            <div class="section-title"><div><span class="eyebrow">USER MANAGEMENT</span><h3>Пользователи</h3></div></div>
+            <div class="admin-user-form"><input type="text" id="targetId" placeholder="Telegram ID пользователя"><select id="assignRole"><option value="user">Пользователь</option><option value="seller">Продавец</option><option value="support">Поддержка</option><option value="admin">Администратор</option></select><button onclick="assignUserRole()">Назначить роль</button></div>
+            <div class="admin-user-form"><input type="number" id="balanceDelta" placeholder="Изменение баланса, ₽"><button onclick="updateBalance()">Изменить баланс</button><button class="danger-button" onclick="setUserBan(true)">Заблокировать</button><button class="secondary-button" onclick="setUserBan(false)">Разблокировать</button></div>
+        </div>
+    </div>
+    <!-- Профиль -->
     <div id="tab-profile" class="tab-content hidden">
         <div class="card">
-            <h3>💳 Пополнить баланс</h3>
+            <span class="badge" id="userrole-badge">Пользователь</span><h3>💳 Пополнить баланс</h3><p>Баланс: <b id="user-balance">0 ₽</b></p><p>ID: <span id="userid">---</span> · @<span id="username">Пользователь</span></p>
             <p>Сумма пополнения</p>
             <input type="number" id="payAmount" placeholder="Введите сумму в ₽" value="100">
             
@@ -302,16 +342,27 @@
             <div class="pay-methods">
                 <div class="pay-method-item selected" onclick="selectMethod('cryptobot', this)" id="method-cryptobot">
                     <span style="font-size: 20px;">🤖</span>
-                    <span>Crypto Bot (Авто-оплата в USDT/TON)</span>
+                    <span>CryptoBot — оплата в TON / USDT по курсу Crypto Pay</span>
                 </div>
                 <div class="pay-method-item" onclick="selectMethod('sbp', this)" id="method-sbp">
                     <span style="font-size: 20px;">⚡</span>
-                    <span>СБП / Банковская карта</span>
+                    <span>СБП</span>
+                </div>
+                <div class="pay-method-item" onclick="selectMethod('card', this)" id="method-card">
+                    <span style="font-size: 20px;">💳</span>
+                    <span>Банковская карта</span>
                 </div>
                 <div class="pay-method-item" onclick="selectMethod('direct_transfer', this)" id="method-direct_transfer">
                     <span style="font-size: 20px;">💎</span>
-                    <span>Прямой перевод (USDT / Gram)</span>
+                    <span>Прямой перевод TON / USDT</span>
                 </div>
+            </div>
+            <div id="directAssetWrap" class="hidden" style="margin-top:8px;">
+                <label for="directAsset">Криптовалюта для прямого перевода</label>
+                <select id="directAsset">
+                    <option value="TON">TON</option>
+                    <option value="USDT">USDT в сети TON</option>
+                </select>
             </div>
 
             <button onclick="makePayment()">Перейти к оплате</button>
@@ -373,26 +424,24 @@
     </div>
 </div>
 
-<!-- Модальное окно для прямого перевода -->
-<div id="transferModal" class="modal hidden">
-    <div class="card" style="width: 90%; max-width: 380px; text-align: center; margin: auto;">
-        <h3 style="margin-bottom: 8px; color: #818cf8;">Прямой перевод USDT / Gram</h3>
-        <p style="font-size: 13px; margin-bottom: 12px;">Отсканируйте QR-код или скопируйте реквизиты:</p>
-        
-        <div style="background: #fff; padding: 10px; display: inline-block; border-radius: 12px; margin-bottom: 12px;">
-            <img id="qrCodeImg" src="" alt="QR" width="150" height="150">
+<!-- Окно реквизитов показывается только после нажатия «Перейти к оплате» -->
+<div id="transferModal" class="modal hidden" aria-hidden="true">
+    <div class="card" style="width:90%;max-width:380px;text-align:center;margin:auto;max-height:85vh;overflow:auto;">
+        <h3 style="margin-bottom:8px;color:#818cf8;">Перевод <span id="transferAssetTitle">TON</span></h3>
+        <p style="font-size:13px;margin-bottom:12px;">Отправьте точную сумму. Обязательно укажите комментарий — он нужен для автоматического распознавания платежа.</p>
+        <img id="transferQrImg" alt="QR-код для оплаты TON" width="220" height="220" style="display:block;width:220px;height:220px;max-width:100%;object-fit:contain;margin:0 auto 14px;background:#fff;border-radius:12px;padding:8px;box-sizing:border-box;">
+        <div style="text-align:left;background:rgba(15,23,42,0.6);padding:12px;border-radius:10px;font-size:13px;margin-bottom:12px;word-break:break-all;">
+            <b>Адрес кошелька:</b><br><span id="walletAddressText" style="color:#38bdf8;">—</span><br><br>
+            <b>Точная сумма:</b><br><span id="transferAmountText" style="color:#10b981;font-weight:bold;">—</span><br><br>
+            <b>Комментарий для платежа:</b><br><span id="walletCommentText" style="color:#fbbf24;font-weight:bold;">—</span><br><br>
+            <b>Сумма пополнения:</b> <span id="transferRubText">—</span><br>
+            <b>Оплатить до:</b> <span id="transferExpiryText">—</span><br><br>
+            <b>Статус:</b> <span id="transferStatusText">Ожидаем перевод</span>
         </div>
-
-        <div style="text-align: left; background: rgba(15,23,42,0.6); padding: 10px; border-radius: 10px; font-size: 12px; margin-bottom: 12px; word-break: break-all;">
-            <b>Кошелек:</b><br>
-            <span id="walletAddressText" style="color: #38bdf8;">UQBVqIZqbAt0CCiboMZ38hdBGjN7RkEZKLUuDX2F5zPRwG1v</span><br><br>
-            <b>Сумма к оплате:</b> <span id="transferAmountText" style="color: #10b981; font-weight:bold;">0 ₽</span><br><br>
-            <b>Комментарий (ОБЯЗАТЕЛЬНО):</b><br>
-            <span id="walletCommentText" style="color: #f59e0b; font-weight:bold;">topup_...</span>
-        </div>
-
-        <button onclick="openWalletApp()">🔗 Перейти в кошелек</button>
-        <button style="background: #475569; margin-top: 6px;" onclick="closeTransferModal()">Закрыть</button>
+        <button onclick="copyWalletAddress()">Скопировать адрес</button>
+        <button class="secondary-button" onclick="copyWalletComment()">Скопировать комментарий</button>
+        <button class="secondary-button" onclick="openWalletApp()">Открыть в TON-кошельке</button>
+        <button class="danger-button" onclick="closeTransferModal()">Закрыть</button>
     </div>
 </div>
 
@@ -410,12 +459,13 @@
         <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36.25c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-.25c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
         <span>Управление</span>
     </div>
-    <div class="nav-item" onclick="switchTab('profile', this)">
+    <div class="nav-item" data-tab="profile" onclick="switchTab('profile', this)">
         <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/></svg>
         <span>Профиль</span>
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
 <script src="script.js"></script>
 </body>
 </html>

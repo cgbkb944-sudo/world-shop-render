@@ -4,7 +4,8 @@
   "description": "World TG Shop Backend",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node migrate.js && node server.js",
+    "check": "node --check server.js && node --check script.js && node --check migrate.js"
   },
   "dependencies": {
     "express": "^4.19.2",
