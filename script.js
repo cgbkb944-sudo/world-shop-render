@@ -255,7 +255,7 @@ function addNewProduct() {
     });
 }
 
-async async function activateKey() {
+async function activateKey() {
     const field=document.getElementById('keyCode'), result=document.getElementById('key-activation-result');
     const code=String(field?.value||'').trim();
     if(!code){alert('Введите ключ или код пополнения.');return;}
