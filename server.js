@@ -915,7 +915,7 @@ app.post('/api/orders/:id/refund',roles('owner','support'),async(req,res)=>{
     if(!sellerDebit.rowCount){await db.query('ROLLBACK');return res.status(409).json({error:'У продавца недостаточно средств для возврата. Требуется ручное решение владельца.'});}
     if(Number(o.commission)>0){
       const feeDebit=await db.query('UPDATE shop_wallet SET balance=balance-$1,updated_at=NOW() WHERE id=1 AND balance >= $1 RETURNING id',[o.commission]);
-      if(!feeDebit.rowCount){await db.query('ROLLBACK');return res.status(409).json({error:'На балансе магазина недостаточно средств для возврата комиссии. Требуется решение владельца.'});}
+      if(!feeDebit.rowCount){await db.query('ROLLBACK');return res.status(409).json({error:'В отдельном балансе магазина недостаточно средств для возврата комиссии. Требуется решение владельца.'});}
     }
     await db.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2',[o.amount,o.buyer_id]);
     await db.query("UPDATE orders SET status='refunded' WHERE id=$1",[orderId]);
@@ -1045,7 +1045,7 @@ app.get('/api/owner/overview',roles('owner'),async(req,res)=>{
 app.get('/api/owner/sellers',roles('owner'),async(req,res)=>{
   try{
     const q=await pool.query(`
-      SELECT u.telegram_id,u.username,u.role,u.balance,u.created_at,
+      SELECT u.telegram_id,u.username,u.role,u.balance,u.seller_balance,u.created_at,
         (SELECT COUNT(*)::int FROM products p WHERE p.seller_id=u.telegram_id) AS products_count,
         (SELECT COUNT(*)::int FROM orders o WHERE o.seller_id=u.telegram_id) AS orders_count,
         (SELECT COALESCE(SUM(o.amount),0) FROM orders o WHERE o.seller_id=u.telegram_id) AS sales_volume,
@@ -1062,7 +1062,7 @@ app.get('/api/owner/sellers/:id',roles('owner'),async(req,res)=>{
   if(!/^\d{1,20}$/.test(id))return res.status(400).json({error:'Некорректный Telegram ID.'});
   try{
     const [u,p,o,t,ledger]=await Promise.all([
-      pool.query('SELECT telegram_id,username,role,balance,is_banned,created_at FROM users WHERE telegram_id=$1',[id]),
+      pool.query('SELECT telegram_id,username,role,balance,seller_balance,is_banned,created_at FROM users WHERE telegram_id=$1',[id]),
       pool.query('SELECT id,title,price,status,created_at FROM products WHERE seller_id=$1 ORDER BY created_at DESC LIMIT 100',[id]),
       pool.query('SELECT o.id,o.amount,o.commission,o.status,o.created_at,p.title FROM orders o JOIN products p ON p.id=o.product_id WHERE o.seller_id=$1 ORDER BY o.created_at DESC LIMIT 100',[id]),
       pool.query("SELECT COALESCE(SUM(amount),0) AS total FROM transactions WHERE telegram_id=$1 AND type='sale'",[id]),
