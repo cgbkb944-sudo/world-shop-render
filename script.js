@@ -5,6 +5,7 @@ const user = tg.initDataUnsafe?.user;
 const initData = tg.initData || '';
 if (!user || !initData) {
     document.getElementById('products-list').innerText = 'Откройте магазин через Telegram.';
+    throw new Error('Telegram WebApp initData is required');
 }
 function apiFetch(url, options = {}) {
     const headers = new Headers(options.headers || {});
@@ -56,7 +57,7 @@ apiFetch('/api/user', {
 });
 
 function loadProducts() {
-    fetch('/api/products')
+    apiFetch('/api/products')
     .then(res => res.json())
     .then(products => {
         allProducts = products.length > 0 ? products : [
@@ -136,7 +137,7 @@ function addNewProduct() {
         return;
     }
 
-    fetch('/api/products/add', {
+    apiFetch('/api/products/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -162,7 +163,7 @@ function activateKey() {
     const key = document.getElementById('keyCode').value;
     if(!key) { alert('Введите ключ'); return; }
 
-    fetch('/api/key/activate', {
+    apiFetch('/api/key/activate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ telegram_id: String(user.id), key })
@@ -180,7 +181,7 @@ function activateKey() {
 
 function generateKey() {
     const role = document.getElementById('genRole').value;
-    fetch('/api/key/generate', {
+    apiFetch('/api/key/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ admin_id: String(user.id), role })
@@ -204,7 +205,7 @@ function makePayment() {
         return;
     }
 
-    fetch('/api/payment/create', {
+    apiFetch('/api/payment/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ telegram_id: String(user.id), amount, method: selectedPaymentMethod })
@@ -237,7 +238,7 @@ function switchTab(tabName, element) {
 }
 
 function loadAdminStats() {
-    fetch('/api/admin/action', {
+    apiFetch('/api/admin/action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ admin_id: String(user.id), action: 'stats' })
@@ -253,7 +254,7 @@ function loadAdminStats() {
 
 function buyProduct(productId) {
     if(!confirm('Подтвердить покупку товара?')) return;
-    fetch('/api/buy', {
+    apiFetch('/api/buy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ telegram_id: String(user.id), product_id: productId })
