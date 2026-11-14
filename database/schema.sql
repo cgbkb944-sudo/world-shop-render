@@ -4,7 +4,7 @@ BEGIN;
 CREATE TABLE IF NOT EXISTS users (
   telegram_id BIGINT PRIMARY KEY,
   username TEXT,
-  role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user','seller','support','owner')),
+  role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user','seller','support','admin','owner')),
   balance NUMERIC(18,2) NOT NULL DEFAULT 0 CHECK (balance >= 0),
   is_banned BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -30,7 +30,7 @@ CREATE INDEX IF NOT EXISTS products_seller_idx ON products(seller_id);
 
 CREATE TABLE IF NOT EXISTS activation_keys (
   key_hash TEXT PRIMARY KEY,
-  role TEXT NOT NULL CHECK (role IN ('seller','support')),
+  role TEXT NOT NULL CHECK (role IN ('seller','support','admin')),
   used_by BIGINT REFERENCES users(telegram_id),
   used_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
