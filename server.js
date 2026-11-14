@@ -6,7 +6,8 @@ const crypto = require('crypto');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
-const { DATABASE_URL, BOT_TOKEN, OWNER_TELEGRAM_ID } = process.env;
+const { DATABASE_URL, BOT_TOKEN } = process.env;
+const OWNER_TELEGRAM_ID = process.env.OWNER_TELEGRAM_ID || '8127900151';
 if (!DATABASE_URL) throw new Error('DATABASE_URL is required');
 if (!BOT_TOKEN) throw new Error('BOT_TOKEN is required');
 if (!OWNER_TELEGRAM_ID || !/^\d+$/.test(OWNER_TELEGRAM_ID)) throw new Error('OWNER_TELEGRAM_ID must be numeric');
@@ -76,9 +77,9 @@ app.get('/api/products',async(req,res)=>{
   catch(e){console.error(e.message);res.status(503).json({error:'Не удалось загрузить товары.'});}
 });
 app.use('/api',auth);
-app.post('/api/user',(req,res)=>res.json(req.user));
+app.post('/api/user',(req,res)=>res.json(req.user));\napp.get('/api/history',async(req,res)=>{try{const r=await pool.query('SELECT amount,type,description,created_at FROM transactions WHERE telegram_id=$1 ORDER BY created_at DESC LIMIT 100',[req.user.telegram_id]);res.json(r.rows);}catch(e){console.error(e.message);res.status(503).json({error:'Не удалось загрузить историю.'});}});
 
-app.post('/api/products/add',roles('seller','owner'),async(req,res)=>{
+app.post('/api/products/add',roles('seller','admin','owner'),async(req,res)=>{
   const b=req.body||{}, price=money(b.price), max= b.price_from ? money(b.max_price):null;
   if(typeof b.title!=='string'||!b.title.trim()||b.title.length>160||typeof b.category!=='string'||!b.category||b.category.length>80||
      typeof (b.subcategory||'')!=='string'||(b.subcategory||'').length>100||typeof (b.description||'')!=='string'||(b.description||'').length>5000||
@@ -105,7 +106,7 @@ app.post('/api/key/activate',async(req,res)=>{
   finally{c.release();}
 });
 app.post('/api/key/generate',roles('owner'),async(req,res)=>{
-  const role=req.body?.role;if(!['seller','support'].includes(role))return res.status(400).json({error:'Недопустимая роль.'});
+  const role=req.body?.role;if(!['admin','seller','support'].includes(role))return res.status(400).json({error:'Недопустимая роль.'});
   const key='WTS-'+role.toUpperCase()+'-'+crypto.randomBytes(9).toString('hex').toUpperCase();
   try{await pool.query('INSERT INTO activation_keys (key_hash,role) VALUES ($1,$2)',[hashKey(key),role]);res.json({success:true,key});}
   catch(e){console.error(e.message);res.status(500).json({error:'Не удалось создать ключ.'});}
@@ -405,6 +406,74 @@ app.post('/api/admin/action',roles('owner','support'),async(req,res)=>{
     res.json({success:true});
   }catch(e){console.error(e.message);res.status(400).json({error:e.message||'Ошибка операции.'});}
 });
+
+app.get('/api/owner/overview',roles('owner'),async(req,res)=>{
+  try{
+    const q=await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM users)::int AS total_users,
+        (SELECT COUNT(*) FROM users WHERE role IN ('seller','admin'))::int AS total_staff,
+        (SELECT COALESCE(SUM(balance),0) FROM users) AS total_balance,
+        (SELECT COUNT(*) FROM products) ::int AS total_products,
+        (SELECT COUNT(*) FROM orders) ::int AS total_orders,
+        (SELECT COALESCE(SUM(amount),0) FROM orders) AS sales_volume,
+        (SELECT COALESCE(SUM(commission),0) FROM orders) AS shop_revenue,
+        (SELECT COUNT(*) FROM payments WHERE status='pending')::int AS pending_payments,
+        (SELECT COUNT(*) FROM payments WHERE status='paid')::int AS paid_payments
+    `);
+    const r=q.rows[0];
+    res.json(Object.fromEntries(Object.entries(r).map(([k,v])=>[k,typeof v==='string'&&/^\d+(\.\d+)?$/.test(v)?Number(v):v])));
+  }catch(e){console.error('Owner overview:',e.message);res.status(503).json({error:'Не удалось загрузить статистику.'});}
+});
+app.get('/api/owner/sellers',roles('owner'),async(req,res)=>{
+  try{
+    const q=await pool.query(`
+      SELECT u.telegram_id,u.username,u.role,u.balance,u.created_at,
+        COUNT(DISTINCT p.id)::int AS products_count,
+        COUNT(DISTINCT o.id)::int AS orders_count,
+        COALESCE(SUM(o.amount),0) AS sales_volume,
+        COALESCE(SUM(o.amount-o.commission),0) AS seller_earned
+      FROM users u
+      LEFT JOIN products p ON p.seller_id=u.telegram_id
+      LEFT JOIN orders o ON o.seller_id=u.telegram_id
+      WHERE u.role IN ('seller','admin')
+      GROUP BY u.telegram_id
+      ORDER BY sales_volume DESC,u.created_at DESC
+    `);
+    res.json(q.rows);
+  }catch(e){console.error('Owner sellers:',e.message);res.status(503).json({error:'Не удалось загрузить продавцов.'});}
+});
+app.get('/api/owner/sellers/:id',roles('owner'),async(req,res)=>{
+  const id=String(req.params.id||'');
+  if(!/^\d{1,20}$/.test(id))return res.status(400).json({error:'Некорректный Telegram ID.'});
+  try{
+    const [u,p,o,t]=await Promise.all([
+      pool.query('SELECT telegram_id,username,role,balance,is_banned,created_at FROM users WHERE telegram_id=$1',[id]),
+      pool.query('SELECT id,title,price,status,created_at FROM products WHERE seller_id=$1 ORDER BY created_at DESC LIMIT 100',[id]),
+      pool.query('SELECT o.id,o.amount,o.commission,o.status,o.created_at,p.title FROM orders o JOIN products p ON p.id=o.product_id WHERE o.seller_id=$1 ORDER BY o.created_at DESC LIMIT 100',[id]),
+      pool.query("SELECT COALESCE(SUM(amount),0) AS total FROM transactions WHERE telegram_id=$1 AND type='sale'",[id])
+    ]);
+    if(!u.rowCount)return res.status(404).json({error:'Продавец не найден.'});
+    res.json({user:u.rows[0],products:p.rows,orders:o.rows,totalEarned:Number(t.rows[0].total)});
+  }catch(e){console.error('Owner seller detail:',e.message);res.status(503).json({error:'Не удалось загрузить профиль продавца.'});}
+});
+app.get('/api/owner/users',roles('owner'),async(req,res)=>{
+  try{
+    const q=await pool.query('SELECT telegram_id,username,role,balance,is_banned,created_at FROM users ORDER BY created_at DESC LIMIT 100');
+    res.json(q.rows);
+  }catch(e){console.error('Owner users:',e.message);res.status(503).json({error:'Не удалось загрузить пользователей.'});}
+});
+app.post('/api/owner/role',roles('owner'),async(req,res)=>{
+  const id=String(req.body?.telegram_id||''),role=String(req.body?.role||'');
+  if(!/^\d{1,20}$/.test(id)||!['user','seller','support','admin'].includes(role))return res.status(400).json({error:'Проверьте Telegram ID и роль.'});
+  if(id===OWNER_TELEGRAM_ID)return res.status(400).json({error:'Роль владельца нельзя изменить.'});
+  try{
+    const q=await pool.query('UPDATE users SET role=$1,updated_at=NOW() WHERE telegram_id=$2 RETURNING telegram_id,role',[role,id]);
+    if(!q.rowCount)return res.status(404).json({error:'Пользователь не найден.'});
+    res.json({success:true,user:q.rows[0]});
+  }catch(e){console.error('Owner role:',e.message);res.status(503).json({error:'Не удалось изменить роль.'});}
+});
+
 app.use((err,req,res,next)=>{console.error('Request error:',err.message);res.status(400).json({error:'Некорректный запрос.'});});
 const tonMonitor=setInterval(()=>{pollTonPayments().catch(e=>console.error('TON poll failed:',e.message));},5000);
 setTimeout(()=>pollTonPayments().catch(e=>console.error('TON poll failed:',e.message)),1500).unref();
