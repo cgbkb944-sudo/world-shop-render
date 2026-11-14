@@ -15,6 +15,12 @@ function apiFetch(url, options = {}) {
 document.getElementById('userid').innerText = user.id;
 document.getElementById('username').innerText = user.username || 'user';
 
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[char]));
+}
+
 let allProducts = [];
 let selectedPaymentMethod = 'cryptobot';
 
@@ -85,8 +91,8 @@ function renderProducts(products) {
         return `
             <div class="product-item">
                 <div>
-                    <b style="font-size: 15px;">${p.title}</b>
-                    <br><small style="color:var(--text-muted);">${p.category} / ${p.subcategory || 'Общее'}</small>
+                    <b style="font-size: 15px;">${escapeHtml(p.title)}</b>
+                    <br><small style="color:var(--text-muted);">${escapeHtml(p.category)} / ${escapeHtml(p.subcategory || 'Общее')}</small>
                 </div>
                 <div style="text-align: right;">
                     <b style="display:block; margin-bottom:6px; color:#818cf8;">${priceText}</b>
