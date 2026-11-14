@@ -24,6 +24,7 @@ function escapeHtml(value) {
 let allProducts = [];
 let selectedPaymentMethod = 'cryptobot';
 let activeDirectPaymentId = null;
+let activeDirectPaymentUri = null;
 let directPaymentPoll = null;
 let currentRole='user';
 function rub(value){return Number(value||0).toLocaleString('ru-RU',{maximumFractionDigits:2})+' ₽';}
@@ -288,14 +289,26 @@ function makePayment() {
     .then(({ok,data}) => {
         if(!ok) { alert(data.error || 'Ошибка создания платежа'); return; }
         if(data.directTransfer) {
+            if(!data.transferUri || !data.comment) { alert('Сервер не вернул реквизиты с комментарием. Платёж не запущен.'); return; }
             activeDirectPaymentId = data.paymentId;
+            activeDirectPaymentUri = data.transferUri;
             document.getElementById('transferAssetTitle').innerText = data.asset === 'TON' ? 'TON' : 'USDT (TON)';
             document.getElementById('transferAmountText').innerText = data.cryptoAmount + ' ' + data.asset;
             document.getElementById('walletAddressText').innerText = data.walletAddress;
+            document.getElementById('walletCommentText').innerText = data.comment;
             document.getElementById('transferRubText').innerText = amount.toFixed(2) + ' ₽';
-            document.getElementById('transferExpiryText').innerText = new Date(data.expiresAt).toLocaleTimeString();
+            document.getElementById('transferExpiryText').innerText = new Date(data.expiresAt).toLocaleTimeString('ru-RU');
             document.getElementById('transferStatusText').innerText = 'Ожидаем перевод';
+            const qrImage = document.getElementById('transferQrImg');
+            if(window.QRCode && typeof window.QRCode.toDataURL === 'function') {
+                window.QRCode.toDataURL(data.transferUri,{width:220,margin:1,errorCorrectionLevel:'M'})
+                    .then(url => { qrImage.src = url; })
+                    .catch(() => { qrImage.alt = 'Не удалось сформировать QR-код'; });
+            } else {
+                qrImage.alt = 'QR-код временно недоступен';
+            }
             document.getElementById('transferModal').classList.remove('hidden');
+            document.getElementById('transferModal').setAttribute('aria-hidden','false');
             if(directPaymentPoll) clearInterval(directPaymentPoll);
             directPaymentPoll = setInterval(checkDirectPayment,5000);
         } else if(data.paymentUrl) {
@@ -329,16 +342,25 @@ async function checkDirectPayment() {
 
 function copyWalletAddress() {
     const value=document.getElementById('walletAddressText').innerText;
-    if(navigator.clipboard?.writeText) navigator.clipboard.writeText(value).then(()=>alert('Адрес скопирован'));
+    if(navigator.clipboard?.writeText) navigator.clipboard.writeText(value).then(()=>alert('Адрес скопирован')).catch(()=>alert(value));
     else alert(value);
 }
 
-function openWalletApp() { copyWalletAddress(); }
+function copyWalletComment() {
+    const value=document.getElementById('walletCommentText').innerText;
+    if(navigator.clipboard?.writeText) navigator.clipboard.writeText(value).then(()=>alert('Комментарий скопирован')).catch(()=>alert(value));
+    else alert(value);
+}
+
+function openWalletApp() {
+    if(activeDirectPaymentUri) window.location.href = activeDirectPaymentUri;
+}
 
 function closeTransferModal() {
     if(directPaymentPoll) clearInterval(directPaymentPoll);
     directPaymentPoll=null;
     document.getElementById('transferModal').classList.add('hidden');
+    document.getElementById('transferModal').setAttribute('aria-hidden','true');
 }
 
 function switchTab(tabName, element) {
@@ -366,7 +388,9 @@ function loadAdminStats() {
     });
 }
 
-function loadHistory(){const box=document.getElementById('history-list');apiFetch('/api/history').then(r=>r.json()).then(rows=>{box.innerHTML=Array.isArray(rows)&&rows.length?rows.map(x=>`<div class="data-row"><div><b>${escapeHtml(x.description)}</b><small>${new Date(x.created_at).toLocaleString('ru-RU')}</small></div><strong>${Number(x.amount)>0?'+':''}${rub(x.amount)}</strong></div>`).join(''):'<div class="no-products">Операций пока нет</div>';}).catch(()=>box.textContent='Не удалось загрузить историю.');}\n\nfunction buyProduct(productId) {
+function loadHistory(){const box=document.getElementById('history-list');apiFetch('/api/history').then(r=>r.json()).then(rows=>{box.innerHTML=Array.isArray(rows)&&rows.length?rows.map(x=>`<div class="data-row"><div><b>${escapeHtml(x.description)}</b><small>${new Date(x.created_at).toLocaleString('ru-RU')}</small></div><strong>${Number(x.amount)>0?'+':''}${rub(x.amount)}</strong></div>`).join(''):'<div class="no-products">Операций пока нет</div>';}).catch(()=>box.textContent='Не удалось загрузить историю.');}
+
+function buyProduct(productId) {
     if(!confirm('Подтвердить покупку товара?')) return;
     apiFetch('/api/buy', {
         method: 'POST',
