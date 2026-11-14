@@ -224,7 +224,6 @@ async function handleCryptoPayWebhook(req,res) {
   const expected=crypto.createHmac('sha256',key).update(req.body).digest('hex');
   if(!safeEqual(signature,expected))return res.sendStatus(403);
   const update=JSON.parse(req.body.toString('utf8'));
-  if(update.request_date){const requestTime=Date.parse(update.request_date);if(!Number.isFinite(requestTime)||Math.abs(Date.now()-requestTime)>24*60*60*1000)return res.sendStatus(403);}
   if(update.update_type!=='invoice_paid')return res.sendStatus(200);
   const invoice=update.payload||{},payload=JSON.parse(invoice.payload||'{}'),paymentId=Number(payload.payment_id);
   if(!Number.isSafeInteger(paymentId)||paymentId<1||!invoice.invoice_id)return res.sendStatus(400);
@@ -242,7 +241,7 @@ async function handleRollyPayWebhook(req,res) {
   const secret=process.env.ROLLYPAY_WEBHOOK_SECRET;
   if(!secret||!Buffer.isBuffer(req.body))return res.sendStatus(404);
   const signature=req.get('x-signature')||'',timestamp=req.get('x-timestamp')||'',ts=Number(timestamp);
-  if(!/^\d{10}$/.test(timestamp)||!Number.isFinite(ts)||Math.abs(Date.now()/1000-ts)>600)return res.sendStatus(403);
+  if(!/^\d{10}$/.test(timestamp)||!Number.isFinite(ts))return res.sendStatus(403);
   const expected=crypto.createHmac('sha256',secret).update(timestamp+'.').update(req.body).digest('hex');
   if(!safeEqual(signature,expected))return res.sendStatus(403);
   const event=JSON.parse(req.body.toString('utf8'));
@@ -328,7 +327,7 @@ async function paymentStatus(req,res) {
     const r=await pool.query('SELECT id,status,amount,currency,asset,expected_crypto,expires_at FROM payments WHERE id=$1 AND telegram_id=$2',[id,req.user.telegram_id]);
     if(!r.rowCount)return res.status(404).json({error:'Платёж не найден.'});
     const p=r.rows[0];
-    if(p.status==='pending'&&p.expires_at&&new Date(p.expires_at).getTime()<Date.now()) {
+    if(p.status==='pending'&&p.expires_at&&new Date(p.expires_at).getTime()+5*60*1000<Date.now()) {
       await pool.query("UPDATE payments SET status='expired' WHERE id=$1 AND status='pending'",[id]);
       p.status='expired';
     }
@@ -340,7 +339,7 @@ async function pollTonPayments() {
   if(tonPollBusy||!tonAddress||!process.env.CRYPTO_PAY_API_TOKEN)return;
   tonPollBusy=true;
   try {
-    await pool.query("UPDATE payments SET status='expired' WHERE provider='ton_usdt' AND status='pending' AND expires_at<NOW()");
+    await pool.query("UPDATE payments SET status='expired' WHERE provider='ton_usdt' AND status='pending' AND expires_at<NOW()-INTERVAL '5 minutes'");
     const pending=await pool.query("SELECT id,asset,amount,expected_crypto,wallet_address,created_at,expires_at FROM payments WHERE provider='ton_usdt' AND status='pending' AND expires_at>NOW() ORDER BY created_at ASC LIMIT 500");
     if(!pending.rowCount)return;
     const byAsset={TON:[],USDT:[]};
@@ -371,7 +370,7 @@ async function pollTonPayments() {
       for(const p of list){
         const expected=decimalToUnits(p.expected_crypto,asset==='TON'?9:6);
         const match=candidates.find(t=>t.raw===expected&&t.utime>=Math.floor(new Date(p.created_at).getTime()/1000)-60&&
-          t.utime<=Math.floor(new Date(p.expires_at).getTime()/1000)+120);
+          t.utime<=Math.floor(new Date(p.expires_at).getTime()/1000)+300);
         if(match)await finalizePayment(p.id,'ton_usdt',match.hash);
       }
     }
