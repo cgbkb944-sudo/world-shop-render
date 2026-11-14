@@ -77,7 +77,8 @@ app.get('/api/products',async(req,res)=>{
   catch(e){console.error(e.message);res.status(503).json({error:'Не удалось загрузить товары.'});}
 });
 app.use('/api',auth);
-app.post('/api/user',(req,res)=>res.json(req.user));\napp.get('/api/history',async(req,res)=>{try{const r=await pool.query('SELECT amount,type,description,created_at FROM transactions WHERE telegram_id=$1 ORDER BY created_at DESC LIMIT 100',[req.user.telegram_id]);res.json(r.rows);}catch(e){console.error(e.message);res.status(503).json({error:'Не удалось загрузить историю.'});}});
+app.post('/api/user',(req,res)=>res.json(req.user));
+app.get('/api/history',async(req,res)=>{try{const r=await pool.query('SELECT amount,type,description,created_at FROM transactions WHERE telegram_id=$1 ORDER BY created_at DESC LIMIT 100',[req.user.telegram_id]);res.json(r.rows);}catch(e){console.error(e.message);res.status(503).json({error:'Не удалось загрузить историю.'});}});
 
 app.post('/api/products/add',roles('seller','admin','owner'),async(req,res)=>{
   const b=req.body||{}, price=money(b.price), max= b.price_from ? money(b.max_price):null;
@@ -160,6 +161,21 @@ function normalizeTonAddress(value) {
     if (b.length!==36) return '';
     return b.readInt8(1)+':'+b.subarray(2,34).toString('hex');
   } catch { return ''; }
+}
+function decodedTonComment(value, depth=0) {
+  if (!value || depth>6) return '';
+  if (Array.isArray(value)) {
+    for (const item of value) { const found=decodedTonComment(item,depth+1); if(found) return found; }
+    return '';
+  }
+  if (typeof value !== 'object') return '';
+  if (typeof value.comment === 'string') return value.comment;
+  if ((value.type==='text_comment'||value.type==='text') && typeof value.text==='string') return value.text;
+  for (const key of ['forward_payload','decoded','message_content','payload']) {
+    const found=decodedTonComment(value[key],depth+1);
+    if(found) return found;
+  }
+  return '';
 }
 async function cryptoPay(method, params={}) {
   if (!process.env.CRYPTO_PAY_API_TOKEN) throw new Error('Crypto Pay API token is not configured');
@@ -305,13 +321,14 @@ async function createPayment(req,res) {
     const row=await pool.query("INSERT INTO payments(provider,telegram_id,amount,currency,status,idempotency_key,asset,wallet_address,expires_at) VALUES ('ton_usdt',$1,$2,'RUB','pending',$3,$4,$5,NOW()+INTERVAL '20 minutes') RETURNING id",
       [req.user.telegram_id,amount,crypto.randomUUID(),asset,tonAddress]);
     pendingPaymentId=row.rows[0].id;
+    const paymentComment='WTS-'+row.rows[0].id+'-'+crypto.randomBytes(4).toString('hex').toUpperCase();
     let cryptoAmount, saved=false;
     for(let attempt=0;attempt<12&&!saved;attempt++){
       const rawAmount=rawBase+BigInt(crypto.randomInt(1,1000));
       cryptoAmount=unitsToDecimal(rawAmount,decimals);
       try{
         await pool.query('UPDATE payments SET expected_crypto=$1,provider_payload=$2 WHERE id=$3',
-          [cryptoAmount,JSON.stringify({rate,decimals}),row.rows[0].id]);
+          [cryptoAmount,JSON.stringify({rate,decimals,comment:paymentComment}),row.rows[0].id]);
         saved=true;
       }catch(e){if(e.code!=='23505')throw e;}
     }
@@ -319,7 +336,14 @@ async function createPayment(req,res) {
       await pool.query("UPDATE payments SET status='failed' WHERE id=$1",[row.rows[0].id]);
       throw new Error('Could not reserve a unique crypto amount for this invoice');
     }
+    const transferParams=new URLSearchParams({
+      amount:decimalToUnits(cryptoAmount,decimals).toString(),
+      text:paymentComment
+    });
+    if(asset==='USDT')transferParams.set('jetton',USDT_TON_MASTER);
+    const transferUri='ton://transfer/'+encodeURIComponent(tonAddress)+'?'+transferParams.toString();
     return res.json({directTransfer:true,paymentId:row.rows[0].id,asset,cryptoAmount,walletAddress:tonAddress,
+      comment:paymentComment,transferUri,jettonMaster:USDT_TON_MASTER,
       expiresAt:new Date(Date.now()+20*60*1000).toISOString(),rate});
   } catch(e){
     if(pendingPaymentId)await pool.query("UPDATE payments SET status='failed' WHERE id=$1 AND status='pending'",[pendingPaymentId]).catch(()=>{});
@@ -347,7 +371,7 @@ async function pollTonPayments() {
   tonPollBusy=true;
   try {
     await pool.query("UPDATE payments SET status='expired' WHERE provider='ton_usdt' AND status='pending' AND expires_at<NOW()-INTERVAL '5 minutes'");
-    const pending=await pool.query("SELECT id,asset,amount,expected_crypto,wallet_address,created_at,expires_at FROM payments WHERE provider='ton_usdt' AND status='pending' AND expires_at>NOW()-INTERVAL '5 minutes' ORDER BY created_at ASC LIMIT 500");
+    const pending=await pool.query("SELECT id,asset,amount,expected_crypto,wallet_address,provider_payload,created_at,expires_at FROM payments WHERE provider='ton_usdt' AND status='pending' AND expires_at>NOW()-INTERVAL '5 minutes' ORDER BY created_at ASC LIMIT 500");
     if(!pending.rowCount)return;
     const byAsset={TON:[],USDT:[]};
     for(const p of pending.rows)if(byAsset[p.asset])byAsset[p.asset].push(p);
@@ -362,7 +386,8 @@ async function pollTonPayments() {
           const msg=tx.in_msg||{};
           return expectedRaw.has(String(msg.value||'0'))&&Number(tx.mc_block_seqno)>0&&msg.destination&&normalizeTonAddress(msg.destination)===normalizeTonAddress(tonAddress)&&
             BigInt(msg.value||'0')>0n&&tx.description?.aborted!==true;
-        }).map(tx=>({raw:BigInt(tx.in_msg.value),hash:String(tx.hash),utime:Number(tx.now||tx.utime||0)}));
+        }).map(tx=>({raw:BigInt(tx.in_msg.value),hash:String(tx.hash),utime:Number(tx.now||tx.utime||0),
+          comment:decodedTonComment(tx.in_msg?.message_content?.decoded)||decodedTonComment(tx.in_msg?.message_content)}));
       }else{
         const data=await tonApi('/jetton/transfers',{owner_address:tonAddress,jetton_master:USDT_TON_MASTER,direction:'in',start_utime:start,limit:1000,sort:'desc'});
         const expectedRaw=new Set(list.map(p=>decimalToUnits(p.expected_crypto,6).toString()));
@@ -371,13 +396,16 @@ async function pollTonPayments() {
             normalizeTonAddress(t.jetton_master)!==normalizeTonAddress(USDT_TON_MASTER))continue;
           const txData=await tonApi('/transactions',{hash:t.transaction_hash,limit:1}),tx=(txData.transactions||[])[0];
           if(!tx||Number(tx.mc_block_seqno)<=0||tx.description?.aborted===true)continue;
-          candidates.push({raw:BigInt(t.amount),hash:String(t.transaction_hash),utime:Number(t.transaction_now||tx.now||0)});
+          const comment=decodedTonComment(t.decoded_forward_payload)||decodedTonComment(tx.in_msg?.message_content?.decoded)||
+            decodedTonComment(tx.in_msg?.message_content)||(typeof t.comment==='string'?t.comment:'');
+          candidates.push({raw:BigInt(t.amount),hash:String(t.transaction_hash),utime:Number(t.transaction_now||tx.now||0),comment});
         }
       }
       for(const p of list){
         const expected=decimalToUnits(p.expected_crypto,asset==='TON'?9:6);
+        const requiredComment=p.provider_payload?.comment;
         const match=candidates.find(t=>t.raw===expected&&t.utime>=Math.floor(new Date(p.created_at).getTime()/1000)-60&&
-          t.utime<=Math.floor(new Date(p.expires_at).getTime()/1000)+300);
+          t.utime<=Math.floor(new Date(p.expires_at).getTime()/1000)+300&&(!requiredComment||t.comment===requiredComment));
         if(match)await finalizePayment(p.id,'ton_usdt',match.hash);
       }
     }
