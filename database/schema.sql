@@ -42,13 +42,22 @@ CREATE TABLE IF NOT EXISTS payments (
   provider_payment_id TEXT,
   telegram_id BIGINT NOT NULL REFERENCES users(telegram_id),
   amount NUMERIC(18,2) NOT NULL CHECK (amount > 0),
-  currency CHAR(3) NOT NULL DEFAULT 'RUB',
+  currency VARCHAR(10) NOT NULL DEFAULT 'RUB',
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','paid','failed','expired','manual_review')),
   idempotency_key TEXT NOT NULL UNIQUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   paid_at TIMESTAMPTZ,
+  asset VARCHAR(10),
+  expected_crypto NUMERIC(30,9),
+  wallet_address TEXT,
+  tx_hash TEXT UNIQUE,
+  expires_at TIMESTAMPTZ,
+  provider_payload JSONB,
   UNIQUE(provider, provider_payment_id)
 );
+
+CREATE INDEX IF NOT EXISTS payments_pending_ton_idx ON payments(provider,status,asset,created_at) WHERE provider='ton_usdt' AND status='pending';
+CREATE UNIQUE INDEX IF NOT EXISTS payments_ton_expected_amount_idx ON payments(asset,expected_crypto) WHERE provider='ton_usdt' AND expected_crypto IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS orders (
   id BIGSERIAL PRIMARY KEY,
