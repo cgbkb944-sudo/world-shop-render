@@ -123,7 +123,6 @@ apiFetch('/api/user', {
 
     if(data.role === 'seller' || data.role === 'admin' || data.role === 'owner') {
         document.getElementById('seller-product-card').classList.remove('hidden');
-        document.getElementById('key-activation-card').classList.add('hidden');
     }
 
     loadProducts();
@@ -256,24 +255,30 @@ function addNewProduct() {
     });
 }
 
-function activateKey() {
-    const key = document.getElementById('keyCode').value;
-    if(!key) { alert('Введите ключ'); return; }
-
-    apiFetch('/api/key/activate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telegram_id: String(user.id), key })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if(data.success) {
-            alert(`Ключ успешно активирован! Ваша роль: ${data.role}`);
-            location.reload();
-        } else {
-            alert(data.error || 'Неверный ключ');
-        }
-    });
+async function activateKey() {
+    const field=document.getElementById('keyCode'), result=document.getElementById('key-activation-result');
+    const code=String(field?.value||'').trim();
+    if(!code){alert('Введите ключ или код пополнения.');return;}
+    const isBalanceCode=/^WTS-[A-F0-9]{10}$/i.test(code);
+    try{
+      const response=await apiFetch(isBalanceCode?'/api/transfers/redeem':'/api/key/activate',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(isBalanceCode?{code}:{key:code})
+      });
+      const data=await response.json();
+      if(!response.ok||!data.success)throw new Error(data.error||'Не удалось обработать код.');
+      if(isBalanceCode){
+        if(result)result.textContent='Баланс пополнен на '+rub(data.amount)+'.';
+        field.value='';
+        const me=await apiFetch('/api/user',{method:'POST'}).then(r=>r.json());
+        const balance=document.getElementById('user-balance');
+        if(balance)balance.textContent=rub(me.balance);
+      }else{
+        if(result)result.textContent='Ключ активирован. Роль: '+data.role+'.';
+        alert('Ключ успешно активирован! Ваша роль: '+data.role);
+        location.reload();
+      }
+    }catch(error){if(result)result.textContent=error.message;else alert(error.message);}
 }
 
 function generateKey() {
@@ -458,7 +463,16 @@ async function loadPaymentReadiness(){
    el.classList.toggle('unavailable',!status[k]);el.title=status[k]?'Доступно':'Не настроено на сервере';
   });
   if(!status[selectedPaymentMethod]&&ready.length){selectedPaymentMethod=ready[0];const el=document.getElementById('method-'+selectedPaymentMethod);document.querySelectorAll('.pay-method-item').forEach(x=>x.classList.remove('selected'));el?.classList.add('selected');document.getElementById('directAssetWrap').classList.toggle('hidden',selectedPaymentMethod!=='direct_transfer');}
-  if(box)box.textContent=ready.length?'Доступны: '+ready.map(k=>names[k]).join(', '):'Платёжные провайдеры пока не настроены. Напишите в поддержку.';
+  if(box){
+  if(ready.length){
+   const missing=Object.entries(status.missing||{}).filter(([k,v])=>v?.length).map(([k,v])=>names[k]+': '+v.join(', '));
+   const warnings=Object.entries(status.webhookWarnings||{}).filter(([,v])=>v?.length).map(([k,v])=>v.join(', '));
+   box.textContent='Доступны: '+ready.map(k=>names[k]).join(', ')+(missing.length?' · Не настроены: '+missing.join('; '):'')+(warnings.length?' · Примечание: '+warnings.join('; '):'');
+  }else{
+   const missing=Object.entries(status.missing||{}).map(([k,v])=>names[k]+': '+(v?.length?v.join(', '):'готово')).join('; ');
+   box.textContent='Пополнение пока не настроено. Не хватает: '+missing;
+  }
+ }
  }catch(e){if(box)box.textContent='Не удалось проверить способы оплаты.';}
 }
 function copyGeneratedKey(){
@@ -480,14 +494,6 @@ async function createTransferCode(){
 function copyTransferCode(){
  const v=document.getElementById('new-transfer-code')?.textContent||'';
  if(navigator.clipboard?.writeText)navigator.clipboard.writeText(v).then(()=>alert('Код скопирован')).catch(()=>prompt('Скопируйте код:',v));else prompt('Скопируйте код:',v);
-}
-async function redeemTransferCode(){
- const code=document.getElementById('redeemTransferCode').value.trim(),box=document.getElementById('transfer-redeem-result');
- try{
-  const r=await jsonPost('/api/transfers/redeem',{code}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');
-  box.textContent='Зачислено '+rub(d.amount)+'.';document.getElementById('redeemTransferCode').value='';
-  const me=await apiFetch('/api/user',{method:'POST'}).then(x=>x.json());document.getElementById('user-balance').textContent=rub(me.balance);
- }catch(e){box.textContent=e.message;}
 }
 async function saveProfileSettings(){
  try{
