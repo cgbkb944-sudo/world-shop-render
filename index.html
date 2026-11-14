@@ -319,6 +319,7 @@
             <select id="genRole"><option value="admin">Администратор</option><option value="support">Поддержка</option><option value="seller">Продавец</option></select>
             <button onclick="generateKey()">＋ Создать код</button>
             <div id="generatedKeyResult" class="generated-key"></div>
+            <h4 style="margin-top:16px">История создания кодов</h4><div id="key-history-list" class="data-list">История кодов появится здесь.</div>
         </div>
         <div class="card">
             <div class="section-title"><div><span class="eyebrow">SELLER MANAGEMENT</span><h3>Продавцы</h3></div><button class="small-action" onclick="loadOwnerSellers()">Обновить</button></div>
@@ -330,6 +331,9 @@
             <label>Статистика пользователя по Telegram ID</label>
             <input id="supportLookupId" inputmode="numeric" placeholder="Например, 123456789">
             <button onclick="lookupUser()">Посмотреть статистику</button>
+            <label>Изменить баланс этого пользователя</label>
+            <input id="supportBalanceDelta" type="number" step="0.01" placeholder="Например, 100 или -50">
+            <button onclick="adjustSupportBalance()">Применить изменение баланса</button>
             <div id="support-user-result" class="support-result hidden"></div>
             <div id="moderation-list" class="data-list" style="margin-top:14px">Заявки на модерацию загрузятся здесь.</div>
         </div>
