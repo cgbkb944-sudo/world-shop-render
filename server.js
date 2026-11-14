@@ -225,6 +225,7 @@ async function handleCryptoPayWebhook(req,res) {
   const expected=crypto.createHmac('sha256',key).update(req.body).digest('hex');
   if(!safeEqual(signature,expected))return res.sendStatus(403);
   const update=JSON.parse(req.body.toString('utf8'));
+  if(update.request_date&&Math.abs(Date.now()-Date.parse(update.request_date))>24*60*60*1000)return res.sendStatus(403);
   if(update.update_type!=='invoice_paid')return res.sendStatus(200);
   const invoice=update.payload||{},payload=JSON.parse(invoice.payload||'{}'),paymentId=Number(payload.payment_id);
   if(!Number.isSafeInteger(paymentId)||paymentId<1||!invoice.invoice_id)return res.sendStatus(400);
@@ -232,7 +233,7 @@ async function handleCryptoPayWebhook(req,res) {
   if(!local.rowCount)return res.sendStatus(404);
   const p=local.rows[0];
   if(String(p.provider_payment_id)!==String(invoice.invoice_id)||invoice.status!=='paid'||
-    invoice.currency_type!=='fiat'||invoice.fiat!=='RUB'||cents(invoice.amount)!==cents(p.amount))return res.sendStatus(409);
+    invoice.currency_type!=='fiat'||invoice.fiat!=='RUB'||!['TON','USDT'].includes(invoice.paid_asset)||cents(invoice.amount)!==cents(p.amount))return res.sendStatus(409);
   const verified=await cryptoPay('getInvoices',{invoice_ids:String(invoice.invoice_id)});
   const remote=Array.isArray(verified)?verified.find(x=>String(x.invoice_id)===String(invoice.invoice_id)):null;
   if(!remote||remote.status!=='paid'||remote.currency_type!=='fiat'||remote.fiat!=='RUB'||cents(remote.amount)!==cents(p.amount))return res.sendStatus(409);
@@ -293,6 +294,7 @@ async function createPayment(req,res) {
     }
     const asset=String(req.body?.asset||'').toUpperCase();
     if(!['TON','USDT'].includes(asset))return res.status(400).json({error:'Выберите TON или USDT.'});
+    if(!process.env.CRYPTO_PAY_API_TOKEN)return res.status(503).json({error:'Курс TON/USDT временно недоступен.'});
     if(!tonAddress||!normalizeTonAddress(tonAddress))return res.status(503).json({error:'TON-кошелёк магазина не настроен.'});
     const rate=await getTonRate(asset),decimals=asset==='TON'?9:6;
     const rawBase=BigInt(Math.ceil((amount/rate)*Number(10n**BigInt(decimals))));
