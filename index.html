@@ -406,6 +406,13 @@
             </div>
 
             <button onclick="makePayment()">Перейти к оплате</button>
+            <div class="key-activation-inline" style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border-color,rgba(148,163,184,.2));">
+                <h3>🔑 Ключ сотрудника или код пополнения</h3>
+                <p>В это же поле можно ввести ключ администратора, продавца, поддержки или одноразовый код перевода баланса.</p>
+                <input type="text" id="keyCode" autocomplete="off" placeholder="WTS-...">
+                <button onclick="activateKey()" style="background:#f59e0b;">Активировать ключ / пополнить баланс</button>
+                <p id="key-activation-result" role="status" aria-live="polite"></p>
+            </div>
         </div>
 
         <div class="card">
@@ -416,11 +423,7 @@
                 <button onclick="createTransferCode()">Создать код перевода</button>
                 <div id="transfer-code-result" class="hidden"></div>
             </div>
-            <div class="divider"></div>
-            <h3>Получить перевод</h3>
-            <input id="redeemTransferCode" placeholder="Вставь код WTS-XXXXXXXXXX">
-            <button onclick="redeemTransferCode()">Активировать код и получить деньги</button>
-            <div id="transfer-redeem-result"></div>
+
         </div>
         <div class="card">
             <div class="section-title"><div><span class="eyebrow">PROFILE SETTINGS</span><h3>⚙️ Настройки профиля</h3></div></div>
@@ -430,13 +433,6 @@
             <button onclick="saveProfileSettings()">Сохранить настройки</button>
             <h4 style="margin-top:18px">Мои покупки и продажи</h4><div id="my-activity" class="data-list">Загрузка истории…</div>
         </div>
-        <div class="card" id="key-activation-card">
-            <h3>🔑 Активация ключа</h3>
-            <p>Введите ключ продавца или поддержки.</p>
-            <input type="text" id="keyCode" placeholder="WTS-XXXX-XXXX">
-            <button onclick="activateKey()" style="background: #f59e0b;">Активировать ключ</button>
-        </div>
-
         <div class="card hidden" id="seller-product-card">
             <h3>📦 Выставить товар на продажу</h3>
             <label>Название товара:</label>
