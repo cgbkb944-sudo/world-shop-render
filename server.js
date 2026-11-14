@@ -2,6 +2,7 @@
 const express = require('express');
 const { Pool } = require('pg');
 const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
 
 const app = express();
@@ -18,6 +19,47 @@ const pool = new Pool({
   max: 10, idleTimeoutMillis: 30000, connectionTimeoutMillis: 10000
 });
 pool.on('error', e => console.error('PostgreSQL pool error:', e.message));
+
+async function migrateDatabase() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version TEXT PRIMARY KEY,
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  const applied = await pool.query('SELECT 1 FROM schema_migrations WHERE version=$1', ['world-shop-v2']);
+  if (applied.rowCount) {
+    console.log('Database schema world-shop-v2 already applied');
+    return;
+  }
+  const schemaPath = path.join(__dirname, 'database', 'schema.sql');
+  const schema = fs.readFileSync(schemaPath, 'utf8')
+    .replace(/^\\s*BEGIN\\s*;?/i, '')
+    .replace(/COMMIT\\s*;?\\s*$/i, '');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // One-time reset of this project's legacy tables, explicitly authorized by the owner.
+    await client.query(`
+      DROP TABLE IF EXISTS transactions CASCADE;
+      DROP TABLE IF EXISTS orders CASCADE;
+      DROP TABLE IF EXISTS payments CASCADE;
+      DROP TABLE IF EXISTS activation_keys CASCADE;
+      DROP TABLE IF EXISTS products CASCADE;
+      DROP TABLE IF EXISTS users CASCADE;
+    `);
+    await client.query(schema);
+    await client.query('INSERT INTO schema_migrations(version) VALUES ($1)', ['world-shop-v2']);
+    await client.query('COMMIT');
+    console.log('Database reset and migrated to world-shop-v2');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 app.disable('x-powered-by');
 app.post('/webhooks/cryptobot/:secret', express.raw({ type: 'application/json', limit: '64kb' }), async (req,res) => {
   try { await handleCryptoPayWebhook(req,res); }
@@ -509,6 +551,17 @@ app.post('/api/owner/role',roles('owner'),async(req,res)=>{
 app.use((err,req,res,next)=>{console.error('Request error:',err.message);res.status(400).json({error:'Некорректный запрос.'});});
 const tonMonitor=setInterval(()=>{pollTonPayments().catch(e=>console.error('TON poll failed:',e.message));},5000);
 setTimeout(()=>pollTonPayments().catch(e=>console.error('TON poll failed:',e.message)),1500).unref();
-const server=app.listen(PORT,'0.0.0.0',()=>console.log('WORLD TG SHOP listening on '+PORT));
-async function stop(){clearInterval(tonMonitor);server.close(async()=>{await pool.end();process.exit(0);});setTimeout(()=>process.exit(1),10000).unref();}
+let server;
+async function start() {
+  try {
+    await migrateDatabase();
+    server = app.listen(PORT,'0.0.0.0',()=>console.log('WORLD TG SHOP listening on '+PORT));
+  } catch (error) {
+    console.error('Startup migration failed:', error.message);
+    await pool.end();
+    process.exit(1);
+  }
+}
+async function stop(){clearInterval(tonMonitor);if(server)server.close(async()=>{await pool.end();process.exit(0);});else{await pool.end();process.exit(0);}setTimeout(()=>process.exit(1),10000).unref();}
 process.on('SIGTERM',stop);process.on('SIGINT',stop);
+start();
