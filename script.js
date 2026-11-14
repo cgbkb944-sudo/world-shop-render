@@ -26,6 +26,7 @@ function escapeHtml(value) {
 
 let allProducts = [];
 let selectedPaymentMethod = 'cryptobot';
+let paymentReadiness = {};
 let activeDirectPaymentId = null;
 let activeDirectPaymentUri = null;
 let directPaymentPoll = null;
@@ -83,6 +84,7 @@ function setAmount(val) {
 function selectMethod(method, element) {
     selectedPaymentMethod = method;
     document.querySelectorAll('.pay-method-item').forEach(el => el.classList.remove('selected'));
+    if(paymentReadiness[method]===false){alert('Этот способ оплаты пока не настроен. Выберите доступный способ.');return;}
     element.classList.add('selected');
     document.getElementById('directAssetWrap').classList.toggle('hidden', method !== 'direct_transfer');
 }
@@ -445,6 +447,7 @@ async function loadPaymentReadiness(){
  const box=document.getElementById('payment-readiness');
  try{
   const status=await fetch('/health/payments').then(r=>r.json());
+  paymentReadiness=status;
   const names={cryptobot:'CryptoBot',sbp:'СБП',card:'Банковская карта',direct_transfer:'TON / USDT',telegram_stars:'Telegram Stars'};
   const ready=Object.keys(names).filter(k=>status[k]);
   Object.keys(names).forEach(k=>{
@@ -497,10 +500,11 @@ async function loadMyActivity(){
  try{
   const d=await apiFetch('/api/my/activity').then(r=>r.json());if(d.error)throw new Error(d.error);
   const render=(arr,kind)=>arr.map(x=>'<div class="data-row"><div><b>'+escapeHtml(x.title||('Перевод #'+x.id))+'</b><small>'+escapeHtml(x.status)+' · '+new Date(x.created_at).toLocaleString('ru-RU')+'</small></div><strong>'+rub(x.amount)+'</strong>'+(kind==='purchase'&&x.status!=='refunded'&&['owner','support'].includes(currentRole)?'<button onclick="refundOrder('+x.id+')">Возврат</button>':'')+'</div>').join('');
-  box.innerHTML='<h4>Покупки</h4>'+(d.purchases.length?render(d.purchases,'purchase'):'<p>Покупок пока нет</p>')+'<h4>Продажи</h4>'+(d.sales.length?render(d.sales,'sale'):'<p>Продаж пока нет</p>')+'<h4>Переводы</h4>'+(d.transfers.length?d.transfers.map(x=>'<div class="data-row"><div><b>'+(x.direction==='sent'?'Отправлено':'Получено')+'</b><small>'+escapeHtml(x.status)+' · '+new Date(x.created_at).toLocaleString('ru-RU')+'</small></div><strong>'+rub(x.amount)+'</strong></div>').join(''):'<p>Переводов пока нет</p>');
+  box.innerHTML='<h4>Покупки</h4>'+(d.purchases.length?d.purchases.map(x=>'<div class="data-row"><div><b>'+escapeHtml(x.title)+'</b><small>'+escapeHtml(x.store_name||'Магазин')+' · '+escapeHtml(x.status)+' · '+new Date(x.created_at).toLocaleString('ru-RU')+'</small></div><strong>'+rub(x.amount)+'</strong>'+(kindRefundAllowed()&&x.status!=='refunded'?'<button onclick="refundOrder('+x.id+')">Возврат</button>':'')+'</div>').join(''):'<p>Покупок пока нет</p>')+'<h4>Продажи</h4>'+(d.sales.length?render(d.sales,'sale'):'<p>Продаж пока нет</p>')+'<h4>Переводы</h4>'+(d.transfers.length?d.transfers.map(x=>'<div class="data-row"><div><b>'+(x.direction==='sent'?'Отправлено':'Получено')+'</b><small>'+escapeHtml(x.status)+' · '+new Date(x.created_at).toLocaleString('ru-RU')+'</small></div><strong>'+rub(x.amount)+'</strong></div>').join(''):'<p>Переводов пока нет</p>');
  }catch(e){box.textContent=e.message;}
 }
-async function refundOrder(id){
+async function kindRefundAllowed(){return ['owner','support'].includes(currentRole);}
+function refundOrder(id){
  const reason=prompt('Причина возврата:','Возврат по обращению покупателя');if(reason===null)return;
  try{const r=await jsonPost('/api/orders/'+id+'/refund',{reason}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');alert('Возврат '+rub(d.amount)+' оформлен.');loadMyActivity();}catch(e){alert(e.message);}
 }
@@ -537,7 +541,7 @@ async function loadModeration(){
  const box=document.getElementById('moderation-list');if(!box)return;
  try{
   const r=await apiFetch('/api/moderation/pending'),rows=await r.json();if(!r.ok)throw new Error(rows.error||'Ошибка');
-  box.innerHTML=rows.length?rows.map(m=>'<div class="data-row"><div><b>Заявка #'+m.id+' · '+(m.kind==='product'?'Публикация товара':'Блокировка пользователя')+'</b><small>'+(m.product_title?escapeHtml(m.product_title):'Telegram ID '+escapeHtml(m.target_user_id||''))+' · '+escapeHtml(m.reason||'')+'</small></div><div class="action-row">'+(m.kind==='ban'&&currentRole!=='owner'?'Ожидает решения владельца':'<button onclick="decideModeration('+m.id+',\'approve\')">Одобрить</button><button class="danger-button" onclick="decideModeration('+m.id+',\'reject\')">Отклонить</button>')+'</div></div>').join(''):'<p>Ожидающих заявок нет.</p>';
+  box.innerHTML=rows.length?rows.map(m=>'<div class="data-row"><div><b>Заявка #'+m.id+' · '+(m.kind==='product'?'Публикация товара':'Блокировка пользователя')+'</b><small>'+(m.product_title?escapeHtml(m.product_title):'Telegram ID '+escapeHtml(m.target_user_id||''))+' · '+escapeHtml(m.reason||'')+(m.kind==='ban'?' · Срок: '+(m.duration_hours?m.duration_hours+' ч.':'навсегда'):'')+'</small></div><div class="action-row">'+(m.kind==='ban'&&currentRole!=='owner'?'Ожидает решения владельца':'<button onclick="decideModeration('+m.id+',\'approve\')">Одобрить</button><button class="danger-button" onclick="decideModeration('+m.id+',\'reject\')">Отклонить</button>')+'</div></div>').join(''):'<p>Ожидающих заявок нет.</p>';
  }catch(e){box.textContent=e.message;}
 }
 async function decideModeration(request_id,decision){
