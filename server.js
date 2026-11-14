@@ -85,6 +85,17 @@ async function migrateDatabase() {
     );
     CREATE INDEX IF NOT EXISTS balance_transfer_sender_idx ON balance_transfer_codes(sender_id,created_at DESC);
     CREATE INDEX IF NOT EXISTS balance_transfer_recipient_idx ON balance_transfer_codes(recipient_id,created_at DESC);
+    CREATE TABLE IF NOT EXISTS balance_topup_codes (
+      id BIGSERIAL PRIMARY KEY,
+      code_hash TEXT NOT NULL UNIQUE,
+      amount NUMERIC(18,2) NOT NULL CHECK (amount > 0),
+      created_by BIGINT NOT NULL REFERENCES users(telegram_id),
+      used_by BIGINT REFERENCES users(telegram_id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      used_at TIMESTAMPTZ,
+      expires_at TIMESTAMPTZ NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS balance_topup_codes_created_idx ON balance_topup_codes(created_at DESC);
     CREATE TABLE IF NOT EXISTS moderation_requests (
       id BIGSERIAL PRIMARY KEY,
       kind TEXT NOT NULL CHECK (kind IN ('ban','product')),
@@ -269,9 +280,9 @@ app.get('/api/my/activity',async(req,res)=>{
   }catch(e){res.status(503).json({error:'Не удалось загрузить активность.'});}
 });
 app.get('/api/payment/methods',(req,res)=>res.json({
-  cryptobot:!!(process.env.CRYPTO_PAY_API_TOKEN&&process.env.CRYPTO_PAY_WEBHOOK_SECRET),
-  sbp:!!(process.env.ROLLYPAY_API_KEY&&process.env.ROLLYPAY_WEBHOOK_SECRET),
-  card:!!(process.env.ROLLYPAY_API_KEY&&process.env.ROLLYPAY_WEBHOOK_SECRET),
+  cryptobot:!!process.env.CRYPTO_PAY_API_TOKEN,
+  sbp:!!process.env.ROLLYPAY_API_KEY,
+  card:!!process.env.ROLLYPAY_API_KEY,
   direct_transfer:!!(tonAddress&&normalizeTonAddress(tonAddress)&&process.env.CRYPTO_PAY_API_TOKEN),
   telegram_stars:!!(process.env.TELEGRAM_WEBHOOK_SECRET&&appOrigin)
 }));
@@ -352,18 +363,32 @@ app.post('/api/products/add',roles('seller','admin','owner'),async(req,res)=>{
 });
 
 app.post('/api/key/activate',async(req,res)=>{
-  if(req.user.role==='owner')return res.status(400).json({error:'У владельца уже есть максимальные права.'});
   const key=req.body?.key;
-  if(typeof key!=='string'||key.length<8||key.length>128)return res.status(400).json({error:'Неверный ключ.'});
-  const c=await pool.connect();
+  if(typeof key!=='string'||key.trim().length<8||key.trim().length>128)return res.status(400).json({error:'Введите корректный ключ или код пополнения.'});
+  const keyHash=hashKey(key.trim()),c=await pool.connect();
   try{
     await c.query('BEGIN');
-    const k=await c.query('SELECT key_hash,role FROM activation_keys WHERE key_hash=$1 AND used_by IS NULL FOR UPDATE',[hashKey(key)]);
-    if(!k.rowCount){await c.query('ROLLBACK');return res.status(400).json({error:'Неверный или уже использованный ключ.'});}
+    const topup=await c.query(
+      'SELECT id,amount FROM balance_topup_codes WHERE code_hash=$1 AND used_by IS NULL AND expires_at>NOW() FOR UPDATE',
+      [keyHash]
+    );
+    if(topup.rowCount){
+      const code=topup.rows[0];
+      const updated=await c.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2 RETURNING balance',[code.amount,req.user.telegram_id]);
+      await c.query('UPDATE balance_topup_codes SET used_by=$1,used_at=NOW() WHERE id=$2',[req.user.telegram_id,code.id]);
+      await c.query("INSERT INTO transactions(telegram_id,amount,type,reference,description) VALUES ($1,$2,'topup',$3,$4)",
+        [req.user.telegram_id,code.amount,'topup_code_'+code.id,'Пополнение баланса по одноразовому коду']);
+      await c.query('COMMIT');
+      return res.json({success:true,type:'topup',amount:Number(code.amount),balance:Number(updated.rows[0].balance)});
+    }
+    const k=await c.query('SELECT key_hash,role FROM activation_keys WHERE key_hash=$1 AND used_by IS NULL FOR UPDATE',[keyHash]);
+    if(!k.rowCount){await c.query('ROLLBACK');return res.status(400).json({error:'Неверный, использованный или просроченный ключ/код.'});}
+    if(req.user.role==='owner'){await c.query('ROLLBACK');return res.status(400).json({error:'У владельца уже есть максимальные права.'});}
     await c.query('UPDATE activation_keys SET used_by=$1,used_at=NOW() WHERE key_hash=$2',[req.user.telegram_id,k.rows[0].key_hash]);
     await c.query('UPDATE users SET role=$1,updated_at=NOW() WHERE telegram_id=$2',[k.rows[0].role,req.user.telegram_id]);
-    await c.query('COMMIT');res.json({success:true,role:k.rows[0].role});
-  }catch(e){await c.query('ROLLBACK');console.error(e.message);res.status(500).json({error:'Не удалось активировать ключ.'});}
+    await c.query('COMMIT');
+    return res.json({success:true,type:'role',role:k.rows[0].role});
+  }catch(e){await c.query('ROLLBACK');console.error('Key/top-up activation:',e.message);res.status(500).json({error:'Не удалось активировать код.'});}
   finally{c.release();}
 });
 app.get('/api/owner/keys',roles('owner'),async(req,res)=>{
@@ -379,6 +404,20 @@ app.post('/api/key/generate',roles('owner'),async(req,res)=>{
   const key='WTS-'+role.toUpperCase()+'-'+crypto.randomBytes(9).toString('hex').toUpperCase();
   try{await pool.query('INSERT INTO activation_keys (key_hash,role,created_by) VALUES ($1,$2,$3)',[hashKey(key),role,req.user.telegram_id]);res.json({success:true,key});}
   catch(e){console.error(e.message);res.status(500).json({error:'Не удалось создать ключ.'});}
+});
+
+app.post('/api/key/generate-topup',roles('owner'),async(req,res)=>{
+  const amount=money(req.body?.amount);
+  if(!amount||amount<10)return res.status(400).json({error:'Сумма кода должна быть не меньше 10 ₽.'});
+  const code='WTS-TOPUP-'+crypto.randomBytes(10).toString('hex').toUpperCase();
+  const expiresDays=30;
+  try{
+    const q=await pool.query(
+      'INSERT INTO balance_topup_codes(code_hash,amount,created_by,expires_at) VALUES ($1,$2,$3,NOW()+($4 * INTERVAL \'1 day\')) RETURNING expires_at',
+      [hashKey(code),amount,req.user.telegram_id,expiresDays]
+    );
+    res.json({success:true,code,amount,expiresAt:q.rows[0].expires_at,expiresInDays:expiresDays});
+  }catch(e){console.error('Top-up code generation:',e.message);res.status(500).json({error:'Не удалось создать код пополнения.'});}
 });
 
 app.post('/api/buy',async(req,res)=>{
@@ -604,7 +643,7 @@ async function createPayment(req,res) {
       return res.json({invoiceLink,paymentId:row.rows[0].id,stars:amount});
     }
     if(method==='cryptobot'){
-      if(!process.env.CRYPTO_PAY_API_TOKEN||!process.env.CRYPTO_PAY_WEBHOOK_SECRET)return res.status(503).json({error:'Crypto Pay ещё не настроен на сервере.'});
+      if(!process.env.CRYPTO_PAY_API_TOKEN)return res.status(503).json({error:'Не задан CRYPTO_PAY_API_TOKEN в настройках сервера.'});
       const row=await pool.query("INSERT INTO payments(provider,telegram_id,amount,currency,status,idempotency_key,expires_at) VALUES ('cryptobot',$1,$2,'RUB','pending',$3,NOW()+INTERVAL '15 minutes') RETURNING id",
         [req.user.telegram_id,amount,crypto.randomUUID()]);
       pendingPaymentId=row.rows[0].id;
@@ -619,7 +658,7 @@ async function createPayment(req,res) {
       return res.json({paymentUrl:invoice.bot_invoice_url,paymentId:row.rows[0].id});
     }
     if(method==='sbp'||method==='card'){
-      if(!process.env.ROLLYPAY_API_KEY||!process.env.ROLLYPAY_WEBHOOK_SECRET)return res.status(503).json({error:'RollyPay ещё не настроен на сервере.'});
+      if(!process.env.ROLLYPAY_API_KEY)return res.status(503).json({error:'Не задан ROLLYPAY_API_KEY в настройках сервера.'});
       const row=await pool.query("INSERT INTO payments(provider,telegram_id,amount,currency,status,idempotency_key,expires_at) VALUES ($1,$2,$3,'RUB','pending',$4,NOW()+INTERVAL '30 minutes') RETURNING id",
         [method,req.user.telegram_id,amount,crypto.randomUUID()]);
       pendingPaymentId=row.rows[0].id;

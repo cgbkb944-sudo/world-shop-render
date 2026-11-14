@@ -259,20 +259,21 @@ async function activateKey() {
     const field=document.getElementById('keyCode'), result=document.getElementById('key-activation-result');
     const code=String(field?.value||'').trim();
     if(!code){alert('Введите ключ или код пополнения.');return;}
-    const isBalanceCode=/^WTS-[A-F0-9]{10}$/i.test(code);
+    const isTransferCode=/^WTS-[A-F0-9]{10}$/i.test(code);
     try{
-      const response=await apiFetch(isBalanceCode?'/api/transfers/redeem':'/api/key/activate',{
+      const response=await apiFetch(isTransferCode?'/api/transfers/redeem':'/api/key/activate',{
         method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(isBalanceCode?{code}:{key:code})
+        body:JSON.stringify(isTransferCode?{code}:{key:code})
       });
       const data=await response.json();
       if(!response.ok||!data.success)throw new Error(data.error||'Не удалось обработать код.');
-      if(isBalanceCode){
+      if(isTransferCode||data.type==='topup'){
         if(result)result.textContent='Баланс пополнен на '+rub(data.amount)+'.';
         field.value='';
         const me=await apiFetch('/api/user',{method:'POST'}).then(r=>r.json());
         const balance=document.getElementById('user-balance');
         if(balance)balance.textContent=rub(me.balance);
+        if(result)result.textContent+=' Код использован и больше не действует.';
       }else{
         if(result)result.textContent='Ключ активирован. Роль: '+data.role+'.';
         alert('Ключ успешно активирован! Ваша роль: '+data.role);
@@ -280,7 +281,6 @@ async function activateKey() {
       }
     }catch(error){if(result)result.textContent=error.message;else alert(error.message);}
 }
-
 function generateKey() {
     const role = document.getElementById('genRole').value;
     apiFetch('/api/key/generate', {
@@ -298,6 +298,28 @@ function generateKey() {
             alert(data.error || 'Ошибка генерации');
         }
     });
+}
+
+function generateTopupCode() {
+    const amount=Number(document.getElementById('topupCodeAmount').value);
+    if(!Number.isFinite(amount)||amount<10||amount>10000000||Math.round(amount*100)/100!==amount){
+      alert('Введите сумму от 10 ₽ с точностью до копеек.');return;
+    }
+    jsonPost('/api/key/generate-topup',{amount})
+      .then(async r=>({ok:r.ok,data:await r.json()}))
+      .then(({ok,data})=>{
+        if(!ok||!data.success)throw new Error(data.error||'Не удалось создать код');
+        const box=document.getElementById('topupCodeResult');
+        box.innerHTML='<p>Одноразовый код на '+rub(data.amount)+'. Действует 30 дней, использовать можно один раз.</p><div class="copy-key" id="generated-topup-code"></div><button onclick="copyTopupCode()">Скопировать код</button>';
+        document.getElementById('generated-topup-code').textContent=data.code;
+        document.getElementById('topupCodeAmount').value='';
+      }).catch(e=>alert(e.message));
+}
+function copyTopupCode() {
+    const value=document.getElementById('generated-topup-code')?.textContent||'';
+    if(!value)return;
+    if(navigator.clipboard?.writeText)navigator.clipboard.writeText(value).then(()=>alert('Код пополнения скопирован')).catch(()=>alert(value));
+    else alert(value);
 }
 
 function resumePendingPayment(){
