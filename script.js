@@ -254,7 +254,7 @@ function generateKey() {
 function resumePendingPayment(){
     let id=new URLSearchParams(window.location.search).get('payment_id');
     try{if(!id)id=localStorage.getItem('world_tg_pending_payment');}catch(e){}
-    if(!id||!/^\\d+$/.test(String(id)))return;
+    if(!id||String(id).length>20||Array.from(String(id)).some(ch=>ch<'0'||ch>'9'))return;
     let checks=0;
     const timer=setInterval(async()=>{
         checks++;
