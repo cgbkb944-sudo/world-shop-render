@@ -261,6 +261,7 @@ async function handleRollyPayWebhook(req,res) {
   await finalizePayment(paymentId,p.provider);res.sendStatus(200);
 }
 async function createPayment(req,res) {
+  let pendingPaymentId=null;
   const amount=money(req.body?.amount),method=String(req.body?.method||'');
   if(!amount||amount<10)return res.status(400).json({error:'Минимальная сумма пополнения — 10 ₽.'});
   if(!['cryptobot','sbp','card','direct_transfer'].includes(method))return res.status(400).json({error:'Неизвестный способ оплаты.'});
@@ -269,6 +270,7 @@ async function createPayment(req,res) {
       if(!process.env.CRYPTO_PAY_API_TOKEN||!process.env.CRYPTO_PAY_WEBHOOK_SECRET)return res.status(503).json({error:'Crypto Pay ещё не настроен на сервере.'});
       const row=await pool.query("INSERT INTO payments(provider,telegram_id,amount,currency,status,idempotency_key,expires_at) VALUES ('cryptobot',$1,$2,'RUB','pending',$3,NOW()+INTERVAL '15 minutes') RETURNING id",
         [req.user.telegram_id,amount,crypto.randomUUID()]);
+      pendingPaymentId=row.rows[0].id;
       const invoice=await cryptoPay('createInvoice',{
         currency_type:'fiat',fiat:'RUB',amount:amount.toFixed(2),accepted_assets:'USDT,TON',
         description:'Пополнение баланса WORLD TG SHOP',
@@ -283,9 +285,10 @@ async function createPayment(req,res) {
       if(!process.env.ROLLYPAY_API_KEY||!process.env.ROLLYPAY_WEBHOOK_SECRET)return res.status(503).json({error:'RollyPay ещё не настроен на сервере.'});
       const row=await pool.query("INSERT INTO payments(provider,telegram_id,amount,currency,status,idempotency_key,expires_at) VALUES ($1,$2,$3,'RUB','pending',$4,NOW()+INTERVAL '30 minutes') RETURNING id",
         [method,req.user.telegram_id,amount,crypto.randomUUID()]);
+      pendingPaymentId=row.rows[0].id;
       const body={amount:amount.toFixed(2),payment_currency:'RUB',payment_method:method,
         order_id:'wts_'+row.rows[0].id,description:'Пополнение баланса WORLD TG SHOP',customer_id:String(req.user.telegram_id)};
-      if(appOrigin){body.success_redirect_url=appOrigin;body.fail_redirect_url=appOrigin;}
+      if(appOrigin){const returnUrl=new URL(appOrigin);returnUrl.searchParams.set('payment_id',String(row.rows[0].id));body.success_redirect_url=returnUrl.toString();body.fail_redirect_url=returnUrl.toString();}
       const result=await rollyRequest('POST','/payments',body);
       if(!result.payment_id||!result.pay_url)throw new Error('RollyPay не вернул ссылку на оплату.');
       await pool.query('UPDATE payments SET provider_payment_id=$1,provider_payload=$2 WHERE id=$3',
@@ -301,6 +304,7 @@ async function createPayment(req,res) {
     if(rawBase<=0n)throw new Error('Не удалось рассчитать сумму в криптовалюте.');
     const row=await pool.query("INSERT INTO payments(provider,telegram_id,amount,currency,status,idempotency_key,asset,wallet_address,expires_at) VALUES ('ton_usdt',$1,$2,'RUB','pending',$3,$4,$5,NOW()+INTERVAL '20 minutes') RETURNING id",
       [req.user.telegram_id,amount,crypto.randomUUID(),asset,tonAddress]);
+    pendingPaymentId=row.rows[0].id;
     let cryptoAmount, saved=false;
     for(let attempt=0;attempt<12&&!saved;attempt++){
       const rawAmount=rawBase+BigInt(crypto.randomInt(1,1000));
@@ -318,6 +322,7 @@ async function createPayment(req,res) {
     return res.json({directTransfer:true,paymentId:row.rows[0].id,asset,cryptoAmount,walletAddress:tonAddress,
       expiresAt:new Date(Date.now()+20*60*1000).toISOString(),rate});
   } catch(e){
+    if(pendingPaymentId)await pool.query("UPDATE payments SET status='failed' WHERE id=$1 AND status='pending'",[pendingPaymentId]).catch(()=>{});
     console.error('Payment create:',e.message);
     return res.status(503).json({error:'Не удалось создать платёж. Проверьте настройки провайдера и попробуйте позже.'});
   }
