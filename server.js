@@ -38,8 +38,7 @@ function verifyInitData(raw) {
   if (!hash || !/^[a-f0-9]{64}$/i.test(hash) || !Number.isFinite(authDate) ||
       Math.abs(Date.now() / 1000 - authDate) > 86400) return null;
   p.delete('hash'); p.delete('signature');
-  const check = [...p.entries()].sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => k + '=' + v).join('
-');
+  const check = [...p.entries()].sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => k + '=' + v).join('\n');
   const secret = crypto.createHmac('sha256', 'WebAppData').update(BOT_TOKEN).digest();
   const calculated = crypto.createHmac('sha256', secret).update(check).digest('hex');
   const a = Buffer.from(calculated, 'hex'), b = Buffer.from(hash, 'hex');
