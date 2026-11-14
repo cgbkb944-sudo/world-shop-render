@@ -214,13 +214,29 @@ const hashKey = v => crypto.createHash('sha256').update(String(v).trim().toUpper
 
 app.get('/',(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
 app.get('/health',async(req,res)=>{try{await pool.query('SELECT 1');res.json({ok:true,database:'connected'});}catch{res.status(503).json({ok:false,database:'unavailable'});}});
-app.get('/health/payments',(req,res)=>res.json({
-  cryptobot:!!(process.env.CRYPTO_PAY_API_TOKEN&&process.env.CRYPTO_PAY_WEBHOOK_SECRET),
-  sbp:!!(process.env.ROLLYPAY_API_KEY&&process.env.ROLLYPAY_WEBHOOK_SECRET),
-  card:!!(process.env.ROLLYPAY_API_KEY&&process.env.ROLLYPAY_WEBHOOK_SECRET),
-  direct_transfer:!!(tonAddress&&normalizeTonAddress(tonAddress)&&process.env.CRYPTO_PAY_API_TOKEN),
-  telegram_stars:!!(process.env.TELEGRAM_WEBHOOK_SECRET&&appOrigin)
-}));
+app.get('/health/payments',(req,res)=>{
+  const has=k=>Boolean(String(process.env[k]||'').trim());
+  const missing={
+    cryptobot:['CRYPTO_PAY_API_TOKEN'].filter(k=>!has(k)),
+    sbp:['ROLLYPAY_API_KEY'].filter(k=>!has(k)),
+    card:['ROLLYPAY_API_KEY'].filter(k=>!has(k)),
+    direct_transfer:[...(has('CRYPTO_PAY_API_TOKEN')?[]:['CRYPTO_PAY_API_TOKEN']),...((tonAddress&&normalizeTonAddress(tonAddress))?[]:['TON_WALLET_ADDRESS'])],
+    telegram_stars:[...(!has('BOT_TOKEN')?['BOT_TOKEN']:[]),...(!has('TELEGRAM_WEBHOOK_SECRET')?['TELEGRAM_WEBHOOK_SECRET']:[]),...(!appOrigin?['APP_ORIGIN']:[])]
+  };
+  res.json({
+    cryptobot:missing.cryptobot.length===0,
+    sbp:missing.sbp.length===0,
+    card:missing.card.length===0,
+    direct_transfer:missing.direct_transfer.length===0,
+    telegram_stars:missing.telegram_stars.length===0,
+    missing,
+    webhookWarnings:{
+      cryptobot:has('CRYPTO_PAY_WEBHOOK_SECRET')?[]:['CRYPTO_PAY_WEBHOOK_SECRET (резервный опрос статуса будет работать без webhook)'],
+      sbp:has('ROLLYPAY_WEBHOOK_SECRET')?[]:['ROLLYPAY_WEBHOOK_SECRET (резервный опрос статуса будет работать без webhook)'],
+      card:has('ROLLYPAY_WEBHOOK_SECRET')?[]:['ROLLYPAY_WEBHOOK_SECRET (резервный опрос статуса будет работать без webhook)']
+    }
+  });
+});
 app.get('/api/products',async(req,res)=>{
   try { const r=await pool.query("SELECT p.id,p.title,p.description,p.price,p.price_from,p.max_price,p.category,p.subcategory,COALESCE(u.display_name,u.username,'Продавец') AS seller_name FROM products p JOIN users u ON u.telegram_id=p.seller_id WHERE p.status='active' ORDER BY p.created_at DESC LIMIT 200"); res.json(r.rows); }
   catch(e){console.error(e.message);res.status(503).json({error:'Не удалось загрузить товары.'});}
@@ -652,17 +668,40 @@ async function createPayment(req,res) {
       expiresAt:new Date(Date.now()+20*60*1000).toISOString(),rate});
   } catch(e){
     if(pendingPaymentId)await pool.query("UPDATE payments SET status='failed' WHERE id=$1 AND status='pending'",[pendingPaymentId]).catch(()=>{});
-    console.error('Payment create:',e.message);
-    return res.status(503).json({error:'Не удалось создать платёж. Проверьте настройки провайдера и попробуйте позже.'});
+    console.error('Payment create ('+method+'):',e.message);
+    return res.status(503).json({error:'Провайдер отклонил создание платежа: '+String(e.message||'ошибка сервера').slice(0,180)});
   }
 }
 async function paymentStatus(req,res) {
   const id=Number(req.params.id);
   if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'Неверный номер платежа.'});
   try {
-    const r=await pool.query('SELECT id,status,amount,currency,asset,expected_crypto,expires_at FROM payments WHERE id=$1 AND telegram_id=$2',[id,req.user.telegram_id]);
+    const r=await pool.query('SELECT id,status,provider,provider_payment_id,provider_payload,telegram_id,amount,currency,asset,expected_crypto,expires_at FROM payments WHERE id=$1 AND telegram_id=$2',[id,req.user.telegram_id]);
     if(!r.rowCount)return res.status(404).json({error:'Платёж не найден.'});
-    const p=r.rows[0];
+    let p=r.rows[0];
+    // Вебхук может задержаться или быть не настроен. Подтверждаем оплату напрямую у провайдера.
+    if(p.status==='pending'&&p.provider_payment_id){
+      try{
+        if(p.provider==='cryptobot'&&process.env.CRYPTO_PAY_API_TOKEN){
+          const list=await cryptoPay('getInvoices',{invoice_ids:String(p.provider_payment_id)});
+          const remote=Array.isArray(list)?list.find(x=>String(x.invoice_id)===String(p.provider_payment_id)):null;
+          const payload=remote?.payload?JSON.parse(remote.payload):{};
+          if(remote?.status==='paid'&&remote.currency_type==='fiat'&&remote.fiat==='RUB'&&
+             ['TON','USDT'].includes(remote.paid_asset)&&cents(remote.amount)===cents(p.amount)&&
+             String(payload.user_id)===String(p.telegram_id)&&Number(payload.payment_id)===Number(p.id)){
+            await finalizePayment(p.id,'cryptobot');
+          }
+        }else if(['sbp','card'].includes(p.provider)&&process.env.ROLLYPAY_API_KEY){
+          const remote=await rollyRequest('GET','/payments/'+encodeURIComponent(p.provider_payment_id));
+          if(remote.status==='paid'&&String(remote.order_id)==='wts_'+p.id&&
+             cents(remote.amount)===cents(p.amount)&&(remote.payment_currency||'RUB')==='RUB'){
+            await finalizePayment(p.id,p.provider);
+          }
+        }
+      }catch(providerError){console.warn('Payment status reconciliation ('+p.provider+'): '+providerError.message);}
+      const refreshed=await pool.query('SELECT status FROM payments WHERE id=$1',[id]);
+      if(refreshed.rowCount)p.status=refreshed.rows[0].status;
+    }
     if(p.status==='pending'&&p.expires_at&&new Date(p.expires_at).getTime()+5*60*1000<Date.now()) {
       await pool.query("UPDATE payments SET status='expired' WHERE id=$1 AND status='pending'",[id]);
       p.status='expired';
