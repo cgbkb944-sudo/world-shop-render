@@ -108,7 +108,7 @@ apiFetch('/api/user', {
       document.querySelector('.owner-stats-grid').classList.add('hidden');
       document.getElementById('owner-sellers-list').parentElement.classList.add('hidden');
       document.getElementById('owner-user-card').classList.add('hidden');
-      document.getElementById('support-ban-card').classList.remove('hidden');
+      document.getElementById('support-ban-card').classList.toggle('hidden',data.role!=='support');
     } else {
       document.getElementById('support-ban-card').classList.add('hidden');
     }
@@ -396,8 +396,8 @@ function switchTab(tabName, element) {
     element.classList.add('active');
 
     if(tabName === 'manage') {
-      if(currentRole==='owner'){loadOwnerStats();loadOwnerSellers();}
-      if(['owner','support','admin'].includes(currentRole)) loadModeration();
+      if(currentRole==='owner'){loadOwnerStats();loadOwnerSellers();loadKeyHistory();}
+      if(['owner','support'].includes(currentRole)) loadModeration();
     }
     if(tabName === 'history') loadHistory();
     if(tabName === 'profile') loadMyActivity();
@@ -466,6 +466,17 @@ async function refundOrder(id){
  const reason=prompt('Причина возврата:','Возврат по обращению покупателя');if(reason===null)return;
  try{const r=await jsonPost('/api/orders/'+id+'/refund',{reason}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');alert('Возврат '+rub(d.amount)+' оформлен.');loadMyActivity();}catch(e){alert(e.message);}
 }
+async function adjustSupportBalance(){
+ const target_id=document.getElementById('supportLookupId').value.trim(),amount=Number(document.getElementById('supportBalanceDelta').value);
+ if(!/^\d{1,20}$/.test(target_id)||!Number.isFinite(amount)||amount===0){alert('Укажите Telegram ID и ненулевую сумму.');return;}
+ try{const r=await jsonPost('/api/admin/action',{action:'balance',target_id,amount}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');alert('Баланс изменён.');lookupUser();}catch(e){alert(e.message);}
+}
+async function loadKeyHistory(){
+ const box=document.getElementById('key-history-list');if(!box)return;
+ try{const r=await apiFetch('/api/owner/keys'),rows=await r.json();if(!r.ok)throw new Error(rows.error||'Ошибка');
+ box.innerHTML=rows.length?rows.map(x=>'<div class="data-row"><div><b>'+escapeHtml(x.role.toUpperCase())+'</b><small>Создан: '+new Date(x.created_at).toLocaleString('ru-RU')+' · '+(x.used_by?'Активирован: '+escapeHtml(x.used_username||x.used_by):'Не использован')+'</small></div></div>').join(''):'<p>Коды ещё не создавались.</p>';
+ }catch(e){box.textContent=e.message;}
+}
 async function lookupUser(){
  const id=document.getElementById('supportLookupId').value.trim(),box=document.getElementById('support-user-result');
  if(!/^\d{1,20}$/.test(id)){alert('Введите корректный Telegram ID.');return;}
@@ -488,7 +499,7 @@ async function loadModeration(){
  const box=document.getElementById('moderation-list');if(!box)return;
  try{
   const r=await apiFetch('/api/moderation/pending'),rows=await r.json();if(!r.ok)throw new Error(rows.error||'Ошибка');
-  box.innerHTML=rows.length?rows.map(m=>'<div class="data-row"><div><b>Заявка #'+m.id+' · '+(m.kind==='product'?'Публикация товара':'Блокировка пользователя')+'</b><small>'+(m.product_title?escapeHtml(m.product_title):'Telegram ID '+escapeHtml(m.target_user_id||''))+' · '+escapeHtml(m.reason||'')+'</small></div><div class="action-row"><button onclick="decideModeration('+m.id+',\'approve\')">Одобрить</button><button class="danger-button" onclick="decideModeration('+m.id+',\'reject\')">Отклонить</button></div></div>').join(''):'<p>Ожидающих заявок нет.</p>';
+  box.innerHTML=rows.length?rows.map(m=>'<div class="data-row"><div><b>Заявка #'+m.id+' · '+(m.kind==='product'?'Публикация товара':'Блокировка пользователя')+'</b><small>'+(m.product_title?escapeHtml(m.product_title):'Telegram ID '+escapeHtml(m.target_user_id||''))+' · '+escapeHtml(m.reason||'')+'</small></div><div class="action-row">'+(m.kind==='ban'&&currentRole!=='owner'?'Ожидает решения владельца':'<button onclick="decideModeration('+m.id+',\'approve\')">Одобрить</button><button class="danger-button" onclick="decideModeration('+m.id+',\'reject\')">Отклонить</button>')+'</div></div>').join(''):'<p>Ожидающих заявок нет.</p>';
  }catch(e){box.textContent=e.message;}
 }
 async function decideModeration(request_id,decision){
