@@ -409,7 +409,6 @@ async function createPayment(req,res) {
         payload:invoicePayload,
         currency:'XTR',
         prices:[{label:'Пополнение баланса ('+amount+' ₽)',amount}],
-        provider_token:''
       });
       return res.json({invoiceLink,paymentId:row.rows[0].id,stars:amount});
     }
