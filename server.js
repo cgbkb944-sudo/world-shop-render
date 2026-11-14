@@ -829,7 +829,7 @@ app.post('/api/admin/action',roles('owner','support','admin'),async(req,res)=>{
         await c.query('COMMIT');
       }catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
     }else if(action==='ban'||action==='unban'){
-      if(req.user.role==='support')return res.status(403).json({error:'Поддержка отправляет запрос владельцу через форму блокировки.'});
+      if(req.user.role==='support'&&action==='ban')return res.status(403).json({error:'Поддержка отправляет запрос владельцу через форму блокировки.'});
       await pool.query('UPDATE users SET is_banned=$1,banned_until=NULL,banned_reason=NULL,updated_at=NOW() WHERE telegram_id=$2',[action==='ban',target_id]);
     }else return res.status(400).json({error:'Неизвестное действие.'});
     res.json({success:true});
