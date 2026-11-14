@@ -468,7 +468,7 @@ async function refundOrder(id){
 }
 async function lookupUser(){
  const id=document.getElementById('supportLookupId').value.trim(),box=document.getElementById('support-user-result');
- if(!/^\\d{1,20}$/.test(id)){alert('Введите корректный Telegram ID.');return;}
+ if(!/^\d{1,20}$/.test(id)){alert('Введите корректный Telegram ID.');return;}
  box.classList.remove('hidden');box.textContent='Загружаем историю…';
  try{
   const r=await apiFetch('/api/support/user/'+encodeURIComponent(id)),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');
