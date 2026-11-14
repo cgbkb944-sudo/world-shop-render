@@ -712,7 +712,7 @@ app.post('/api/orders/:id/refund',roles('owner','support'),async(req,res)=>{
 });
 
 app.get('/api/support/user/:id',roles('owner','support','admin'),async(req,res)=>{
-  const id=String(req.params.id||'');if(!/^\\d{1,20}$/.test(id))return res.status(400).json({error:'Некорректный Telegram ID.'});
+  const id=String(req.params.id||'');if(!/^\d{1,20}$/.test(id))return res.status(400).json({error:'Некорректный Telegram ID.'});
   try{
     const [u,ledger,purchases,sales,transfers]=await Promise.all([
       pool.query('SELECT telegram_id,username,role,balance,is_banned,banned_until,banned_reason,created_at FROM users WHERE telegram_id=$1',[id]),
@@ -760,7 +760,7 @@ app.post('/api/moderation/decision',roles('owner','support'),async(req,res)=>{
 });
 app.post('/api/support/ban-request',roles('owner','support'),async(req,res)=>{
   const id=String(req.body?.telegram_id||''),reason=String(req.body?.reason||'').trim().slice(0,500),hours=req.body?.duration_hours===null?null:Number(req.body?.duration_hours);
-  if(!/^\\d{1,20}$/.test(id)||!reason||(hours!==null&&(!Number.isInteger(hours)||hours<1||hours>8760)))return res.status(400).json({error:'Укажите Telegram ID, причину и корректный срок (в часах) либо оставьте срок пустым для постоянной блокировки.'});
+  if(!/^\d{1,20}$/.test(id)||!reason||(hours!==null&&(!Number.isInteger(hours)||hours<1||hours>8760)))return res.status(400).json({error:'Укажите Telegram ID, причину и корректный срок (в часах) либо оставьте срок пустым для постоянной блокировки.'});
   try{
     const u=await pool.query('SELECT telegram_id FROM users WHERE telegram_id=$1',[id]);if(!u.rowCount)return res.status(404).json({error:'Пользователь не найден.'});
     const q=await pool.query("INSERT INTO moderation_requests(kind,requested_by,target_user_id,reason,duration_hours) VALUES ('ban',$1,$2,$3,$4) RETURNING id",[req.user.telegram_id,id,reason,hours]);
