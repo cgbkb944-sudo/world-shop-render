@@ -322,7 +322,8 @@ function switchTab(tabName, element) {
     document.getElementById('tab-' + tabName).classList.remove('hidden');
     element.classList.add('active');
 
-    if(tabName === 'manage') { if(currentRole==='owner'){loadOwnerStats();loadOwnerSellers();}else loadAdminStats(); }\n    if(tabName === 'history') loadHistory();
+    if(tabName === 'manage') { if(currentRole==='owner'){loadOwnerStats();loadOwnerSellers();}else loadAdminStats(); }
+    if(tabName === 'history') loadHistory();
 }
 
 function loadAdminStats() {
