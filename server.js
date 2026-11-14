@@ -28,10 +28,7 @@ async function migrateDatabase() {
     )
   `);
   const applied = await pool.query('SELECT 1 FROM schema_migrations WHERE version=$1', ['world-shop-v2']);
-  if (applied.rowCount) {
-    console.log('Database schema world-shop-v2 already applied');
-    return;
-  }
+  if (!applied.rowCount) {
   const schemaPath = path.join(__dirname, 'database', 'schema.sql');
   const schema = fs.readFileSync(schemaPath, 'utf8')
     .replace(/^\s*BEGIN\s*;?/i, '')
@@ -58,6 +55,11 @@ async function migrateDatabase() {
   } finally {
     client.release();
   }
+  } else {
+    console.log('Database schema world-shop-v2 already applied');
+  }
+  await pool.query("ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_provider_check");
+  await pool.query("ALTER TABLE payments ADD CONSTRAINT payments_provider_check CHECK (provider IN ('cryptobot','sbp','card','ton_usdt','telegram_stars'))");
 }
 
 app.disable('x-powered-by');
@@ -68,6 +70,50 @@ app.post('/webhooks/cryptobot/:secret', express.raw({ type: 'application/json', 
 app.post('/webhooks/rollypay', express.raw({ type: 'application/json', limit: '64kb' }), async (req,res) => {
   try { await handleRollyPayWebhook(req,res); }
   catch (e) { console.error('RollyPay webhook:', e.message); res.sendStatus(500); }
+});
+app.post('/webhooks/telegram', express.json({ limit: '64kb' }), async (req,res) => {
+  const secret = process.env.TELEGRAM_WEBHOOK_SECRET || '';
+  if (!secret || !safeEqual(req.get('x-telegram-bot-api-secret-token') || '', secret)) return res.sendStatus(403);
+  try {
+    const update = req.body || {};
+    if (update.pre_checkout_query) {
+      const q = update.pre_checkout_query;
+      const match = /^wts_stars_(\\d+)_([a-f0-9]+)$/.exec(String(q.invoice_payload || ''));
+      let valid = false;
+      if (match && q.currency === 'XTR' && Number.isSafeInteger(Number(q.from?.id))) {
+        const p = await pool.query("SELECT id,telegram_id,amount,status,expires_at,provider_payload FROM payments WHERE id=$1 AND provider='telegram_stars'", [Number(match[1])]);
+        if (p.rowCount) {
+          const row = p.rows[0];
+          valid = row.status === 'pending' &&
+            String(row.telegram_id) === String(q.from.id) &&
+            Number(row.amount) === Number(q.total_amount) &&
+            row.provider_payload?.invoice_payload === q.invoice_payload &&
+            (!row.expires_at || new Date(row.expires_at).getTime() > Date.now());
+        }
+      }
+      await telegramRequest('answerPreCheckoutQuery', {
+        pre_checkout_query_id: q.id,
+        ok: valid,
+        ...(valid ? {} : { error_message: 'Счёт недействителен или истёк. Создайте новый платёж.' })
+      });
+    }
+    const payment = update.message?.successful_payment;
+    if (payment) {
+      const match = /^wts_stars_(\\d+)_([a-f0-9]+)$/.exec(String(payment.invoice_payload || ''));
+      if (!match || payment.currency !== 'XTR' || !payment.telegram_payment_charge_id) return res.sendStatus(400);
+      const p = await pool.query("SELECT id,telegram_id,amount,status,provider_payload FROM payments WHERE id=$1 AND provider='telegram_stars'", [Number(match[1])]);
+      if (!p.rowCount) return res.sendStatus(404);
+      const row = p.rows[0];
+      if (String(row.telegram_id) !== String(update.message.from?.id) ||
+          Number(row.amount) !== Number(payment.total_amount) ||
+          row.provider_payload?.invoice_payload !== payment.invoice_payload) return res.sendStatus(409);
+      await finalizePayment(row.id, 'telegram_stars', String(payment.telegram_payment_charge_id));
+    }
+    res.sendStatus(200);
+  } catch (e) {
+    console.error('Telegram webhook:', e.message);
+    res.sendStatus(500);
+  }
 });
 app.use(express.json({ limit: '32kb' }));
 app.use(express.urlencoded({ extended: false, limit: '32kb' }));
@@ -219,6 +265,30 @@ function decodedTonComment(value, depth=0) {
   }
   return '';
 }
+async function telegramRequest(method, params={}) {
+  const r = await fetch('https://api.telegram.org/bot' + BOT_TOKEN + '/' + method, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params), signal: AbortSignal.timeout(12000)
+  });
+  const data = await r.json();
+  if (!r.ok || !data.ok) throw new Error('Telegram Bot API ' + method + ' failed: ' + (data.description || r.status));
+  return data.result;
+}
+async function registerTelegramWebhook() {
+  if (!appOrigin || !process.env.TELEGRAM_WEBHOOK_SECRET) {
+    console.warn('Telegram webhook not registered: APP_ORIGIN or TELEGRAM_WEBHOOK_SECRET is missing');
+    return;
+  }
+  const url = new URL('/webhooks/telegram', appOrigin).toString();
+  await telegramRequest('setWebhook', {
+    url, secret_token: process.env.TELEGRAM_WEBHOOK_SECRET,
+    allowed_updates: ['message', 'pre_checkout_query'], drop_pending_updates: false
+  });
+  await telegramRequest('setChatMenuButton', {
+    menu_button: { type: 'web_app', text: 'Открыть магазин', web_app: { url: appOrigin } }
+  });
+  console.log('Telegram Mini App menu and payment webhook configured');
+}
 async function cryptoPay(method, params={}) {
   if (!process.env.CRYPTO_PAY_API_TOKEN) throw new Error('Crypto Pay API token is not configured');
   const r=await fetch('https://pay.crypt.bot/api/'+method,{
@@ -322,8 +392,27 @@ async function createPayment(req,res) {
   let pendingPaymentId=null;
   const amount=money(req.body?.amount),method=String(req.body?.method||'');
   if(!amount||amount<10)return res.status(400).json({error:'Минимальная сумма пополнения — 10 ₽.'});
-  if(!['cryptobot','sbp','card','direct_transfer'].includes(method))return res.status(400).json({error:'Неизвестный способ оплаты.'});
+  if(!['cryptobot','sbp','card','direct_transfer','telegram_stars'].includes(method))return res.status(400).json({error:'Неизвестный способ оплаты.'});
   try {
+    if(method==='telegram_stars'){
+      if(!Number.isInteger(amount))return res.status(400).json({error:'Для оплаты Stars укажите целую сумму в рублях.'});
+      if(!process.env.TELEGRAM_WEBHOOK_SECRET||!appOrigin)return res.status(503).json({error:'Оплата Telegram Stars ещё не настроена.'});
+      const row=await pool.query("INSERT INTO payments(provider,telegram_id,amount,currency,status,idempotency_key,expires_at) VALUES ('telegram_stars',$1,$2,'XTR','pending',$3,NOW()+INTERVAL '15 minutes') RETURNING id",
+        [req.user.telegram_id,amount,crypto.randomUUID()]);
+      pendingPaymentId=row.rows[0].id;
+      const invoicePayload='wts_stars_'+row.rows[0].id+'_'+crypto.randomBytes(8).toString('hex');
+      await pool.query('UPDATE payments SET provider_payload=$1 WHERE id=$2',
+        [JSON.stringify({invoice_payload:invoicePayload,stars:amount}),row.rows[0].id]);
+      const invoiceLink=await telegramRequest('createInvoiceLink',{
+        title:'Пополнение баланса',
+        description:'Пополнение баланса WORLD TG SHOP на '+amount+' ₽',
+        payload:invoicePayload,
+        currency:'XTR',
+        prices:[{label:'Пополнение баланса ('+amount+' ₽)',amount}],
+        provider_token:''
+      });
+      return res.json({invoiceLink,paymentId:row.rows[0].id,stars:amount});
+    }
     if(method==='cryptobot'){
       if(!process.env.CRYPTO_PAY_API_TOKEN||!process.env.CRYPTO_PAY_WEBHOOK_SECRET)return res.status(503).json({error:'Crypto Pay ещё не настроен на сервере.'});
       const row=await pool.query("INSERT INTO payments(provider,telegram_id,amount,currency,status,idempotency_key,expires_at) VALUES ('cryptobot',$1,$2,'RUB','pending',$3,NOW()+INTERVAL '15 minutes') RETURNING id",
@@ -555,7 +644,10 @@ let server;
 async function start() {
   try {
     await migrateDatabase();
-    server = app.listen(PORT,'0.0.0.0',()=>console.log('WORLD TG SHOP listening on '+PORT));
+    server = app.listen(PORT,'0.0.0.0',()=>{
+      console.log('WORLD TG SHOP listening on '+PORT);
+      registerTelegramWebhook().catch(e=>console.error('Telegram webhook setup:',e.message));
+    });
   } catch (error) {
     console.error('Startup migration failed:', error.message);
     await pool.end();
