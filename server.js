@@ -18,6 +18,14 @@ const pool = new Pool({
 });
 pool.on('error', e => console.error('PostgreSQL pool error:', e.message));
 app.disable('x-powered-by');
+app.post('/webhooks/cryptobot/:secret', express.raw({ type: 'application/json', limit: '64kb' }), async (req,res) => {
+  try { await handleCryptoPayWebhook(req,res); }
+  catch (e) { console.error('Crypto Pay webhook:', e.message); res.sendStatus(500); }
+});
+app.post('/webhooks/rollypay', express.raw({ type: 'application/json', limit: '64kb' }), async (req,res) => {
+  try { await handleRollyPayWebhook(req,res); }
+  catch (e) { console.error('RollyPay webhook:', e.message); res.sendStatus(500); }
+});
 app.use(express.json({ limit: '32kb' }));
 app.use(express.urlencoded({ extended: false, limit: '32kb' }));
 app.use(express.static(path.join(__dirname), { index: false }));
@@ -125,7 +133,231 @@ app.post('/api/buy',async(req,res)=>{
   finally{c.release();}
 });
 
-app.post('/api/payment/create',async(req,res)=>res.status(503).json({error:'Автоматическое пополнение временно отключено до настройки и проверки платёжного провайдера.'}));
+
+const USDT_TON_MASTER = 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs';
+const tonAddress = process.env.TON_WALLET_ADDRESS || '';
+const appOrigin = process.env.APP_ORIGIN || '';
+function safeEqual(a,b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const x=Buffer.from(a), y=Buffer.from(b);
+  return x.length===y.length && crypto.timingSafeEqual(x,y);
+}
+function cents(value) { return Math.round(Number(value) * 100); }
+function decimalToUnits(value, decimals) {
+  const s=String(value), parts=s.split('.');
+  return BigInt(parts[0]||'0')*(10n**BigInt(decimals))+BigInt(((parts[1]||'')+'0'.repeat(decimals)).slice(0,decimals)||'0');
+}
+function unitsToDecimal(value, decimals) {
+  const n=BigInt(value), base=10n**BigInt(decimals);
+  return (n/base).toString()+'.'+(n%base).toString().padStart(decimals,'0');
+}
+function normalizeTonAddress(value) {
+  if (!value || typeof value !== 'string') return '';
+  if (/^-?\d+:[0-9a-f]{64}$/i.test(value)) return value.toLowerCase();
+  try {
+    const b=Buffer.from(value.replace(/-/g,'+').replace(/_/g,'/'),'base64');
+    if (b.length!==36) return '';
+    return b.readInt8(1)+':'+b.subarray(2,34).toString('hex');
+  } catch { return ''; }
+}
+async function cryptoPay(method, params={}) {
+  if (!process.env.CRYPTO_PAY_API_TOKEN) throw new Error('Crypto Pay API token is not configured');
+  const r=await fetch('https://pay.crypt.bot/api/'+method,{
+    method:'POST',headers:{'Content-Type':'application/json','Crypto-Pay-API-Token':process.env.CRYPTO_PAY_API_TOKEN},
+    body:JSON.stringify(params),signal:AbortSignal.timeout(12000)
+  });
+  const data=await r.json();
+  if(!r.ok||!data.ok) throw new Error('Crypto Pay API request failed: '+(data.error||r.status));
+  return data.result;
+}
+async function rollyRequest(method,path,body) {
+  if(!process.env.ROLLYPAY_API_KEY) throw new Error('RollyPay API key is not configured');
+  const headers={'X-API-Key':process.env.ROLLYPAY_API_KEY,'X-Nonce':crypto.randomUUID()};
+  const options={method,headers,signal:AbortSignal.timeout(12000)};
+  if(body){headers['Content-Type']='application/json';options.body=JSON.stringify(body);}
+  const r=await fetch('https://rollypay.io/api/v1'+path,options),data=await r.json();
+  if(!r.ok) throw new Error('RollyPay API request failed: '+(data.error||r.status));
+  return data;
+}
+async function tonApi(path,params={}) {
+  const url=new URL('https://toncenter.com/api/v3'+path);
+  for(const [k,v] of Object.entries(params)) if(v!==undefined&&v!==null&&v!=='') url.searchParams.set(k,String(v));
+  const headers={};if(process.env.TONCENTER_API_KEY)headers['X-API-Key']=process.env.TONCENTER_API_KEY;
+  const r=await fetch(url,{headers,signal:AbortSignal.timeout(15000)});
+  if(!r.ok)throw new Error('TON indexer request failed: '+r.status);
+  return r.json();
+}
+async function getTonRate(asset) {
+  const rates=await cryptoPay('getExchangeRates');
+  const row=rates.find(x=>x.source===asset&&x.target==='RUB'&&x.is_valid===true);
+  const rate=Number(row?.rate);
+  if(!Number.isFinite(rate)||rate<=0)throw new Error('Актуальный курс '+asset+'/RUB временно недоступен.');
+  return rate;
+}
+async function finalizePayment(paymentId,provider,txHash=null) {
+  const c=await pool.connect();
+  try {
+    await c.query('BEGIN');
+    const q=await c.query('SELECT * FROM payments WHERE id=$1 AND provider=$2 FOR UPDATE',[paymentId,provider]);
+    if(!q.rowCount){await c.query('ROLLBACK');return false;}
+    const p=q.rows[0];
+    if(p.status==='paid'){await c.query('ROLLBACK');return true;}
+    if(p.status!=='pending'){await c.query('ROLLBACK');return false;}
+    if(txHash){
+      const duplicate=await c.query('SELECT id FROM payments WHERE tx_hash=$1 AND id<>$2',[txHash,paymentId]);
+      if(duplicate.rowCount){await c.query('ROLLBACK');return false;}
+    }
+    await c.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2',[p.amount,p.telegram_id]);
+    await c.query("INSERT INTO transactions (telegram_id,amount,type,reference,description) VALUES ($1,$2,'topup',$3,$4)",
+      [p.telegram_id,p.amount,'topup_pay_'+p.id,'Пополнение через '+provider+(p.asset?' ('+p.asset+')':'')]);
+    await c.query("UPDATE payments SET status='paid',paid_at=NOW(),tx_hash=COALESCE($1,tx_hash) WHERE id=$2",[txHash,paymentId]);
+    await c.query('COMMIT');return true;
+  } catch(e){await c.query('ROLLBACK');throw e;}
+  finally{c.release();}
+}
+async function handleCryptoPayWebhook(req,res) {
+  const secret=process.env.CRYPTO_PAY_WEBHOOK_SECRET,token=process.env.CRYPTO_PAY_API_TOKEN;
+  if(!secret||!token||!safeEqual(req.params.secret,secret))return res.sendStatus(404);
+  if(!Buffer.isBuffer(req.body))return res.sendStatus(400);
+  const signature=req.get('crypto-pay-api-signature')||'';
+  const key=crypto.createHash('sha256').update(token).digest();
+  const expected=crypto.createHmac('sha256',key).update(req.body).digest('hex');
+  if(!safeEqual(signature,expected))return res.sendStatus(403);
+  const update=JSON.parse(req.body.toString('utf8'));
+  if(update.update_type!=='invoice_paid')return res.sendStatus(200);
+  const invoice=update.payload||{},payload=JSON.parse(invoice.payload||'{}'),paymentId=Number(payload.payment_id);
+  if(!Number.isSafeInteger(paymentId)||paymentId<1||!invoice.invoice_id)return res.sendStatus(400);
+  const local=await pool.query("SELECT * FROM payments WHERE id=$1 AND provider='cryptobot'",[paymentId]);
+  if(!local.rowCount)return res.sendStatus(404);
+  const p=local.rows[0];
+  if(String(p.provider_payment_id)!==String(invoice.invoice_id)||invoice.status!=='paid'||
+    invoice.currency_type!=='fiat'||invoice.fiat!=='RUB'||cents(invoice.amount)!==cents(p.amount))return res.sendStatus(409);
+  const verified=await cryptoPay('getInvoices',{invoice_ids:String(invoice.invoice_id)});
+  const remote=Array.isArray(verified)?verified.find(x=>String(x.invoice_id)===String(invoice.invoice_id)):null;
+  if(!remote||remote.status!=='paid'||remote.currency_type!=='fiat'||remote.fiat!=='RUB'||cents(remote.amount)!==cents(p.amount))return res.sendStatus(409);
+  await finalizePayment(paymentId,'cryptobot');res.sendStatus(200);
+}
+async function handleRollyPayWebhook(req,res) {
+  const secret=process.env.ROLLYPAY_WEBHOOK_SECRET;
+  if(!secret||!Buffer.isBuffer(req.body))return res.sendStatus(404);
+  const signature=req.get('x-signature')||'',timestamp=req.get('x-timestamp')||'',ts=Number(timestamp);
+  if(!/^\d{10}$/.test(timestamp)||!Number.isFinite(ts)||Math.abs(Date.now()/1000-ts)>600)return res.sendStatus(403);
+  const expected=crypto.createHmac('sha256',secret).update(timestamp+'.').update(req.body).digest('hex');
+  if(!safeEqual(signature,expected))return res.sendStatus(403);
+  const event=JSON.parse(req.body.toString('utf8'));
+  if(event.event_type!=='payment.paid'||event.status!=='paid')return res.sendStatus(200);
+  const match=/^wts_(\d+)$/.exec(String(event.order_id||''));
+  if(!match||!event.payment_id)return res.sendStatus(400);
+  const paymentId=Number(match[1]);
+  const local=await pool.query('SELECT * FROM payments WHERE id=$1 AND provider IN ($2,$3)',[paymentId,'sbp','card']);
+  if(!local.rowCount)return res.sendStatus(404);
+  const p=local.rows[0];
+  if(String(p.provider_payment_id)!==String(event.payment_id)||cents(event.amount)!==cents(p.amount))return res.sendStatus(409);
+  const remote=await rollyRequest('GET','/payments/'+encodeURIComponent(event.payment_id));
+  if(remote.status!=='paid'||String(remote.order_id)!==String(event.order_id)||cents(remote.amount)!==cents(p.amount)||
+    (remote.payment_currency||'RUB')!=='RUB')return res.sendStatus(409);
+  await finalizePayment(paymentId,p.provider);res.sendStatus(200);
+}
+async function createPayment(req,res) {
+  const amount=money(req.body?.amount),method=String(req.body?.method||'');
+  if(!amount||amount<10)return res.status(400).json({error:'Минимальная сумма пополнения — 10 ₽.'});
+  if(!['cryptobot','sbp','card','direct_transfer'].includes(method))return res.status(400).json({error:'Неизвестный способ оплаты.'});
+  try {
+    if(method==='cryptobot'){
+      const row=await pool.query("INSERT INTO payments(provider,telegram_id,amount,currency,status,idempotency_key,expires_at) VALUES ('cryptobot',$1,$2,'RUB','pending',$3,NOW()+INTERVAL '15 minutes') RETURNING id",
+        [req.user.telegram_id,amount,crypto.randomUUID()]);
+      const invoice=await cryptoPay('createInvoice',{
+        currency_type:'fiat',fiat:'RUB',amount:amount.toFixed(2),accepted_assets:'USDT,TON',
+        description:'Пополнение баланса WORLD TG SHOP',
+        payload:JSON.stringify({payment_id:row.rows[0].id,user_id:String(req.user.telegram_id)}),
+        allow_comments:false,allow_anonymous:false,expires_in:900
+      });
+      await pool.query('UPDATE payments SET provider_payment_id=$1,provider_payload=$2 WHERE id=$3',
+        [String(invoice.invoice_id),JSON.stringify({bot_invoice_url:invoice.bot_invoice_url}),row.rows[0].id]);
+      return res.json({paymentUrl:invoice.bot_invoice_url,paymentId:row.rows[0].id});
+    }
+    if(method==='sbp'||method==='card'){
+      const row=await pool.query("INSERT INTO payments(provider,telegram_id,amount,currency,status,idempotency_key,expires_at) VALUES ($1,$2,$3,'RUB','pending',$4,NOW()+INTERVAL '30 minutes') RETURNING id",
+        [method,req.user.telegram_id,amount,crypto.randomUUID()]);
+      const body={amount:amount.toFixed(2),payment_currency:'RUB',payment_method:method,
+        order_id:'wts_'+row.rows[0].id,description:'Пополнение баланса WORLD TG SHOP',customer_id:String(req.user.telegram_id)};
+      if(appOrigin){body.success_redirect_url=appOrigin;body.fail_redirect_url=appOrigin;}
+      const result=await rollyRequest('POST','/payments',body);
+      if(!result.payment_id||!result.pay_url)throw new Error('RollyPay не вернул ссылку на оплату.');
+      await pool.query('UPDATE payments SET provider_payment_id=$1,provider_payload=$2 WHERE id=$3',
+        [String(result.payment_id),JSON.stringify({pay_url:result.pay_url}),row.rows[0].id]);
+      return res.json({paymentUrl:result.pay_url,paymentId:row.rows[0].id});
+    }
+    const asset=String(req.body?.asset||'').toUpperCase();
+    if(!['TON','USDT'].includes(asset))return res.status(400).json({error:'Выберите TON или USDT.'});
+    if(!tonAddress||!normalizeTonAddress(tonAddress))return res.status(503).json({error:'TON-кошелёк магазина не настроен.'});
+    const rate=await getTonRate(asset),decimals=asset==='TON'?9:6;
+    const rawBase=BigInt(Math.ceil((amount/rate)*Number(10n**BigInt(decimals))));
+    if(rawBase<=0n)throw new Error('Не удалось рассчитать сумму в криптовалюте.');
+    const row=await pool.query("INSERT INTO payments(provider,telegram_id,amount,currency,status,idempotency_key,asset,wallet_address,expires_at) VALUES ('ton_usdt',$1,$2,'RUB','pending',$3,$4,$5,NOW()+INTERVAL '20 minutes') RETURNING id",
+      [req.user.telegram_id,amount,crypto.randomUUID(),asset,tonAddress]);
+    const rawAmount=rawBase+BigInt(crypto.randomInt(1,1000)),cryptoAmount=unitsToDecimal(rawAmount,decimals);
+    await pool.query('UPDATE payments SET expected_crypto=$1,provider_payload=$2 WHERE id=$3',
+      [cryptoAmount,JSON.stringify({rate,decimals}),row.rows[0].id]);
+    return res.json({directTransfer:true,paymentId:row.rows[0].id,asset,cryptoAmount,walletAddress:tonAddress,
+      expiresAt:new Date(Date.now()+20*60*1000).toISOString(),rate});
+  } catch(e){
+    console.error('Payment create:',e.message);
+    return res.status(503).json({error:'Не удалось создать платёж. Проверьте настройки провайдера и попробуйте позже.'});
+  }
+}
+async function paymentStatus(req,res) {
+  const id=Number(req.params.id);
+  if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'Неверный номер платежа.'});
+  const r=await pool.query('SELECT id,status,amount,currency,asset,expected_crypto,expires_at FROM payments WHERE id=$1 AND telegram_id=$2',[id,req.user.telegram_id]);
+  if(!r.rowCount)return res.status(404).json({error:'Платёж не найден.'});
+  const p=r.rows[0];
+  res.json({paymentId:p.id,status:p.status,amount:p.amount,currency:p.currency,asset:p.asset,cryptoAmount:p.expected_crypto,expiresAt:p.expires_at});
+}
+let tonPollBusy=false;
+async function pollTonPayments() {
+  if(tonPollBusy||!tonAddress||!process.env.CRYPTO_PAY_API_TOKEN)return;
+  tonPollBusy=true;
+  try {
+    await pool.query("UPDATE payments SET status='expired' WHERE provider='ton_usdt' AND status='pending' AND expires_at<NOW()");
+    const pending=await pool.query("SELECT id,asset,amount,expected_crypto,wallet_address,created_at,expires_at FROM payments WHERE provider='ton_usdt' AND status='pending' AND expires_at>NOW() ORDER BY created_at ASC LIMIT 500");
+    if(!pending.rowCount)return;
+    const byAsset={TON:[],USDT:[]};
+    for(const p of pending.rows)if(byAsset[p.asset])byAsset[p.asset].push(p);
+    for(const asset of ['TON','USDT']){
+      const list=byAsset[asset];if(!list.length)continue;
+      const start=Math.max(0,Math.floor(new Date(list[0].created_at).getTime()/1000)-60);
+      let candidates=[];
+      if(asset==='TON'){
+        const data=await tonApi('/transactions',{account:tonAddress,start_utime:start,limit:1000,sort:'desc'});
+        candidates=(data.transactions||[]).filter(tx=>{
+          const msg=tx.in_msg||{};
+          return Number(tx.mc_block_seqno)>0&&msg.destination&&normalizeTonAddress(msg.destination)===normalizeTonAddress(tonAddress)&&
+            BigInt(msg.value||'0')>0n&&tx.description?.aborted!==true;
+        }).map(tx=>({raw:BigInt(tx.in_msg.value),hash:String(tx.hash),utime:Number(tx.now||tx.utime||0)}));
+      }else{
+        const data=await tonApi('/jetton/transfers',{owner_address:tonAddress,jetton_master:USDT_TON_MASTER,direction:'in',start_utime:start,limit:1000,sort:'desc'});
+        for(const t of data.jetton_transfers||[]){
+          if(t.transaction_aborted===true||normalizeTonAddress(t.destination)!==normalizeTonAddress(tonAddress)||
+            normalizeTonAddress(t.jetton_master)!==normalizeTonAddress(USDT_TON_MASTER))continue;
+          const txData=await tonApi('/transactions',{hash:t.transaction_hash,limit:1}),tx=(txData.transactions||[])[0];
+          if(!tx||Number(tx.mc_block_seqno)<=0||tx.description?.aborted===true)continue;
+          candidates.push({raw:BigInt(t.amount),hash:String(t.transaction_hash),utime:Number(t.transaction_now||tx.now||0)});
+        }
+      }
+      for(const p of list){
+        const expected=decimalToUnits(p.expected_crypto,asset==='TON'?9:6);
+        const match=candidates.find(t=>t.raw===expected&&t.utime>=Math.floor(new Date(p.created_at).getTime()/1000)-60&&
+          t.utime<=Math.floor(new Date(p.expires_at).getTime()/1000)+120);
+        if(match)await finalizePayment(p.id,'ton_usdt',match.hash);
+      }
+    }
+  }catch(e){console.error('TON monitor:',e.message);}
+  finally{tonPollBusy=false;}
+}
+app.post('/api/payment/create',createPayment);
+app.get('/api/payment/status/:id',paymentStatus);
+
 
 app.post('/api/admin/action',roles('owner','support'),async(req,res)=>{
   const {action,target_id,amount}=req.body||{};
@@ -152,6 +384,6 @@ app.post('/api/admin/action',roles('owner','support'),async(req,res)=>{
   }catch(e){console.error(e.message);res.status(400).json({error:e.message||'Ошибка операции.'});}
 });
 app.use((err,req,res,next)=>{console.error('Request error:',err.message);res.status(400).json({error:'Некорректный запрос.'});});
-const server=app.listen(PORT,'0.0.0.0',()=>console.log('WORLD TG SHOP listening on '+PORT));
-async function stop(){server.close(async()=>{await pool.end();process.exit(0);});setTimeout(()=>process.exit(1),10000).unref();}
+const tonMonitor=setInterval(()=>{pollTonPayments().catch(e=>console.error('TON poll failed:',e.message));},5000);\nsetTimeout(()=>pollTonPayments().catch(e=>console.error('TON poll failed:',e.message)),1500).unref();\nconst server=app.listen(PORT,'0.0.0.0',()=>console.log('WORLD TG SHOP listening on '+PORT));
+async function stop(){clearInterval(tonMonitor);server.close(async()=>{await pool.end();process.exit(0);});setTimeout(()=>process.exit(1),10000).unref();}
 process.on('SIGTERM',stop);process.on('SIGINT',stop);
