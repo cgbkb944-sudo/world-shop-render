@@ -158,7 +158,7 @@ function renderProducts(products) {
             <div class="product-item">
                 <div>
                     <b style="font-size: 15px;">${escapeHtml(p.title)}</b>
-                    <br><small style="color:var(--text-muted);">${escapeHtml(p.category)} / ${escapeHtml(p.subcategory || 'Общее')}</small>
+                    <br><small style="color:var(--text-muted);">${escapeHtml(p.category)} / ${escapeHtml(p.subcategory || 'Общее')} · ${escapeHtml(p.seller_name||'Магазин')}</small>
                 </div>
                 <div style="text-align: right;">
                     <b style="display:block; margin-bottom:6px; color:#818cf8;">${priceText}</b>
@@ -528,8 +528,9 @@ async function lookupUser(){
   const u=d.user;
   box.innerHTML='<h4>'+(escapeHtml(u.username?'@'+u.username:u.telegram_id))+'</h4><p>ID: '+escapeHtml(u.telegram_id)+' · Роль: '+escapeHtml(u.role)+' · Баланс: <b>'+rub(u.balance)+'</b></p><p>Статус: '+(u.is_banned?'Заблокирован':'Активен')+'</p><h4>Пополнения и списания</h4>'+
    (d.transactions.length?d.transactions.map(x=>'<div class="data-row"><div><b>'+escapeHtml(x.description)+'</b><small>'+escapeHtml(x.type)+' · '+new Date(x.created_at).toLocaleString('ru-RU')+'</small></div><strong>'+rub(x.amount)+'</strong></div>').join(''):'<p>Операций нет</p>')+
-   '<h4>Покупки</h4>'+(d.purchases.length?d.purchases.map(x=>'<div class="data-row"><div><b>'+escapeHtml(x.title)+'</b><small>Заказ #'+x.id+' · '+escapeHtml(x.status)+'</small></div><strong>'+rub(x.amount)+'</strong>'+(x.status!=='refunded'?'<button onclick="refundOrder('+x.id+')">Возврат</button>':'')+'</div>').join(''):'<p>Покупок нет</p>')+
-   '<h4>Переводы средств</h4>'+(d.transfers.length?d.transfers.map(x=>'<div class="data-row"><div><b>'+(String(x.sender_id)===id?'Отправлено':'Получено')+'</b><small>'+escapeHtml(x.status)+' · ID получателя: '+escapeHtml(x.recipient_id||'—')+'</small></div><strong>'+rub(x.amount)+'</strong></div>').join(''):'<p>Переводов нет</p>');
+   '<h4>Покупки</h4>'+(d.purchases.length?d.purchases.map(x=>'<div class="data-row"><div><b>'+escapeHtml(x.title)+'</b><small>'+escapeHtml(x.store_name||'Магазин')+' · Заказ #'+x.id+' · '+escapeHtml(x.status)+'</small></div><strong>'+rub(x.amount)+'</strong>'+(x.status!=='refunded'?'<button onclick="refundOrder('+x.id+')">Возврат</button>':'')+'</div>').join(''):'<p>Покупок нет</p>')+
+   '<h4>Продажи</h4>'+(d.sales.length?d.sales.map(x=>'<div class="data-row"><div><b>'+escapeHtml(x.title)+'</b><small>'+escapeHtml(x.buyer_name||'Покупатель')+' · Заказ #'+x.id+' · '+escapeHtml(x.status)+'</small></div><strong>'+rub(x.amount)+'</strong></div>').join(''):'<p>Продаж нет</p>')+
+   '<h4>Переводы средств</h4>'+(d.transfers.length?d.transfers.map(x=>'<div class="data-row"><div><b>'+(String(x.sender_id)===id?'Отправлено пользователю':'Получено от пользователя')+'</b><small>'+escapeHtml(x.status)+' · Telegram ID: '+escapeHtml(String(x.sender_id)===id?(x.recipient_id||'ожидает получателя'):x.sender_id)+'</small></div><strong>'+rub(x.amount)+'</strong></div>').join(''):'<p>Переводов нет</p>');
  }catch(e){box.textContent=e.message;}
 }
 async function requestBan(){
