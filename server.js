@@ -196,10 +196,14 @@ async function auth(req,res,next) {
       "INSERT INTO users (telegram_id,username,role) VALUES ($1,$2,$3) " +
       "ON CONFLICT (telegram_id) DO UPDATE SET username=EXCLUDED.username, " +
       "role=CASE WHEN users.telegram_id=$4 THEN 'owner' ELSE users.role END, updated_at=NOW() " +
-      "RETURNING telegram_id,username,role,balance,is_banned",
+      "RETURNING telegram_id,username,role,balance,is_banned,banned_until,banned_reason",
       [u.id,u.username,role,OWNER_TELEGRAM_ID]);
     req.user = r.rows[0];
-    if (req.user.is_banned) return res.status(403).json({error:'Ваш аккаунт заблокирован. Обратитесь в поддержку.'});
+    if (req.user.is_banned && req.user.banned_until && new Date(req.user.banned_until) <= new Date()) {
+      await pool.query('UPDATE users SET is_banned=FALSE,banned_until=NULL,banned_reason=NULL,updated_at=NOW() WHERE telegram_id=$1',[u.id]);
+      req.user.is_banned=false;
+    }
+    if (req.user.is_banned) return res.status(403).json({error:'Ваш аккаунт заблокирован. '+(req.user.banned_reason||'Обратитесь в поддержку.')});
     next();
   } catch(e) { console.error('Auth error:',e.message); res.status(503).json({error:'Сервис временно недоступен.'}); }
 }
@@ -659,6 +663,36 @@ async function pollTonPayments() {
 app.post('/api/payment/create',createPayment);
 app.get('/api/payment/status/:id',paymentStatus);
 
+app.post('/api/orders/:id/refund',roles('owner','support'),async(req,res)=>{
+  const orderId=Number(req.params.id),reason=String(req.body?.reason||'Возврат по обращению покупателя').slice(0,500);
+  if(!Number.isSafeInteger(orderId)||orderId<1)return res.status(400).json({error:'Неверный номер заказа.'});
+  const db=await pool.connect();
+  try{
+    await db.query('BEGIN');
+    const q=await db.query("SELECT o.*,p.title,p.seller_id AS product_seller,p.status AS product_status FROM orders o JOIN products p ON p.id=o.product_id WHERE o.id=$1 FOR UPDATE OF o,p",[orderId]);
+    if(!q.rowCount){await db.query('ROLLBACK');return res.status(404).json({error:'Заказ не найден.'});}
+    const o=q.rows[0];
+    if(o.status==='refunded'){await db.query('ROLLBACK');return res.status(400).json({error:'Этот заказ уже возвращён.'});}
+    if(!['paid','delivered','completed','disputed'].includes(o.status)){await db.query('ROLLBACK');return res.status(400).json({error:'Текущий статус заказа не позволяет оформить возврат.'});}
+    const sellerShare=Number(o.amount)-Number(o.commission);
+    const sellerDebit=await db.query('UPDATE users SET balance=balance-$1,updated_at=NOW() WHERE telegram_id=$2 AND balance >= $1 RETURNING telegram_id',[sellerShare,o.seller_id]);
+    if(!sellerDebit.rowCount){await db.query('ROLLBACK');return res.status(409).json({error:'У продавца недостаточно средств для возврата. Требуется ручное решение владельца.'});}
+    if(Number(o.commission)>0){
+      const feeDebit=await db.query('UPDATE users SET balance=balance-$1,updated_at=NOW() WHERE telegram_id=$2 AND balance >= $1 RETURNING telegram_id',[o.commission,OWNER_TELEGRAM_ID]);
+      if(!feeDebit.rowCount){await db.query('ROLLBACK');return res.status(409).json({error:'На балансе магазина недостаточно средств для возврата комиссии. Требуется решение владельца.'});}
+    }
+    await db.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2',[o.amount,o.buyer_id]);
+    await db.query("UPDATE orders SET status='refunded' WHERE id=$1",[orderId]);
+    await db.query("UPDATE products SET status='active' WHERE id=$1",[o.product_id]);
+    const rf=await db.query('INSERT INTO order_refunds(order_id,refunded_by,amount,reason) VALUES ($1,$2,$3,$4) RETURNING id',[orderId,req.user.telegram_id,o.amount,reason]);
+    const ref='refund_'+rf.rows[0].id;
+    await db.query("INSERT INTO transactions(telegram_id,amount,type,reference,description) VALUES ($1,$2,'refund',$3,$4),($5,$6,'admin_adjustment',$7,$8),($9,$10,'admin_adjustment',$11,$12)",
+      [o.buyer_id,o.amount,ref+'_buyer','Возврат за заказ #'+orderId+' — '+o.title,o.seller_id,-sellerShare,ref+'_seller','Списание средств при возврате заказа #'+orderId,OWNER_TELEGRAM_ID,-Number(o.commission),ref+'_fee','Возврат комиссии по заказу #'+orderId]);
+    await db.query('COMMIT');
+    res.json({success:true,refund_id:rf.rows[0].id,amount:Number(o.amount),message:'Возврат зачислен покупателю, товар возвращён продавцу.'});
+  }catch(e){await db.query('ROLLBACK');console.error('Refund:',e.message);res.status(503).json({error:'Не удалось оформить возврат.'});}
+  finally{db.release();}
+});
 
 app.get('/api/support/user/:id',roles('owner','support','admin'),async(req,res)=>{
   const id=String(req.params.id||'');if(!/^\\d{1,20}$/.test(id))return res.status(400).json({error:'Некорректный Telegram ID.'});
