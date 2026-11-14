@@ -350,7 +350,8 @@
         <div class="card" id="owner-user-card">
             <div class="section-title"><div><span class="eyebrow">USER MANAGEMENT</span><h3>Пользователи</h3></div></div>
             <div class="admin-user-form"><input type="text" id="targetId" placeholder="Telegram ID пользователя"><select id="assignRole"><option value="user">Пользователь</option><option value="seller">Продавец</option><option value="support">Поддержка</option><option value="admin">Администратор</option></select><button onclick="assignUserRole()">Назначить роль</button></div>
-            <div class="admin-user-form"><input type="number" id="balanceDelta" placeholder="Изменение баланса, ₽"><button onclick="updateBalance()">Изменить баланс</button><button class="danger-button" onclick="setUserBan(true)">Заблокировать</button><button class="secondary-button" onclick="setUserBan(false)">Разблокировать</button></div>
+            <div class="admin-user-form"><input type="number" id="balanceDelta" placeholder="Изменение баланса, ₽"><button onclick="updateBalance()">Изменить баланс</button></div>
+            <div class="admin-user-form"><input id="ownerBanReason" placeholder="Причина блокировки"><input id="ownerBanDuration" type="number" min="1" max="8760" placeholder="Срок в часах (пусто — навсегда)"><button class="danger-button" onclick="setUserBan(true)">Заблокировать</button><button class="secondary-button" onclick="setUserBan(false)">Разблокировать</button></div>
         </div>
     </div>
     <!-- Профиль -->
