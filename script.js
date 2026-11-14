@@ -24,7 +24,7 @@ function escapeHtml(value) {
 let allProducts = [];
 let selectedPaymentMethod = 'cryptobot';
 let activeDirectPaymentId = null;
-let directPaymentPoll = null;\n
+let directPaymentPoll = null;
 let currentRole='user';
 function rub(value){return Number(value||0).toLocaleString('ru-RU',{maximumFractionDigits:2})+' ₽';}
 function jsonPost(url,body){return apiFetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});}
