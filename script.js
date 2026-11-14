@@ -23,6 +23,8 @@ function escapeHtml(value) {
 
 let allProducts = [];
 let selectedPaymentMethod = 'cryptobot';
+let activeDirectPaymentId = null;
+let directPaymentPoll = null;
 
 function setAmount(val) {
     document.getElementById('payAmount').value = val;
@@ -34,6 +36,7 @@ function selectMethod(method, element) {
     selectedPaymentMethod = method;
     document.querySelectorAll('.pay-method-item').forEach(el => el.classList.remove('selected'));
     element.classList.add('selected');
+    document.getElementById('directAssetWrap').classList.toggle('hidden', method !== 'direct_transfer');
 }
 
 apiFetch('/api/user', {
@@ -205,32 +208,66 @@ function generateKey() {
 function makePayment() {
     const amount = Number(document.getElementById('payAmount').value);
     if(!Number.isFinite(amount) || amount <= 0 || amount > 10000000) { alert('Введите корректную сумму'); return; }
-
-    if (selectedPaymentMethod === 'direct_transfer') {
-        alert('Прямой перевод TON / USDT пока не подключён: сначала нужно подтвердить сеть, адрес кошелька и способ автоматической проверки платежа. Не отправляйте средства на старые реквизиты.');
-        return;
-    }
-
+    const body = { amount, method: selectedPaymentMethod };
+    if (selectedPaymentMethod === 'direct_transfer') body.asset = document.getElementById('directAsset').value;
     apiFetch('/api/payment/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telegram_id: String(user.id), amount, method: selectedPaymentMethod })
+        body: JSON.stringify(body)
     })
-    .then(res => res.json())
-    .then(data => {
-        if(data.paymentUrl) {
+    .then(async res => ({ ok:res.ok, data:await res.json() }))
+    .then(({ok,data}) => {
+        if(!ok) { alert(data.error || 'Ошибка создания платежа'); return; }
+        if(data.directTransfer) {
+            activeDirectPaymentId = data.paymentId;
+            document.getElementById('transferAssetTitle').innerText = data.asset === 'TON' ? 'TON' : 'USDT (TON)';
+            document.getElementById('transferAmountText').innerText = data.cryptoAmount + ' ' + data.asset;
+            document.getElementById('walletAddressText').innerText = data.walletAddress;
+            document.getElementById('transferRubText').innerText = amount.toFixed(2) + ' ₽';
+            document.getElementById('transferExpiryText').innerText = new Date(data.expiresAt).toLocaleTimeString();
+            document.getElementById('transferStatusText').innerText = 'Ожидаем перевод';
+            document.getElementById('transferModal').classList.remove('hidden');
+            if(directPaymentPoll) clearInterval(directPaymentPoll);
+            directPaymentPoll = setInterval(checkDirectPayment,5000);
+        } else if(data.paymentUrl) {
             window.location.href = data.paymentUrl;
         } else {
-            alert(data.message || data.error || 'Ошибка создания платежа');
+            alert(data.error || 'Платёж создан, но ссылка не получена.');
         }
-    });
+    })
+    .catch(() => alert('Ошибка соединения с сервером'));
 }
 
-function openWalletApp() {
-    window.location.href = 'https://t.me/CryptoBot';
+async function checkDirectPayment() {
+    if(!activeDirectPaymentId) return;
+    try {
+        const res=await apiFetch('/api/payment/status/'+activeDirectPaymentId);
+        const data=await res.json();
+        if(data.status==='paid') {
+            document.getElementById('transferStatusText').innerText='Оплата подтверждена! Баланс пополнен.';
+            if(directPaymentPoll) clearInterval(directPaymentPoll);
+            directPaymentPoll=null;
+            activeDirectPaymentId=null;
+            setTimeout(()=>{ closeTransferModal(); location.reload(); },1800);
+        } else if(data.status==='expired') {
+            document.getElementById('transferStatusText').innerText='Срок оплаты истёк. Создайте новый платёж.';
+            if(directPaymentPoll) clearInterval(directPaymentPoll);
+            directPaymentPoll=null;
+        }
+    } catch(e) { /* Network retry: payment state remains server-authoritative. */ }
 }
+
+function copyWalletAddress() {
+    const value=document.getElementById('walletAddressText').innerText;
+    if(navigator.clipboard?.writeText) navigator.clipboard.writeText(value).then(()=>alert('Адрес скопирован'));
+    else alert(value);
+}
+
+function openWalletApp() { copyWalletAddress(); }
 
 function closeTransferModal() {
+    if(directPaymentPoll) clearInterval(directPaymentPoll);
+    directPaymentPoll=null;
     document.getElementById('transferModal').classList.add('hidden');
 }
 
