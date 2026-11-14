@@ -220,7 +220,7 @@
             position: fixed; top: 0; left: 0; right: 0; bottom: 0;
             background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 200;
         }
-        .modal.hidden { display: none; }
+        .modal.hidden { display: none !important; }
 
         body{background:radial-gradient(ellipse at 85% -10%,rgba(89,72,220,.22),transparent 38%),#080d1c;color:#f7f8ff}
         .container{max-width:560px;padding:18px 16px 100px}
@@ -258,7 +258,8 @@
         .nav{background:rgba(8,13,28,.92);border-color:#27324c;padding:12px 0 calc(12px + env(safe-area-inset-bottom))}
         .nav-item.active{color:#a99cff}
         @media(min-width:520px){.owner-stats-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-\n    </style>
+
+    </style>
 </head>
 <body>
 
@@ -423,20 +424,24 @@
     </div>
 </div>
 
-<!-- Окно реквизитов прямого TON / USDT перевода -->
-<div id="transferModal" class="modal hidden">
-    <div class="card" style="width:90%;max-width:380px;text-align:center;margin:auto;">
+<!-- Окно реквизитов показывается только после нажатия «Перейти к оплате» -->
+<div id="transferModal" class="modal hidden" aria-hidden="true">
+    <div class="card" style="width:90%;max-width:380px;text-align:center;margin:auto;max-height:85vh;overflow:auto;">
         <h3 style="margin-bottom:8px;color:#818cf8;">Перевод <span id="transferAssetTitle">TON</span></h3>
-        <p style="font-size:13px;margin-bottom:12px;">Отправьте точную сумму на адрес магазина. Комментарий не требуется: платёж определяется по уникальной сумме.</p>
+        <p style="font-size:13px;margin-bottom:12px;">Отправьте точную сумму. Обязательно укажите комментарий — он нужен для автоматического распознавания платежа.</p>
+        <img id="transferQrImg" alt="QR-код для оплаты TON" width="220" height="220" style="display:block;width:220px;height:220px;max-width:100%;object-fit:contain;margin:0 auto 14px;background:#fff;border-radius:12px;padding:8px;box-sizing:border-box;">
         <div style="text-align:left;background:rgba(15,23,42,0.6);padding:12px;border-radius:10px;font-size:13px;margin-bottom:12px;word-break:break-all;">
             <b>Адрес кошелька:</b><br><span id="walletAddressText" style="color:#38bdf8;">—</span><br><br>
             <b>Точная сумма:</b><br><span id="transferAmountText" style="color:#10b981;font-weight:bold;">—</span><br><br>
+            <b>Комментарий для платежа:</b><br><span id="walletCommentText" style="color:#fbbf24;font-weight:bold;">—</span><br><br>
             <b>Сумма пополнения:</b> <span id="transferRubText">—</span><br>
             <b>Оплатить до:</b> <span id="transferExpiryText">—</span><br><br>
             <b>Статус:</b> <span id="transferStatusText">Ожидаем перевод</span>
         </div>
         <button onclick="copyWalletAddress()">Скопировать адрес</button>
-        <button style="background:#475569;margin-top:6px;" onclick="closeTransferModal()">Закрыть</button>
+        <button class="secondary-button" onclick="copyWalletComment()">Скопировать комментарий</button>
+        <button class="secondary-button" onclick="openWalletApp()">Открыть в TON-кошельке</button>
+        <button class="danger-button" onclick="closeTransferModal()">Закрыть</button>
     </div>
 </div>
 
@@ -460,6 +465,7 @@
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
 <script src="script.js"></script>
 </body>
 </html>
