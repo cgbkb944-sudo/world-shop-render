@@ -122,6 +122,7 @@ apiFetch('/api/user', {
     }
 
     loadProducts();
+    loadPaymentReadiness();
     resumePendingPayment();
 });
 
@@ -173,12 +174,34 @@ function filterProducts() {
 }
 
 const subsByCat = {
-    'Telegram': ['Дизайн ТГК', 'Аренда NFT', 'Разработка ТГ ботов', 'Накрутка подписчиков', 'Покупка Telegram Stars', 'Просмотры и реакции'],
-    'Instagram': ['Подписчики', 'Лайки', 'Просмотры', 'Комментарии'],
-    'Roblox': ['Буст', 'Аккаунты Roblox', 'Напарник на час', 'Робуксы'],
-    'Genshin': ['Кристаллы', 'Луна'],
-    'Steam': ['Пополнение кошелька 500₽', 'Пополнение кошелька 1000₽'],
-    'VPN': ['Доступ на 1 месяц', 'Доступ на 1 год']
+ 'Telegram':['Дизайн ТГК','Аренда NFT','Разработка ботов','Stars','Подписчики','Просмотры и реакции'],
+ 'Instagram':['Аккаунты','Подписчики','Лайки','Просмотры','Комментарии'],
+ 'TikTok':['Аккаунты','Подписчики','Лайки','Просмотры'],
+ 'YouTube':['Каналы','Подписчики','Просмотры','Монетизация'],
+ 'Discord':['Серверы','Nitro','Бусты','Аккаунты'],
+ 'VK':['Сообщества','Подписчики','Оформление'],
+ 'Roblox':['Аккаунты','Robux','Буст','Предметы'],
+ 'Minecraft':['Аккаунты','Серверы','Привилегии'],
+ 'Genshin Impact':['Кристаллы','Луна','Аккаунты'],
+ 'PUBG Mobile':['UC','Аккаунты','Буст'],
+ 'Free Fire':['Алмазы','Аккаунты'],
+ 'Mobile Legends':['Алмазы','Аккаунты','Буст'],
+ 'Brawl Stars':['Гемы','Аккаунты','Буст'],
+ 'Fortnite':['V-Bucks','Аккаунты','Предметы'],
+ 'Valorant':['Points','Аккаунты','Буст'],
+ 'CS2':['Скины','Аккаунты','Услуги'],
+ 'Dota 2':['Предметы','Аккаунты','Услуги'],
+ 'Steam':['Пополнение кошелька','Аккаунты','Игры','Предметы'],
+ 'PlayStation':['Пополнение кошелька','Подписка PS Plus','Аккаунты'],
+ 'Xbox':['Пополнение кошелька','Game Pass','Аккаунты'],
+ 'Nintendo':['Пополнение','Подписки','Аккаунты'],
+ 'VPN':['Доступ на 1 месяц','Доступ на 1 год','Прокси'],
+ 'Подписки':['Premium','Plus','Pro','Семейные подписки'],
+ 'Аккаунты':['Аккаунты сервисов','Игровые аккаунты','Почта'],
+ 'Пополнение':['Донат','Внутриигровая валюта','Подарочные карты'],
+ 'Программное обеспечение':['Лицензии','Ключи активации','Подписки'],
+ 'Дизайн':['Аватары','Баннеры','Логотипы','Оформление каналов'],
+ 'Услуги':['Буст','Помощь','Консультации','Другое']
 };
 
 function updateSubcategoryOptions() {
@@ -418,6 +441,20 @@ function loadAdminStats() {
     });
 }
 
+async function loadPaymentReadiness(){
+ const box=document.getElementById('payment-readiness');
+ try{
+  const status=await fetch('/health/payments').then(r=>r.json());
+  const names={cryptobot:'CryptoBot',sbp:'СБП',card:'Банковская карта',direct_transfer:'TON / USDT',telegram_stars:'Telegram Stars'};
+  const ready=Object.keys(names).filter(k=>status[k]);
+  Object.keys(names).forEach(k=>{
+   const el=document.getElementById('method-'+k);if(!el)return;
+   el.classList.toggle('unavailable',!status[k]);el.title=status[k]?'Доступно':'Не настроено на сервере';
+  });
+  if(!status[selectedPaymentMethod]&&ready.length){selectedPaymentMethod=ready[0];const el=document.getElementById('method-'+selectedPaymentMethod);document.querySelectorAll('.pay-method-item').forEach(x=>x.classList.remove('selected'));el?.classList.add('selected');document.getElementById('directAssetWrap').classList.toggle('hidden',selectedPaymentMethod!=='direct_transfer');}
+  if(box)box.textContent=ready.length?'Доступны: '+ready.map(k=>names[k]).join(', '):'Платёжные провайдеры пока не настроены. Напишите в поддержку.';
+ }catch(e){if(box)box.textContent='Не удалось проверить способы оплаты.';}
+}
 function copyGeneratedKey(){
  const value=document.getElementById('generated-key-value')?.textContent||'';
  if(!value)return;
@@ -431,6 +468,7 @@ async function createTransferCode(){
   const r=await jsonPost('/api/transfers/create',{amount}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');
   box.classList.remove('hidden');box.innerHTML='<p>Передай получателю этот код. Он одноразовый и действует 24 часа:</p><div class="copy-key" id="new-transfer-code"></div><p><b>Сумма: '+rub(d.amount)+'</b></p><button onclick="copyTransferCode()">Скопировать код</button>';
   document.getElementById('new-transfer-code').textContent=d.code;
+  const me=await apiFetch('/api/user',{method:'POST'}).then(x=>x.json());document.getElementById('user-balance').textContent=rub(me.balance);
  }catch(e){alert(e.message);}
 }
 function copyTransferCode(){
