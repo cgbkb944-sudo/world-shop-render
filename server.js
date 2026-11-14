@@ -253,22 +253,40 @@ app.get('/api/payment/methods',(req,res)=>res.json({
   telegram_stars:!!(process.env.TELEGRAM_WEBHOOK_SECRET&&appOrigin)
 }));
 
+async function expireTransferCodes(){
+  const db=await pool.connect();
+  try{
+    await db.query('BEGIN');
+    const q=await db.query("SELECT * FROM balance_transfer_codes WHERE status='pending' AND expires_at<=NOW() FOR UPDATE SKIP LOCKED LIMIT 100");
+    for(const t of q.rows){
+      await db.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2',[t.amount,t.sender_id]);
+      await db.query("UPDATE balance_transfer_codes SET status='expired' WHERE id=$1",[t.id]);
+      await db.query("INSERT INTO transactions(telegram_id,amount,type,reference,description) VALUES ($1,$2,'refund',$3,'Возврат неиспользованного перевода по истечении срока')",
+        [t.sender_id,t.amount,'transfer_'+t.id+'_expired_refund']);
+    }
+    await db.query('COMMIT');
+  }catch(e){await db.query('ROLLBACK');console.error('Expire transfer codes:',e.message);}
+  finally{db.release();}
+}
 app.post('/api/transfers/create',async(req,res)=>{
+  await expireTransferCodes();
   const amount=money(req.body?.amount);
   if(!amount)return res.status(400).json({error:'Введите положительную сумму перевода.'});
   const code='WTS-'+crypto.randomBytes(5).toString('hex').toUpperCase();
   const hash=hashKey(code),db=await pool.connect();
   try{
     await db.query('BEGIN');
-    const u=await db.query('SELECT balance FROM users WHERE telegram_id=$1 FOR UPDATE',[req.user.telegram_id]);
-    if(!u.rowCount||Number(u.rows[0].balance)<amount){await db.query('ROLLBACK');return res.status(400).json({error:'Недостаточно средств. Баланс не может стать отрицательным.'});}
-    await db.query('INSERT INTO balance_transfer_codes(code_hash,sender_id,amount,expires_at) VALUES ($1,$2,$3,NOW()+INTERVAL \'24 hours\')',[hash,req.user.telegram_id,amount]);
+    const debit=await db.query('UPDATE users SET balance=balance-$1,updated_at=NOW() WHERE telegram_id=$2 AND balance >= $1 RETURNING telegram_id',[amount,req.user.telegram_id]);
+    if(!debit.rowCount){await db.query('ROLLBACK');return res.status(400).json({error:'Недостаточно средств. Баланс не может стать отрицательным.'});}
+    const inserted=await db.query('INSERT INTO balance_transfer_codes(code_hash,sender_id,amount,expires_at) VALUES ($1,$2,$3,NOW()+INTERVAL \'24 hours\') RETURNING id',[hash,req.user.telegram_id,amount]);
+    await db.query("INSERT INTO transactions(telegram_id,amount,type,reference,description) VALUES ($1,$2,'transfer_out',$3,'Резерв средств для перевода по коду')",[req.user.telegram_id,-amount,'transfer_'+inserted.rows[0].id+'_out']);
     await db.query('COMMIT');
     res.json({success:true,code,amount,expiresInHours:24});
   }catch(e){await db.query('ROLLBACK');console.error('Transfer create:',e.message);res.status(503).json({error:'Не удалось создать код перевода.'});}
   finally{db.release();}
 });
 app.post('/api/transfers/redeem',async(req,res)=>{
+  await expireTransferCodes();
   const code=String(req.body?.code||'').trim().toUpperCase();
   if(!/^WTS-[A-F0-9]{10}$/.test(code))return res.status(400).json({error:'Проверьте код перевода.'});
   const db=await pool.connect();
@@ -278,12 +296,10 @@ app.post('/api/transfers/redeem',async(req,res)=>{
     if(!q.rowCount||q.rows[0].status!=='pending'||new Date(q.rows[0].expires_at)<=new Date()){await db.query('ROLLBACK');return res.status(400).json({error:'Код недействителен, уже использован или истёк.'});}
     const t=q.rows[0];
     if(String(t.sender_id)===String(req.user.telegram_id)){await db.query('ROLLBACK');return res.status(400).json({error:'Нельзя активировать собственный код.'});}
-    const debit=await db.query('UPDATE users SET balance=balance-$1,updated_at=NOW() WHERE telegram_id=$2 AND balance >= $1 RETURNING telegram_id',[t.amount,t.sender_id]);
-    if(!debit.rowCount){await db.query('UPDATE balance_transfer_codes SET status=\'cancelled\' WHERE id=$1',[t.id]);await db.query('COMMIT');return res.status(400).json({error:'У отправителя недостаточно средств для завершения перевода.'});}
     await db.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2',[t.amount,req.user.telegram_id]);
     await db.query('UPDATE balance_transfer_codes SET status=\'redeemed\',recipient_id=$1,redeemed_at=NOW() WHERE id=$2',[req.user.telegram_id,t.id]);
-    await db.query("INSERT INTO transactions(telegram_id,amount,type,reference,description) VALUES ($1,$2,'transfer_out',$3,$4),($5,$6,'transfer_in',$7,$8)",
-      [t.sender_id,-t.amount,'transfer_'+t.id+'_out','Перевод средств по коду',req.user.telegram_id,t.amount,'transfer_'+t.id+'_in','Получение средств по коду']);
+    await db.query("INSERT INTO transactions(telegram_id,amount,type,reference,description) VALUES ($1,$2,'transfer_in',$3,$4)",
+      [req.user.telegram_id,t.amount,'transfer_'+t.id+'_in','Получение средств по коду']);
     await db.query('COMMIT');
     res.json({success:true,amount:Number(t.amount),message:'Баланс успешно пополнен.'});
   }catch(e){await db.query('ROLLBACK');console.error('Transfer redeem:',e.message);res.status(503).json({error:'Не удалось активировать код.'});}
@@ -879,6 +895,7 @@ app.post('/api/owner/role',roles('owner'),async(req,res)=>{
 
 app.use((err,req,res,next)=>{console.error('Request error:',err.message);res.status(400).json({error:'Некорректный запрос.'});});
 const tonMonitor=setInterval(()=>{pollTonPayments().catch(e=>console.error('TON poll failed:',e.message));},5000);
+const transferExpiryMonitor=setInterval(()=>{expireTransferCodes().catch(e=>console.error('Transfer expiry failed:',e.message));},60000);
 setTimeout(()=>pollTonPayments().catch(e=>console.error('TON poll failed:',e.message)),1500).unref();
 let server;
 async function start() {
@@ -894,6 +911,6 @@ async function start() {
     process.exit(1);
   }
 }
-async function stop(){clearInterval(tonMonitor);if(server)server.close(async()=>{await pool.end();process.exit(0);});else{await pool.end();process.exit(0);}setTimeout(()=>process.exit(1),10000).unref();}
+async function stop(){clearInterval(tonMonitor);clearInterval(transferExpiryMonitor);if(server)server.close(async()=>{await pool.end();process.exit(0);});else{await pool.end();process.exit(0);}setTimeout(()=>process.exit(1),10000).unref();}
 process.on('SIGTERM',stop);process.on('SIGINT',stop);
 start();
