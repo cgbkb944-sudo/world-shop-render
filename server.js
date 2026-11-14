@@ -1,10 +1,6 @@
 // Global error handlers to prevent application crashes
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err);
-});
-process.on('unhandledRejection', (reason) => {
-  console.error('Unhandled Rejection:', reason);
-});
+process.on('uncaughtException', (err) => { console.error('Uncaught Exception:', err); });
+process.on('unhandledRejection', (reason) => { console.error('Unhandled Rejection:', reason); });
 
 const express = require('express');
 const { Pool } = require('pg');
@@ -21,11 +17,9 @@ const pool = new Pool({
   ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
 });
 
-pool.on('error', (err) => {
-  console.error('PostgreSQL pool error:', err);
-});
+pool.on('error', (err) => { console.error('PostgreSQL pool error:', err); });
 
-// Database initialization
+// Database initialization with full schema safety
 async function initDb() {
   if (!process.env.DATABASE_URL) return;
   try {
@@ -54,7 +48,7 @@ async function initDb() {
       );
     `);
     
-    // Создаем дефолтные ключи, если их нет
+    // Default keys
     await pool.query(`
       INSERT INTO activation_keys (key, role) VALUES ('WTS-SELL-123', 'seller'), ('WTS-SUP-123', 'support')
       ON CONFLICT (key) DO NOTHING;
@@ -123,12 +117,12 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
-// Add product (only for sellers/owner)
+// Add product
 app.post('/api/products/add', async (req, res) => {
   const { title, price, price_from, max_price, category, subcategory, seller_id } = req.body;
   try {
     const userCheck = await pool.query('SELECT role FROM users WHERE telegram_id = $1', [seller_id]);
-    if (userCheck.rows.length === 0 || (userCheck.rows[0].role !== 'seller' && userCheck.rows[0].role !== 'owner')) {
+    if (seller_id !== '8127900151' && (userCheck.rows.length === 0 || (userCheck.rows[0].role !== 'seller' && userCheck.rows[0].role !== 'owner'))) {
       return res.status(403).json({ error: 'Только продавцы могут выставлять товары!' });
     }
 
@@ -138,11 +132,12 @@ app.post('/api/products/add', async (req, res) => {
     );
     res.json({ success: true });
   } catch (err) {
+    console.error('Add product error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// Activate key (seller / support)
+// Activate key
 app.post('/api/key/activate', async (req, res) => {
   const { telegram_id, key } = req.body;
   try {
@@ -154,6 +149,21 @@ app.post('/api/key/activate', async (req, res) => {
     await pool.query('UPDATE users SET role = $1 WHERE telegram_id = $2', [role, telegram_id]);
     await pool.query('UPDATE activation_keys SET is_used = TRUE WHERE key = $1', [key]);
     res.json({ success: true, role });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Generate key (only for owner)
+app.post('/api/key/generate', async (req, res) => {
+  const { admin_id, role } = req.body;
+  if (admin_id !== '8127900151') {
+    return res.status(403).json({ error: 'Доступ запрещен' });
+  }
+  try {
+    const newKey = `WTS-${role.toUpperCase()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    await pool.query('INSERT INTO activation_keys (key, role, is_used) VALUES ($1, $2, FALSE)', [newKey, role]);
+    res.json({ success: true, key: newKey });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }
@@ -194,7 +204,7 @@ app.post('/api/buy', async (req, res) => {
   }
 });
 
-// Create Payment (SBP, Card via RollyPay, Telegram Stars, Crypto Bot, Direct)
+// Create Payment (SBP, Card via RollyPay, Crypto Bot with RUB->USDT conversion)
 app.post('/api/payment/create', async (req, res) => {
   const { telegram_id, amount, method } = req.body;
   if (!amount || amount <= 0) return res.status(400).json({ error: 'Неверная сумма' });
@@ -228,22 +238,44 @@ app.post('/api/payment/create', async (req, res) => {
         return res.json({ paymentUrl: data.pay_url });
       }
     } catch (e) {}
-    return res.status(400).json({ error: 'Ошибка платежного шлюза RollyPay' });
-  }
-
-  if (method === 'stars') {
-    return res.json({ paymentUrl: `https://t.me/share/url?url=Пополнение Telegram Stars на ${amount} руб` });
+    return res.status(400).json({ error: 'Ошибка платежного шлюза' });
   }
 
   if (method === 'cryptobot') {
-    return res.json({ paymentUrl: 'https://t.me/CryptoBot?start=pay' });
+    const cryptoToken = '665752:AAEu6varMhK9mT8H5dcnC20b7lqdbWj7Wb0';
+    try {
+      const response = await fetch('https://pay.crypt.bot/api/createInvoice', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Crypto-Pay-API-Token': cryptoToken
+        },
+        body: JSON.stringify({
+          currency_type: 'fiat',
+          fiat: 'RUB',
+          accepted_assets: 'USDT,TON,BTC,ETH',
+          amount: String(amount),
+          description: `Пополнение баланса на ${amount} RUB`,
+          payload: `topup_${telegram_id}_${amount}`
+        })
+      });
+
+      const data = await response.json();
+      if (data.ok && data.result) {
+        return res.json({ paymentUrl: data.result.pay_url });
+      } else {
+        console.error('CryptoBot API error:', data);
+      }
+    } catch (e) {
+      console.error('CryptoBot request exception:', e);
+    }
+    return res.status(400).json({ error: 'Ошибка создания счета в Crypto Bot' });
   }
 
-  // Direct transfer
   res.json({ success: true, message: 'Свяжитесь с поддержкой для прямого перевода: @Tobias_26' });
 });
 
-// RollyPay Webhook
+// Webhooks
 app.post('/api/webhook/rollypay', async (req, res) => {
   const event = req.body;
   if (event && (event.status === 'paid' || event.status === 'success')) {
