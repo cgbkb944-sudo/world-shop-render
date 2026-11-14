@@ -429,15 +429,12 @@ app.get('/api/owner/sellers',roles('owner'),async(req,res)=>{
   try{
     const q=await pool.query(`
       SELECT u.telegram_id,u.username,u.role,u.balance,u.created_at,
-        COUNT(DISTINCT p.id)::int AS products_count,
-        COUNT(DISTINCT o.id)::int AS orders_count,
-        COALESCE(SUM(o.amount),0) AS sales_volume,
-        COALESCE(SUM(o.amount-o.commission),0) AS seller_earned
+        (SELECT COUNT(*)::int FROM products p WHERE p.seller_id=u.telegram_id) AS products_count,
+        (SELECT COUNT(*)::int FROM orders o WHERE o.seller_id=u.telegram_id) AS orders_count,
+        (SELECT COALESCE(SUM(o.amount),0) FROM orders o WHERE o.seller_id=u.telegram_id) AS sales_volume,
+        (SELECT COALESCE(SUM(o.amount-o.commission),0) FROM orders o WHERE o.seller_id=u.telegram_id) AS seller_earned
       FROM users u
-      LEFT JOIN products p ON p.seller_id=u.telegram_id
-      LEFT JOIN orders o ON o.seller_id=u.telegram_id
       WHERE u.role IN ('seller','admin')
-      GROUP BY u.telegram_id
       ORDER BY sales_volume DESC,u.created_at DESC
     `);
     res.json(q.rows);
