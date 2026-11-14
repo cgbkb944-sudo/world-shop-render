@@ -71,7 +71,9 @@ function updateBalance(){
 }
 function setUserBan(ban){
  const target_id=document.getElementById('targetId').value.trim();if(!target_id){alert('Введите Telegram ID');return;}
- jsonPost('/api/admin/action',{action:ban?'ban':'unban',target_id}).then(async r=>({ok:r.ok,d:await r.json()})).then(x=>{if(!x.ok)throw new Error(x.d.error);alert(ban?'Пользователь заблокирован':'Блокировка снята');}).catch(e=>alert(e.message));
+ const duration_hours=document.getElementById('ownerBanDuration')?.value||null;
+ const reason=document.getElementById('ownerBanReason')?.value||'';
+ jsonPost('/api/admin/action',{action:ban?'ban':'unban',target_id,duration_hours,reason}).then(async r=>({ok:r.ok,d:await r.json()})).then(x=>{if(!x.ok)throw new Error(x.d.error);alert(ban?'Пользователь заблокирован':'Блокировка снята');}).catch(e=>alert(e.message));
 }
 
 
