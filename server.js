@@ -214,6 +214,13 @@ const hashKey = v => crypto.createHash('sha256').update(String(v).trim().toUpper
 
 app.get('/',(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
 app.get('/health',async(req,res)=>{try{await pool.query('SELECT 1');res.json({ok:true,database:'connected'});}catch{res.status(503).json({ok:false,database:'unavailable'});}});
+app.get('/health/payments',(req,res)=>res.json({
+  cryptobot:!!(process.env.CRYPTO_PAY_API_TOKEN&&process.env.CRYPTO_PAY_WEBHOOK_SECRET),
+  sbp:!!(process.env.ROLLYPAY_API_KEY&&process.env.ROLLYPAY_WEBHOOK_SECRET),
+  card:!!(process.env.ROLLYPAY_API_KEY&&process.env.ROLLYPAY_WEBHOOK_SECRET),
+  direct_transfer:!!(tonAddress&&normalizeTonAddress(tonAddress)&&process.env.CRYPTO_PAY_API_TOKEN),
+  telegram_stars:!!(process.env.TELEGRAM_WEBHOOK_SECRET&&appOrigin)
+}));
 app.get('/api/products',async(req,res)=>{
   try { const r=await pool.query("SELECT id,title,description,price,price_from,max_price,category,subcategory FROM products WHERE status='active' ORDER BY created_at DESC LIMIT 200"); res.json(r.rows); }
   catch(e){console.error(e.message);res.status(503).json({error:'Не удалось загрузить товары.'});}
@@ -257,7 +264,7 @@ async function expireTransferCodes(){
   const db=await pool.connect();
   try{
     await db.query('BEGIN');
-    const q=await db.query("SELECT * FROM balance_transfer_codes WHERE status='pending' AND expires_at<=NOW() FOR UPDATE SKIP LOCKED LIMIT 100");
+    const q=await db.query("SELECT * FROM balance_transfer_codes WHERE status='pending' AND expires_at<=NOW() LIMIT 100 FOR UPDATE SKIP LOCKED");
     for(const t of q.rows){
       await db.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2',[t.amount,t.sender_id]);
       await db.query("UPDATE balance_transfer_codes SET status='expired' WHERE id=$1",[t.id]);
