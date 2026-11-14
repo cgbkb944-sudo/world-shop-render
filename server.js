@@ -78,7 +78,7 @@ app.post('/webhooks/telegram', express.json({ limit: '64kb' }), async (req,res) 
     const update = req.body || {};
     if (update.pre_checkout_query) {
       const q = update.pre_checkout_query;
-      const match = /^wts_stars_(\\d+)_([a-f0-9]+)$/.exec(String(q.invoice_payload || ''));
+      const match = /^wts_stars_(\d+)_([a-f0-9]+)$/.exec(String(q.invoice_payload || ''));
       let valid = false;
       if (match && q.currency === 'XTR' && Number.isSafeInteger(Number(q.from?.id))) {
         const p = await pool.query("SELECT id,telegram_id,amount,status,expires_at,provider_payload FROM payments WHERE id=$1 AND provider='telegram_stars'", [Number(match[1])]);
@@ -99,7 +99,7 @@ app.post('/webhooks/telegram', express.json({ limit: '64kb' }), async (req,res) 
     }
     const payment = update.message?.successful_payment;
     if (payment) {
-      const match = /^wts_stars_(\\d+)_([a-f0-9]+)$/.exec(String(payment.invoice_payload || ''));
+      const match = /^wts_stars_(\d+)_([a-f0-9]+)$/.exec(String(payment.invoice_payload || ''));
       if (!match || payment.currency !== 'XTR' || !payment.telegram_payment_charge_id) return res.sendStatus(400);
       const p = await pool.query("SELECT id,telegram_id,amount,status,provider_payload FROM payments WHERE id=$1 AND provider='telegram_stars'", [Number(match[1])]);
       if (!p.rowCount) return res.sendStatus(404);
