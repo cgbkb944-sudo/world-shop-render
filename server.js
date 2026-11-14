@@ -60,6 +60,56 @@ async function migrateDatabase() {
   }
   await pool.query("ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_provider_check");
   await pool.query("ALTER TABLE payments ADD CONSTRAINT payments_provider_check CHECK (provider IN ('cryptobot','sbp','card','ton_usdt','telegram_stars'))");
+  await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_until TIMESTAMPTZ;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_reason TEXT;
+    ALTER TABLE products ALTER COLUMN status SET DEFAULT 'pending';
+    ALTER TABLE products DROP CONSTRAINT IF EXISTS products_status_check;
+    ALTER TABLE products ADD CONSTRAINT products_status_check CHECK (status IN ('pending','active','rejected','paused'));
+    ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check;
+    ALTER TABLE orders ADD CONSTRAINT orders_status_check CHECK (status IN ('paid','delivered','completed','disputed','refunded'));
+    ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_type_check;
+    ALTER TABLE transactions ADD CONSTRAINT transactions_type_check CHECK (type IN ('topup','purchase','sale','commission','refund','admin_adjustment','transfer_in','transfer_out'));
+    CREATE TABLE IF NOT EXISTS balance_transfer_codes (
+      id BIGSERIAL PRIMARY KEY,
+      code_hash TEXT NOT NULL UNIQUE,
+      sender_id BIGINT NOT NULL REFERENCES users(telegram_id),
+      amount NUMERIC(18,2) NOT NULL CHECK (amount > 0),
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','redeemed','expired','cancelled')),
+      recipient_id BIGINT REFERENCES users(telegram_id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMPTZ NOT NULL,
+      redeemed_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS balance_transfer_sender_idx ON balance_transfer_codes(sender_id,created_at DESC);
+    CREATE INDEX IF NOT EXISTS balance_transfer_recipient_idx ON balance_transfer_codes(recipient_id,created_at DESC);
+    CREATE TABLE IF NOT EXISTS moderation_requests (
+      id BIGSERIAL PRIMARY KEY,
+      kind TEXT NOT NULL CHECK (kind IN ('ban','product')),
+      requested_by BIGINT NOT NULL REFERENCES users(telegram_id),
+      target_user_id BIGINT REFERENCES users(telegram_id),
+      product_id BIGINT REFERENCES products(id),
+      reason TEXT NOT NULL DEFAULT '',
+      duration_hours INTEGER,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
+      decided_by BIGINT REFERENCES users(telegram_id),
+      decision_note TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      decided_at TIMESTAMPTZ
+    );
+    ALTER TABLE activation_keys ADD COLUMN IF NOT EXISTS created_by BIGINT REFERENCES users(telegram_id);
+    CREATE INDEX IF NOT EXISTS moderation_pending_idx ON moderation_requests(status,created_at DESC);
+    CREATE TABLE IF NOT EXISTS order_refunds (
+      id BIGSERIAL PRIMARY KEY,
+      order_id BIGINT NOT NULL UNIQUE REFERENCES orders(id),
+      refunded_by BIGINT NOT NULL REFERENCES users(telegram_id),
+      amount NUMERIC(18,2) NOT NULL CHECK (amount > 0),
+      reason TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
 }
 
 app.disable('x-powered-by');
@@ -147,10 +197,14 @@ async function auth(req,res,next) {
       "INSERT INTO users (telegram_id,username,role) VALUES ($1,$2,$3) " +
       "ON CONFLICT (telegram_id) DO UPDATE SET username=EXCLUDED.username, " +
       "role=CASE WHEN users.telegram_id=$4 THEN 'owner' ELSE users.role END, updated_at=NOW() " +
-      "RETURNING telegram_id,username,role,balance,is_banned",
+      "RETURNING telegram_id,username,role,balance,is_banned,banned_until,banned_reason",
       [u.id,u.username,role,OWNER_TELEGRAM_ID]);
     req.user = r.rows[0];
-    if (req.user.is_banned) return res.status(403).json({error:'Ваш аккаунт заблокирован. Обратитесь в поддержку.'});
+    if (req.user.is_banned && req.user.banned_until && new Date(req.user.banned_until) <= new Date()) {
+      await pool.query('UPDATE users SET is_banned=FALSE,banned_until=NULL,banned_reason=NULL,updated_at=NOW() WHERE telegram_id=$1',[u.id]);
+      req.user.is_banned=false;
+    }
+    if (req.user.is_banned) return res.status(403).json({error:'Ваш аккаунт заблокирован. '+(req.user.banned_reason||'Обратитесь в поддержку.')});
     next();
   } catch(e) { console.error('Auth error:',e.message); res.status(503).json({error:'Сервис временно недоступен.'}); }
 }
@@ -160,13 +214,112 @@ const hashKey = v => crypto.createHash('sha256').update(String(v).trim().toUpper
 
 app.get('/',(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
 app.get('/health',async(req,res)=>{try{await pool.query('SELECT 1');res.json({ok:true,database:'connected'});}catch{res.status(503).json({ok:false,database:'unavailable'});}});
+app.get('/health/payments',(req,res)=>res.json({
+  cryptobot:!!(process.env.CRYPTO_PAY_API_TOKEN&&process.env.CRYPTO_PAY_WEBHOOK_SECRET),
+  sbp:!!(process.env.ROLLYPAY_API_KEY&&process.env.ROLLYPAY_WEBHOOK_SECRET),
+  card:!!(process.env.ROLLYPAY_API_KEY&&process.env.ROLLYPAY_WEBHOOK_SECRET),
+  direct_transfer:!!(tonAddress&&normalizeTonAddress(tonAddress)&&process.env.CRYPTO_PAY_API_TOKEN),
+  telegram_stars:!!(process.env.TELEGRAM_WEBHOOK_SECRET&&appOrigin)
+}));
 app.get('/api/products',async(req,res)=>{
-  try { const r=await pool.query("SELECT id,title,description,price,price_from,max_price,category,subcategory FROM products WHERE status='active' ORDER BY created_at DESC LIMIT 200"); res.json(r.rows); }
+  try { const r=await pool.query("SELECT p.id,p.title,p.description,p.price,p.price_from,p.max_price,p.category,p.subcategory,COALESCE(u.display_name,u.username,'Продавец') AS seller_name FROM products p JOIN users u ON u.telegram_id=p.seller_id WHERE p.status='active' ORDER BY p.created_at DESC LIMIT 200"); res.json(r.rows); }
   catch(e){console.error(e.message);res.status(503).json({error:'Не удалось загрузить товары.'});}
 });
 app.use('/api',auth);
-app.post('/api/user',(req,res)=>res.json(req.user));
+app.post('/api/user',async(req,res)=>{
+  try{
+    const q=await pool.query('SELECT telegram_id,username,role,balance,is_banned,display_name,avatar_url,banned_until FROM users WHERE telegram_id=$1',[req.user.telegram_id]);
+    res.json(q.rows[0]||req.user);
+  }catch(e){res.status(503).json({error:'Не удалось загрузить профиль.'});}
+});
+app.put('/api/profile',async(req,res)=>{
+  const name=String(req.body?.display_name||'').trim().slice(0,40);
+  const avatar=String(req.body?.avatar_url||'').trim();
+  if(avatar && (!/^https:\/\//i.test(avatar)||avatar.length>1000))return res.status(400).json({error:'Ссылка на аватар должна начинаться с https://.'});
+  try{
+    const q=await pool.query('UPDATE users SET display_name=$1,avatar_url=$2,updated_at=NOW() WHERE telegram_id=$3 RETURNING display_name,avatar_url',[name||null,avatar||null,req.user.telegram_id]);
+    res.json({success:true,...q.rows[0]});
+  }catch(e){res.status(503).json({error:'Не удалось сохранить настройки профиля.'});}
+});
 app.get('/api/history',async(req,res)=>{try{const r=await pool.query('SELECT amount,type,description,created_at FROM transactions WHERE telegram_id=$1 ORDER BY created_at DESC LIMIT 100',[req.user.telegram_id]);res.json(r.rows);}catch(e){console.error(e.message);res.status(503).json({error:'Не удалось загрузить историю.'});}});
+app.get('/api/my/activity',async(req,res)=>{
+  try{
+    const [purchases,sales,transfers]=await Promise.all([
+      pool.query(`SELECT o.id,o.amount,o.status,o.created_at,p.title,COALESCE(s.display_name,s.username,'Продавец') AS store_name FROM orders o JOIN products p ON p.id=o.product_id JOIN users s ON s.telegram_id=o.seller_id WHERE o.buyer_id=$1 ORDER BY o.created_at DESC LIMIT 100`,[req.user.telegram_id]),
+      pool.query('SELECT o.id,o.amount,o.status,o.created_at,p.title FROM orders o JOIN products p ON p.id=o.product_id WHERE o.seller_id=$1 ORDER BY o.created_at DESC LIMIT 100',[req.user.telegram_id]),
+      pool.query('SELECT id,amount,status,created_at,recipient_id,sender_id,CASE WHEN sender_id=$1 THEN \'sent\' ELSE \'received\' END direction FROM balance_transfer_codes WHERE sender_id=$1 OR recipient_id=$1 ORDER BY created_at DESC LIMIT 100',[req.user.telegram_id])
+    ]);
+    res.json({purchases:purchases.rows,sales:sales.rows,transfers:transfers.rows});
+  }catch(e){res.status(503).json({error:'Не удалось загрузить активность.'});}
+});
+app.get('/api/payment/methods',(req,res)=>res.json({
+  cryptobot:!!(process.env.CRYPTO_PAY_API_TOKEN&&process.env.CRYPTO_PAY_WEBHOOK_SECRET),
+  sbp:!!(process.env.ROLLYPAY_API_KEY&&process.env.ROLLYPAY_WEBHOOK_SECRET),
+  card:!!(process.env.ROLLYPAY_API_KEY&&process.env.ROLLYPAY_WEBHOOK_SECRET),
+  direct_transfer:!!(tonAddress&&normalizeTonAddress(tonAddress)&&process.env.CRYPTO_PAY_API_TOKEN),
+  telegram_stars:!!(process.env.TELEGRAM_WEBHOOK_SECRET&&appOrigin)
+}));
+
+async function expireTransferCodes(){
+  const db=await pool.connect();
+  try{
+    await db.query('BEGIN');
+    const q=await db.query("SELECT * FROM balance_transfer_codes WHERE status='pending' AND expires_at<=NOW() LIMIT 100 FOR UPDATE SKIP LOCKED");
+    for(const t of q.rows){
+      await db.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2',[t.amount,t.sender_id]);
+      await db.query("UPDATE balance_transfer_codes SET status='expired' WHERE id=$1",[t.id]);
+      await db.query("INSERT INTO transactions(telegram_id,amount,type,reference,description) VALUES ($1,$2,'refund',$3,'Возврат неиспользованного перевода по истечении срока')",
+        [t.sender_id,t.amount,'transfer_'+t.id+'_expired_refund']);
+    }
+    await db.query('COMMIT');
+  }catch(e){await db.query('ROLLBACK');console.error('Expire transfer codes:',e.message);}
+  finally{db.release();}
+}
+app.post('/api/transfers/create',async(req,res)=>{
+  await expireTransferCodes();
+  const amount=money(req.body?.amount);
+  if(!amount)return res.status(400).json({error:'Введите положительную сумму перевода.'});
+  const code='WTS-'+crypto.randomBytes(5).toString('hex').toUpperCase();
+  const hash=hashKey(code),db=await pool.connect();
+  try{
+    await db.query('BEGIN');
+    const debit=await db.query('UPDATE users SET balance=balance-$1,updated_at=NOW() WHERE telegram_id=$2 AND balance >= $1 RETURNING telegram_id',[amount,req.user.telegram_id]);
+    if(!debit.rowCount){await db.query('ROLLBACK');return res.status(400).json({error:'Недостаточно средств. Баланс не может стать отрицательным.'});}
+    const inserted=await db.query('INSERT INTO balance_transfer_codes(code_hash,sender_id,amount,expires_at) VALUES ($1,$2,$3,NOW()+INTERVAL \'24 hours\') RETURNING id',[hash,req.user.telegram_id,amount]);
+    await db.query("INSERT INTO transactions(telegram_id,amount,type,reference,description) VALUES ($1,$2,'transfer_out',$3,'Резерв средств для перевода по коду')",[req.user.telegram_id,-amount,'transfer_'+inserted.rows[0].id+'_out']);
+    await db.query('COMMIT');
+    res.json({success:true,code,amount,expiresInHours:24});
+  }catch(e){await db.query('ROLLBACK');console.error('Transfer create:',e.message);res.status(503).json({error:'Не удалось создать код перевода.'});}
+  finally{db.release();}
+});
+app.post('/api/transfers/redeem',async(req,res)=>{
+  await expireTransferCodes();
+  const code=String(req.body?.code||'').trim().toUpperCase();
+  if(!/^WTS-[A-F0-9]{10}$/.test(code))return res.status(400).json({error:'Проверьте код перевода.'});
+  const db=await pool.connect();
+  try{
+    await db.query('BEGIN');
+    const q=await db.query('SELECT * FROM balance_transfer_codes WHERE code_hash=$1 FOR UPDATE',[hashKey(code)]);
+    if(!q.rowCount||q.rows[0].status!=='pending'||new Date(q.rows[0].expires_at)<=new Date()){await db.query('ROLLBACK');return res.status(400).json({error:'Код недействителен, уже использован или истёк.'});}
+    const t=q.rows[0];
+    if(String(t.sender_id)===String(req.user.telegram_id)){await db.query('ROLLBACK');return res.status(400).json({error:'Нельзя активировать собственный код.'});}
+    await db.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2',[t.amount,req.user.telegram_id]);
+    await db.query('UPDATE balance_transfer_codes SET status=\'redeemed\',recipient_id=$1,redeemed_at=NOW() WHERE id=$2',[req.user.telegram_id,t.id]);
+    await db.query("INSERT INTO transactions(telegram_id,amount,type,reference,description) VALUES ($1,$2,'transfer_in',$3,$4)",
+      [req.user.telegram_id,t.amount,'transfer_'+t.id+'_in','Получение средств по коду']);
+    await db.query('COMMIT');
+    res.json({success:true,amount:Number(t.amount),message:'Баланс успешно пополнен.'});
+  }catch(e){await db.query('ROLLBACK');console.error('Transfer redeem:',e.message);res.status(503).json({error:'Не удалось активировать код.'});}
+  finally{db.release();}
+});
+app.get('/api/transfers/history',async(req,res)=>{
+  try{
+    const q=await pool.query(`SELECT id,amount,status,created_at,expires_at,recipient_id,
+      CASE WHEN sender_id=$1 THEN 'sent' ELSE 'received' END AS direction
+      FROM balance_transfer_codes WHERE sender_id=$1 OR recipient_id=$1 ORDER BY created_at DESC LIMIT 100`,[req.user.telegram_id]);
+    res.json(q.rows);
+  }catch(e){res.status(503).json({error:'Не удалось загрузить историю переводов.'});}
+});
 
 app.post('/api/products/add',roles('seller','admin','owner'),async(req,res)=>{
   const b=req.body||{}, price=money(b.price), max= b.price_from ? money(b.max_price):null;
@@ -174,13 +327,16 @@ app.post('/api/products/add',roles('seller','admin','owner'),async(req,res)=>{
      typeof (b.subcategory||'')!=='string'||(b.subcategory||'').length>100||typeof (b.description||'')!=='string'||(b.description||'').length>5000||
      !price||(b.price_from&&(!max||max<price))) return res.status(400).json({error:'Проверьте название, категорию и цену товара.'});
   try {
-    const r=await pool.query("INSERT INTO products (title,description,price,price_from,max_price,category,subcategory,seller_id,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'active') RETURNING id",
+    const r=await pool.query("INSERT INTO products (title,description,price,price_from,max_price,category,subcategory,seller_id,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending') RETURNING id",
       [b.title.trim(),b.description||'',price,Boolean(b.price_from),max,b.category,b.subcategory||'',req.user.telegram_id]);
-    res.json({success:true,product_id:r.rows[0].id});
+    const m=await pool.query("INSERT INTO moderation_requests(kind,requested_by,product_id,reason) VALUES ('product',$1,$2,'Проверка нового товара') RETURNING id",[req.user.telegram_id,r.rows[0].id]);
+    await notifyModerators('Новый товар ожидает проверки. Заявка #'+m.rows[0].id+', товар #'+r.rows[0].id+'. Откройте панель управления.');
+    res.json({success:true,pending:true,product_id:r.rows[0].id,request_id:m.rows[0].id});
   } catch(e){console.error(e.message);res.status(503).json({error:'Не удалось сохранить товар.'});}
 });
 
 app.post('/api/key/activate',async(req,res)=>{
+  if(req.user.role==='owner')return res.status(400).json({error:'У владельца уже есть максимальные права.'});
   const key=req.body?.key;
   if(typeof key!=='string'||key.length<8||key.length>128)return res.status(400).json({error:'Неверный ключ.'});
   const c=await pool.connect();
@@ -194,10 +350,18 @@ app.post('/api/key/activate',async(req,res)=>{
   }catch(e){await c.query('ROLLBACK');console.error(e.message);res.status(500).json({error:'Не удалось активировать ключ.'});}
   finally{c.release();}
 });
+app.get('/api/owner/keys',roles('owner'),async(req,res)=>{
+  try{
+    const q=await pool.query(`SELECT k.role,k.used_by,k.used_at,k.created_at,u.username AS used_username
+      FROM activation_keys k LEFT JOIN users u ON u.telegram_id=k.used_by
+      ORDER BY k.created_at DESC LIMIT 200`);
+    res.json(q.rows);
+  }catch(e){res.status(503).json({error:'Не удалось загрузить историю ключей.'});}
+});
 app.post('/api/key/generate',roles('owner'),async(req,res)=>{
   const role=req.body?.role;if(!['admin','seller','support'].includes(role))return res.status(400).json({error:'Недопустимая роль.'});
   const key='WTS-'+role.toUpperCase()+'-'+crypto.randomBytes(9).toString('hex').toUpperCase();
-  try{await pool.query('INSERT INTO activation_keys (key_hash,role) VALUES ($1,$2)',[hashKey(key),role]);res.json({success:true,key});}
+  try{await pool.query('INSERT INTO activation_keys (key_hash,role,created_by) VALUES ($1,$2,$3)',[hashKey(key),role,req.user.telegram_id]);res.json({success:true,key});}
   catch(e){console.error(e.message);res.status(500).json({error:'Не удалось создать ключ.'});}
 });
 
@@ -264,6 +428,17 @@ function decodedTonComment(value, depth=0) {
     if(found) return found;
   }
   return '';
+}
+async function notifyOwner(text) {
+  try { await telegramRequest('sendMessage',{chat_id:OWNER_TELEGRAM_ID,text:String(text).slice(0,3500)}); }
+  catch(e) { console.error('Owner notification failed:',e.message); }
+}
+async function notifyModerators(text) {
+  await notifyOwner(text);
+  try {
+    const q=await pool.query("SELECT telegram_id FROM users WHERE role='support' AND is_banned=FALSE");
+    await Promise.all(q.rows.map(u=>telegramRequest('sendMessage',{chat_id:String(u.telegram_id),text:String(text).slice(0,3500)}).catch(e=>console.error('Support notification:',e.message))));
+  } catch(e) { console.error('Moderator notification failed:',e.message); }
 }
 async function telegramRequest(method, params={}) {
   const r = await fetch('https://api.telegram.org/bot' + BOT_TOKEN + '/' + method, {
@@ -545,15 +720,108 @@ async function pollTonPayments() {
 app.post('/api/payment/create',createPayment);
 app.get('/api/payment/status/:id',paymentStatus);
 
+app.post('/api/orders/:id/refund',roles('owner','support'),async(req,res)=>{
+  const orderId=Number(req.params.id),reason=String(req.body?.reason||'Возврат по обращению покупателя').slice(0,500);
+  if(!Number.isSafeInteger(orderId)||orderId<1)return res.status(400).json({error:'Неверный номер заказа.'});
+  const db=await pool.connect();
+  try{
+    await db.query('BEGIN');
+    const q=await db.query("SELECT o.*,p.title,p.seller_id AS product_seller,p.status AS product_status FROM orders o JOIN products p ON p.id=o.product_id WHERE o.id=$1 FOR UPDATE OF o,p",[orderId]);
+    if(!q.rowCount){await db.query('ROLLBACK');return res.status(404).json({error:'Заказ не найден.'});}
+    const o=q.rows[0];
+    if(o.status==='refunded'){await db.query('ROLLBACK');return res.status(400).json({error:'Этот заказ уже возвращён.'});}
+    if(!['paid','delivered','completed','disputed'].includes(o.status)){await db.query('ROLLBACK');return res.status(400).json({error:'Текущий статус заказа не позволяет оформить возврат.'});}
+    const sellerShare=Number(o.amount)-Number(o.commission);
+    const sellerDebit=await db.query('UPDATE users SET balance=balance-$1,updated_at=NOW() WHERE telegram_id=$2 AND balance >= $1 RETURNING telegram_id',[sellerShare,o.seller_id]);
+    if(!sellerDebit.rowCount){await db.query('ROLLBACK');return res.status(409).json({error:'У продавца недостаточно средств для возврата. Требуется ручное решение владельца.'});}
+    if(Number(o.commission)>0){
+      const feeDebit=await db.query('UPDATE users SET balance=balance-$1,updated_at=NOW() WHERE telegram_id=$2 AND balance >= $1 RETURNING telegram_id',[o.commission,OWNER_TELEGRAM_ID]);
+      if(!feeDebit.rowCount){await db.query('ROLLBACK');return res.status(409).json({error:'На балансе магазина недостаточно средств для возврата комиссии. Требуется решение владельца.'});}
+    }
+    await db.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2',[o.amount,o.buyer_id]);
+    await db.query("UPDATE orders SET status='refunded' WHERE id=$1",[orderId]);
+    await db.query("UPDATE products SET status='active' WHERE id=$1",[o.product_id]);
+    const rf=await db.query('INSERT INTO order_refunds(order_id,refunded_by,amount,reason) VALUES ($1,$2,$3,$4) RETURNING id',[orderId,req.user.telegram_id,o.amount,reason]);
+    const ref='refund_'+rf.rows[0].id;
+    await db.query("INSERT INTO transactions(telegram_id,amount,type,reference,description) VALUES ($1,$2,'refund',$3,$4),($5,$6,'admin_adjustment',$7,$8),($9,$10,'admin_adjustment',$11,$12)",
+      [o.buyer_id,o.amount,ref+'_buyer','Возврат за заказ #'+orderId+' — '+o.title,o.seller_id,-sellerShare,ref+'_seller','Списание средств при возврате заказа #'+orderId,OWNER_TELEGRAM_ID,-Number(o.commission),ref+'_fee','Возврат комиссии по заказу #'+orderId]);
+    await db.query('COMMIT');
+    res.json({success:true,refund_id:rf.rows[0].id,amount:Number(o.amount),message:'Возврат зачислен покупателю, товар возвращён продавцу.'});
+  }catch(e){await db.query('ROLLBACK');console.error('Refund:',e.message);res.status(503).json({error:'Не удалось оформить возврат.'});}
+  finally{db.release();}
+});
 
-app.post('/api/admin/action',roles('owner','support'),async(req,res)=>{
-  const {action,target_id,amount}=req.body||{};
+app.get('/api/support/user/:id',roles('owner','support','admin'),async(req,res)=>{
+  const id=String(req.params.id||'');if(!/^\d{1,20}$/.test(id))return res.status(400).json({error:'Некорректный Telegram ID.'});
+  try{
+    const [u,ledger,purchases,sales,transfers]=await Promise.all([
+      pool.query('SELECT telegram_id,username,role,balance,is_banned,banned_until,banned_reason,created_at FROM users WHERE telegram_id=$1',[id]),
+      pool.query('SELECT amount,type,description,created_at FROM transactions WHERE telegram_id=$1 ORDER BY created_at DESC LIMIT 200',[id]),
+      pool.query(`SELECT o.id,o.amount,o.status,o.created_at,p.title,COALESCE(s.display_name,s.username,'Продавец') AS store_name FROM orders o JOIN products p ON p.id=o.product_id JOIN users s ON s.telegram_id=o.seller_id WHERE o.buyer_id=$1 ORDER BY o.created_at DESC LIMIT 100`,[id]),
+      pool.query(`SELECT o.id,o.amount,o.status,o.created_at,p.title,COALESCE(b.display_name,b.username,'Покупатель') AS buyer_name FROM orders o JOIN products p ON p.id=o.product_id JOIN users b ON b.telegram_id=o.buyer_id WHERE o.seller_id=$1 ORDER BY o.created_at DESC LIMIT 100`,[id]),
+      pool.query('SELECT id,amount,status,created_at,recipient_id,sender_id FROM balance_transfer_codes WHERE sender_id=$1 OR recipient_id=$1 ORDER BY created_at DESC LIMIT 100',[id])
+    ]);
+    if(!u.rowCount)return res.status(404).json({error:'Пользователь не найден.'});
+    res.json({user:u.rows[0],transactions:ledger.rows,purchases:purchases.rows,sales:sales.rows,transfers:transfers.rows});
+  }catch(e){console.error('User stats:',e.message);res.status(503).json({error:'Не удалось загрузить статистику пользователя.'});}
+});
+app.get('/api/moderation/pending',roles('owner','support'),async(req,res)=>{
+  try{
+    const q=await pool.query(`SELECT m.*,u.username AS requester_name,p.title AS product_title
+      FROM moderation_requests m LEFT JOIN users u ON u.telegram_id=m.requested_by LEFT JOIN products p ON p.id=m.product_id
+      WHERE m.status='pending' ORDER BY m.created_at ASC LIMIT 100`);
+    res.json(q.rows);
+  }catch(e){res.status(503).json({error:'Не удалось загрузить заявки.'});}
+});
+app.post('/api/moderation/decision',roles('owner','support'),async(req,res)=>{
+  const id=Number(req.body?.request_id),decision=String(req.body?.decision||''),note=String(req.body?.note||'').slice(0,500);
+  if(!Number.isSafeInteger(id)||id<1||!['approve','reject'].includes(decision))return res.status(400).json({error:'Проверьте заявку и решение.'});
+  const db=await pool.connect();
+  try{
+    await db.query('BEGIN');
+    const q=await db.query("SELECT * FROM moderation_requests WHERE id=$1 AND status='pending' FOR UPDATE",[id]);
+    if(!q.rowCount){await db.query('ROLLBACK');return res.status(404).json({error:'Заявка уже обработана или не найдена.'});}
+    const m=q.rows[0],approved=decision==='approve';
+    if(m.kind==='ban'&&req.user.role!=='owner'){await db.query('ROLLBACK');return res.status(403).json({error:'Запросы на блокировку подтверждает только владелец.'});}
+    if(m.kind==='product'){
+      await db.query('UPDATE products SET status=$1 WHERE id=$2 AND status=\'pending\'',[approved?'active':'rejected',m.product_id]);
+    }else if(m.kind==='ban'&&approved){
+      const until=m.duration_hours?new Date(Date.now()+m.duration_hours*3600000):null;
+      await db.query('UPDATE users SET is_banned=TRUE,banned_until=$1,banned_reason=$2,updated_at=NOW() WHERE telegram_id=$3',[until,m.reason,m.target_user_id]);
+    }
+    await db.query('UPDATE moderation_requests SET status=$1,decided_by=$2,decision_note=$3,decided_at=NOW() WHERE id=$4',[approved?'approved':'rejected',req.user.telegram_id,note,id]);
+    await db.query('COMMIT');
+    const target=m.kind==='product'?m.requested_by:m.requested_by;
+    const msg=m.kind==='product'?(approved?'Ваш товар одобрен и опубликован.':'Ваш товар отклонён.'):(approved?'Запрос на блокировку одобрен.':'Запрос на блокировку отклонён.');
+    await telegramRequest('sendMessage',{chat_id:String(target),text:msg+' Заявка #'+id+(note?' Причина: '+note:'')}).catch(e=>console.error('Notify requester:',e.message));
+    if(m.kind==='ban'&&approved){
+      const duration=m.duration_hours?' на '+m.duration_hours+' ч.':' навсегда';
+      await telegramRequest('sendMessage',{chat_id:String(m.target_user_id),text:'Ваш аккаунт WORLD TG SHOP заблокирован'+duration+'. Причина: '+m.reason}).catch(e=>console.error('Notify banned user:',e.message));
+    }
+    res.json({success:true,status:approved?'approved':'rejected'});
+  }catch(e){await db.query('ROLLBACK');console.error('Moderation decision:',e.message);res.status(503).json({error:'Не удалось обработать заявку.'});}
+  finally{db.release();}
+});
+app.post('/api/support/ban-request',roles('owner','support'),async(req,res)=>{
+  const id=String(req.body?.telegram_id||''),reason=String(req.body?.reason||'').trim().slice(0,500),hours=req.body?.duration_hours===null?null:Number(req.body?.duration_hours);
+  if(!/^\d{1,20}$/.test(id)||!reason||(hours!==null&&(!Number.isInteger(hours)||hours<1||hours>8760)))return res.status(400).json({error:'Укажите Telegram ID, причину и корректный срок (в часах) либо оставьте срок пустым для постоянной блокировки.'});
+  try{
+    const u=await pool.query('SELECT telegram_id FROM users WHERE telegram_id=$1',[id]);if(!u.rowCount)return res.status(404).json({error:'Пользователь не найден.'});
+    const q=await pool.query("INSERT INTO moderation_requests(kind,requested_by,target_user_id,reason,duration_hours) VALUES ('ban',$1,$2,$3,$4) RETURNING id",[req.user.telegram_id,id,reason,hours]);
+    await notifyOwner('Запрос на блокировку пользователя. Заявка #'+q.rows[0].id+'; Telegram ID '+id+'; срок '+(hours===null?'навсегда':hours+' ч.')+'; причина: '+reason);
+    res.json({success:true,request_id:q.rows[0].id,message:'Запрос отправлен владельцу. Ожидайте решения.'});
+  }catch(e){res.status(503).json({error:'Не удалось отправить запрос.'});}
+});
+app.post('/api/profile', (req,res)=>res.status(405).json({error:'Используйте PUT /api/profile.'}));
+
+app.post('/api/admin/action',roles('owner','support','admin'),async(req,res)=>{
+  const {action,target_id,amount,duration_hours,reason}=req.body||{};
   try{
     if(action==='stats'&&req.user.role==='owner'){
       const r=await pool.query('SELECT (SELECT COUNT(*) FROM users) total_users,(SELECT COALESCE(SUM(balance),0) FROM users) total_balance');
       return res.json({totalUsers:Number(r.rows[0].total_users),totalBalance:Number(r.rows[0].total_balance)});
     }
-    if(req.user.role!=='owner')return res.status(403).json({error:'Только владелец может изменять аккаунты.'});
+    if(!['owner','support','admin'].includes(req.user.role))return res.status(403).json({error:'Недостаточно прав.'});
     if(!target_id||!/^\d+$/.test(String(target_id)))return res.status(400).json({error:'Неверный Telegram ID.'});
     if(action==='balance'){
       const delta=Number(amount);if(!Number.isFinite(delta)||Math.abs(delta)>1e6)return res.status(400).json({error:'Неверная сумма.'});
@@ -565,7 +833,11 @@ app.post('/api/admin/action',roles('owner','support'),async(req,res)=>{
         await c.query('COMMIT');
       }catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
     }else if(action==='ban'||action==='unban'){
-      await pool.query('UPDATE users SET is_banned=$1,updated_at=NOW() WHERE telegram_id=$2',[action==='ban',target_id]);
+      if(req.user.role==='support'&&action==='ban')return res.status(403).json({error:'Поддержка отправляет запрос владельцу через форму блокировки.'});
+      const hours=duration_hours===null||duration_hours===undefined||duration_hours===''?null:Number(duration_hours);
+      if(action==='ban'&&(hours!==null&&(!Number.isInteger(hours)||hours<1||hours>8760)))return res.status(400).json({error:'Срок блокировки должен быть от 1 до 8760 часов либо пустым для постоянной блокировки.'});
+      await pool.query('UPDATE users SET is_banned=$1,banned_until=$2,banned_reason=$3,updated_at=NOW() WHERE telegram_id=$4',
+        [action==='ban',action==='ban'&&hours?new Date(Date.now()+hours*3600000):null,action==='ban'?String(reason||'Блокировка администратором').slice(0,500):null,target_id]);
     }else return res.status(400).json({error:'Неизвестное действие.'});
     res.json({success:true});
   }catch(e){console.error(e.message);res.status(400).json({error:e.message||'Ошибка операции.'});}
@@ -638,6 +910,7 @@ app.post('/api/owner/role',roles('owner'),async(req,res)=>{
 
 app.use((err,req,res,next)=>{console.error('Request error:',err.message);res.status(400).json({error:'Некорректный запрос.'});});
 const tonMonitor=setInterval(()=>{pollTonPayments().catch(e=>console.error('TON poll failed:',e.message));},5000);
+const transferExpiryMonitor=setInterval(()=>{expireTransferCodes().catch(e=>console.error('Transfer expiry failed:',e.message));},60000);
 setTimeout(()=>pollTonPayments().catch(e=>console.error('TON poll failed:',e.message)),1500).unref();
 let server;
 async function start() {
@@ -653,6 +926,6 @@ async function start() {
     process.exit(1);
   }
 }
-async function stop(){clearInterval(tonMonitor);if(server)server.close(async()=>{await pool.end();process.exit(0);});else{await pool.end();process.exit(0);}setTimeout(()=>process.exit(1),10000).unref();}
+async function stop(){clearInterval(tonMonitor);clearInterval(transferExpiryMonitor);if(server)server.close(async()=>{await pool.end();process.exit(0);});else{await pool.end();process.exit(0);}setTimeout(()=>process.exit(1),10000).unref();}
 process.on('SIGTERM',stop);process.on('SIGINT',stop);
 start();

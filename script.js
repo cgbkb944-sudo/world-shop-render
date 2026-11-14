@@ -26,6 +26,7 @@ function escapeHtml(value) {
 
 let allProducts = [];
 let selectedPaymentMethod = 'cryptobot';
+let paymentReadiness = {};
 let activeDirectPaymentId = null;
 let activeDirectPaymentUri = null;
 let directPaymentPoll = null;
@@ -70,7 +71,9 @@ function updateBalance(){
 }
 function setUserBan(ban){
  const target_id=document.getElementById('targetId').value.trim();if(!target_id){alert('Введите Telegram ID');return;}
- jsonPost('/api/admin/action',{action:ban?'ban':'unban',target_id}).then(async r=>({ok:r.ok,d:await r.json()})).then(x=>{if(!x.ok)throw new Error(x.d.error);alert(ban?'Пользователь заблокирован':'Блокировка снята');}).catch(e=>alert(e.message));
+ const duration_hours=document.getElementById('ownerBanDuration')?.value||null;
+ const reason=document.getElementById('ownerBanReason')?.value||'';
+ jsonPost('/api/admin/action',{action:ban?'ban':'unban',target_id,duration_hours,reason}).then(async r=>({ok:r.ok,d:await r.json()})).then(x=>{if(!x.ok)throw new Error(x.d.error);alert(ban?'Пользователь заблокирован':'Блокировка снята');}).catch(e=>alert(e.message));
 }
 
 
@@ -81,6 +84,7 @@ function setAmount(val) {
 }
 
 function selectMethod(method, element) {
+    if(paymentReadiness[method]===false){alert('Этот способ оплаты пока не настроен. Выберите доступный способ.');return;}
     selectedPaymentMethod = method;
     document.querySelectorAll('.pay-method-item').forEach(el => el.classList.remove('selected'));
     element.classList.add('selected');
@@ -97,14 +101,24 @@ apiFetch('/api/user', {
     currentRole = data.role;
     document.getElementById('userrole-badge').innerText = data.role.toUpperCase();
     document.getElementById('user-balance').innerText = rub(data.balance);
+    document.getElementById('profileName').value = data.display_name || '';
+    document.getElementById('profileAvatarUrl').value = data.avatar_url || '';
+    document.getElementById('profile-display-name').textContent = data.display_name || (data.username ? '@'+data.username : 'Пользователь');
+    const avatar=document.getElementById('profile-avatar');
+    if(data.avatar_url){avatar.src=data.avatar_url;avatar.style.visibility='visible';}else{avatar.removeAttribute('src');avatar.style.visibility='hidden';}
+    if(['owner','support','admin'].includes(data.role)) document.getElementById('nav-manage').classList.remove('hidden');
+    if(data.role!=='owner'){
+      document.querySelector('.owner-heading').classList.add('hidden');
+      document.querySelector('.owner-stats-grid').classList.add('hidden');
+      document.getElementById('owner-sellers-list').parentElement.classList.add('hidden');
+      document.getElementById('owner-user-card').classList.add('hidden');
+      document.getElementById('support-ban-card').classList.toggle('hidden',data.role!=='support');
+    } else {
+      document.getElementById('support-ban-card').classList.add('hidden');
+    }
+    if(data.role==='support'||data.role==='admin') document.getElementById('owner-key-gen').classList.add('hidden');
     
-    if(data.role === 'owner') {
-        document.getElementById('nav-manage').classList.remove('hidden');
-    }
-
-    if(data.role === 'owner') {
-        document.getElementById('owner-key-gen').style.display = 'block';
-    }
+    if(data.role === 'owner') document.getElementById('owner-key-gen').style.display = 'block';
 
     if(data.role === 'seller' || data.role === 'admin' || data.role === 'owner') {
         document.getElementById('seller-product-card').classList.remove('hidden');
@@ -112,6 +126,7 @@ apiFetch('/api/user', {
     }
 
     loadProducts();
+    loadPaymentReadiness();
     resumePendingPayment();
 });
 
@@ -145,7 +160,7 @@ function renderProducts(products) {
             <div class="product-item">
                 <div>
                     <b style="font-size: 15px;">${escapeHtml(p.title)}</b>
-                    <br><small style="color:var(--text-muted);">${escapeHtml(p.category)} / ${escapeHtml(p.subcategory || 'Общее')}</small>
+                    <br><small style="color:var(--text-muted);">${escapeHtml(p.category)} / ${escapeHtml(p.subcategory || 'Общее')} · ${escapeHtml(p.seller_name||'Магазин')}</small>
                 </div>
                 <div style="text-align: right;">
                     <b style="display:block; margin-bottom:6px; color:#818cf8;">${priceText}</b>
@@ -163,12 +178,34 @@ function filterProducts() {
 }
 
 const subsByCat = {
-    'Telegram': ['Дизайн ТГК', 'Аренда NFT', 'Разработка ТГ ботов', 'Накрутка подписчиков', 'Покупка Telegram Stars', 'Просмотры и реакции'],
-    'Instagram': ['Подписчики', 'Лайки', 'Просмотры', 'Комментарии'],
-    'Roblox': ['Буст', 'Аккаунты Roblox', 'Напарник на час', 'Робуксы'],
-    'Genshin': ['Кристаллы', 'Луна'],
-    'Steam': ['Пополнение кошелька 500₽', 'Пополнение кошелька 1000₽'],
-    'VPN': ['Доступ на 1 месяц', 'Доступ на 1 год']
+ 'Telegram':['Дизайн ТГК','Аренда NFT','Разработка ботов','Stars','Подписчики','Просмотры и реакции'],
+ 'Instagram':['Аккаунты','Подписчики','Лайки','Просмотры','Комментарии'],
+ 'TikTok':['Аккаунты','Подписчики','Лайки','Просмотры'],
+ 'YouTube':['Каналы','Подписчики','Просмотры','Монетизация'],
+ 'Discord':['Серверы','Nitro','Бусты','Аккаунты'],
+ 'VK':['Сообщества','Подписчики','Оформление'],
+ 'Roblox':['Аккаунты','Robux','Буст','Предметы'],
+ 'Minecraft':['Аккаунты','Серверы','Привилегии'],
+ 'Genshin Impact':['Кристаллы','Луна','Аккаунты'],
+ 'PUBG Mobile':['UC','Аккаунты','Буст'],
+ 'Free Fire':['Алмазы','Аккаунты'],
+ 'Mobile Legends':['Алмазы','Аккаунты','Буст'],
+ 'Brawl Stars':['Гемы','Аккаунты','Буст'],
+ 'Fortnite':['V-Bucks','Аккаунты','Предметы'],
+ 'Valorant':['Points','Аккаунты','Буст'],
+ 'CS2':['Скины','Аккаунты','Услуги'],
+ 'Dota 2':['Предметы','Аккаунты','Услуги'],
+ 'Steam':['Пополнение кошелька','Аккаунты','Игры','Предметы'],
+ 'PlayStation':['Пополнение кошелька','Подписка PS Plus','Аккаунты'],
+ 'Xbox':['Пополнение кошелька','Game Pass','Аккаунты'],
+ 'Nintendo':['Пополнение','Подписки','Аккаунты'],
+ 'VPN':['Доступ на 1 месяц','Доступ на 1 год','Прокси'],
+ 'Подписки':['Premium','Plus','Pro','Семейные подписки'],
+ 'Аккаунты':['Аккаунты сервисов','Игровые аккаунты','Почта'],
+ 'Пополнение':['Донат','Внутриигровая валюта','Подарочные карты'],
+ 'Программное обеспечение':['Лицензии','Ключи активации','Подписки'],
+ 'Дизайн':['Аватары','Баннеры','Логотипы','Оформление каналов'],
+ 'Услуги':['Буст','Помощь','Консультации','Другое']
 };
 
 function updateSubcategoryOptions() {
@@ -207,7 +244,7 @@ function addNewProduct() {
     .then(async res => {
         const data = await res.json();
         if(res.ok && data.success) {
-            alert('Товар успешно отправлен на модерацию и опубликован!');
+            alert('Заявка отправлена владельцу и поддержке. Товар появится в каталоге после одобрения.');
             location.reload();
         } else {
             alert(data.error || 'Ошибка публикации товара');
@@ -248,7 +285,9 @@ function generateKey() {
     .then(res => res.json())
     .then(data => {
         if(data.success) {
-            document.getElementById('generatedKeyResult').innerText = `Сгенерированный ключ: ${data.key}`;
+            const box=document.getElementById('generatedKeyResult');
+            box.innerHTML='<p>Новый ключ доступа (сохрани его сейчас):</p><div class="copy-key" id="generated-key-value"></div><button onclick="copyGeneratedKey()">Скопировать ключ</button>';
+            document.getElementById('generated-key-value').textContent=data.key;
         } else {
             alert(data.error || 'Ошибка генерации');
         }
@@ -383,8 +422,12 @@ function switchTab(tabName, element) {
     document.getElementById('tab-' + tabName).classList.remove('hidden');
     element.classList.add('active');
 
-    if(tabName === 'manage') { if(currentRole==='owner'){loadOwnerStats();loadOwnerSellers();}else loadAdminStats(); }
+    if(tabName === 'manage') {
+      if(currentRole==='owner'){loadOwnerStats();loadOwnerSellers();loadKeyHistory();}
+      if(['owner','support'].includes(currentRole)) loadModeration();
+    }
     if(tabName === 'history') loadHistory();
+    if(tabName === 'profile') loadMyActivity();
 }
 
 function loadAdminStats() {
@@ -402,6 +445,117 @@ function loadAdminStats() {
     });
 }
 
+async function loadPaymentReadiness(){
+ const box=document.getElementById('payment-readiness');
+ try{
+  const status=await fetch('/health/payments').then(r=>r.json());
+  paymentReadiness=status;
+  const names={cryptobot:'CryptoBot',sbp:'СБП',card:'Банковская карта',direct_transfer:'TON / USDT',telegram_stars:'Telegram Stars'};
+  const ready=Object.keys(names).filter(k=>status[k]);
+  Object.keys(names).forEach(k=>{
+   const el=document.getElementById('method-'+k);if(!el)return;
+   el.classList.toggle('unavailable',!status[k]);el.title=status[k]?'Доступно':'Не настроено на сервере';
+  });
+  if(!status[selectedPaymentMethod]&&ready.length){selectedPaymentMethod=ready[0];const el=document.getElementById('method-'+selectedPaymentMethod);document.querySelectorAll('.pay-method-item').forEach(x=>x.classList.remove('selected'));el?.classList.add('selected');document.getElementById('directAssetWrap').classList.toggle('hidden',selectedPaymentMethod!=='direct_transfer');}
+  if(box)box.textContent=ready.length?'Доступны: '+ready.map(k=>names[k]).join(', '):'Платёжные провайдеры пока не настроены. Напишите в поддержку.';
+ }catch(e){if(box)box.textContent='Не удалось проверить способы оплаты.';}
+}
+function copyGeneratedKey(){
+ const value=document.getElementById('generated-key-value')?.textContent||'';
+ if(!value)return;
+ if(navigator.clipboard?.writeText)navigator.clipboard.writeText(value).then(()=>alert('Ключ скопирован')).catch(()=>prompt('Скопируйте ключ:',value));
+ else prompt('Скопируйте ключ:',value);
+}
+async function createTransferCode(){
+ const amount=Number(document.getElementById('transferAmount').value),box=document.getElementById('transfer-code-result');
+ if(!Number.isFinite(amount)||amount<=0){alert('Сумма должна быть положительной.');return;}
+ try{
+  const r=await jsonPost('/api/transfers/create',{amount}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');
+  box.classList.remove('hidden');box.innerHTML='<p>Передай получателю этот код. Он одноразовый и действует 24 часа:</p><div class="copy-key" id="new-transfer-code"></div><p><b>Сумма: '+rub(d.amount)+'</b></p><button onclick="copyTransferCode()">Скопировать код</button>';
+  document.getElementById('new-transfer-code').textContent=d.code;
+  const me=await apiFetch('/api/user',{method:'POST'}).then(x=>x.json());document.getElementById('user-balance').textContent=rub(me.balance);
+ }catch(e){alert(e.message);}
+}
+function copyTransferCode(){
+ const v=document.getElementById('new-transfer-code')?.textContent||'';
+ if(navigator.clipboard?.writeText)navigator.clipboard.writeText(v).then(()=>alert('Код скопирован')).catch(()=>prompt('Скопируйте код:',v));else prompt('Скопируйте код:',v);
+}
+async function redeemTransferCode(){
+ const code=document.getElementById('redeemTransferCode').value.trim(),box=document.getElementById('transfer-redeem-result');
+ try{
+  const r=await jsonPost('/api/transfers/redeem',{code}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');
+  box.textContent='Зачислено '+rub(d.amount)+'.';document.getElementById('redeemTransferCode').value='';
+  const me=await apiFetch('/api/user',{method:'POST'}).then(x=>x.json());document.getElementById('user-balance').textContent=rub(me.balance);
+ }catch(e){box.textContent=e.message;}
+}
+async function saveProfileSettings(){
+ try{
+  const r=await apiFetch('/api/profile',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({display_name:document.getElementById('profileName').value,avatar_url:document.getElementById('profileAvatarUrl').value})});
+  const d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');
+  document.getElementById('profile-display-name').textContent=d.display_name||'Пользователь';
+  const img=document.getElementById('profile-avatar');if(d.avatar_url){img.src=d.avatar_url;img.style.visibility='visible';}else{img.removeAttribute('src');img.style.visibility='hidden';}
+  alert('Настройки профиля сохранены.');
+ }catch(e){alert(e.message);}
+}
+async function loadMyActivity(){
+ const box=document.getElementById('my-activity');if(!box)return;
+ try{
+  const d=await apiFetch('/api/my/activity').then(r=>r.json());if(d.error)throw new Error(d.error);
+  const render=(arr,kind)=>arr.map(x=>'<div class="data-row"><div><b>'+escapeHtml(x.title||('Перевод #'+x.id))+'</b><small>'+escapeHtml(x.status)+' · '+new Date(x.created_at).toLocaleString('ru-RU')+'</small></div><strong>'+rub(x.amount)+'</strong>'+(kind==='purchase'&&x.status!=='refunded'&&['owner','support'].includes(currentRole)?'<button onclick="refundOrder('+x.id+')">Возврат</button>':'')+'</div>').join('');
+  box.innerHTML='<h4>Покупки</h4>'+(d.purchases.length?d.purchases.map(x=>'<div class="data-row"><div><b>'+escapeHtml(x.title)+'</b><small>'+escapeHtml(x.store_name||'Магазин')+' · '+escapeHtml(x.status)+' · '+new Date(x.created_at).toLocaleString('ru-RU')+'</small></div><strong>'+rub(x.amount)+'</strong>'+(kindRefundAllowed()&&x.status!=='refunded'?'<button onclick="refundOrder('+x.id+')">Возврат</button>':'')+'</div>').join(''):'<p>Покупок пока нет</p>')+'<h4>Продажи</h4>'+(d.sales.length?render(d.sales,'sale'):'<p>Продаж пока нет</p>')+'<h4>Переводы</h4>'+(d.transfers.length?d.transfers.map(x=>'<div class="data-row"><div><b>'+(x.direction==='sent'?'Отправлено':'Получено')+'</b><small>'+escapeHtml(x.status)+' · '+new Date(x.created_at).toLocaleString('ru-RU')+'</small></div><strong>'+rub(x.amount)+'</strong></div>').join(''):'<p>Переводов пока нет</p>');
+ }catch(e){box.textContent=e.message;}
+}
+function kindRefundAllowed(){return ['owner','support'].includes(currentRole);}
+async function refundOrder(id){
+ const reason=prompt('Причина возврата:','Возврат по обращению покупателя');if(reason===null)return;
+ try{const r=await jsonPost('/api/orders/'+id+'/refund',{reason}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');alert('Возврат '+rub(d.amount)+' оформлен.');loadMyActivity();}catch(e){alert(e.message);}
+}
+async function adjustSupportBalance(){
+ const target_id=document.getElementById('supportLookupId').value.trim(),amount=Number(document.getElementById('supportBalanceDelta').value);
+ if(!/^\d{1,20}$/.test(target_id)||!Number.isFinite(amount)||amount===0){alert('Укажите Telegram ID и ненулевую сумму.');return;}
+ try{const r=await jsonPost('/api/admin/action',{action:'balance',target_id,amount}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');alert('Баланс изменён.');lookupUser();}catch(e){alert(e.message);}
+}
+async function loadKeyHistory(){
+ const box=document.getElementById('key-history-list');if(!box)return;
+ try{const r=await apiFetch('/api/owner/keys'),rows=await r.json();if(!r.ok)throw new Error(rows.error||'Ошибка');
+ box.innerHTML=rows.length?rows.map(x=>'<div class="data-row"><div><b>'+escapeHtml(x.role.toUpperCase())+'</b><small>Создан: '+new Date(x.created_at).toLocaleString('ru-RU')+' · '+(x.used_by?'Активирован: '+escapeHtml(x.used_username||x.used_by):'Не использован')+'</small></div></div>').join(''):'<p>Коды ещё не создавались.</p>';
+ }catch(e){box.textContent=e.message;}
+}
+async function lookupUser(){
+ const id=document.getElementById('supportLookupId').value.trim(),box=document.getElementById('support-user-result');
+ if(!/^\d{1,20}$/.test(id)){alert('Введите корректный Telegram ID.');return;}
+ box.classList.remove('hidden');box.textContent='Загружаем историю…';
+ try{
+  const r=await apiFetch('/api/support/user/'+encodeURIComponent(id)),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');
+  const u=d.user;
+  box.innerHTML='<h4>'+(escapeHtml(u.username?'@'+u.username:u.telegram_id))+'</h4><p>ID: '+escapeHtml(u.telegram_id)+' · Роль: '+escapeHtml(u.role)+' · Баланс: <b>'+rub(u.balance)+'</b></p><p>Статус: '+(u.is_banned?'Заблокирован':'Активен')+'</p><h4>Пополнения и списания</h4>'+
+   (d.transactions.length?d.transactions.map(x=>'<div class="data-row"><div><b>'+escapeHtml(x.description)+'</b><small>'+escapeHtml(x.type)+' · '+new Date(x.created_at).toLocaleString('ru-RU')+'</small></div><strong>'+rub(x.amount)+'</strong></div>').join(''):'<p>Операций нет</p>')+
+   '<h4>Покупки</h4>'+(d.purchases.length?d.purchases.map(x=>'<div class="data-row"><div><b>'+escapeHtml(x.title)+'</b><small>'+escapeHtml(x.store_name||'Магазин')+' · Заказ #'+x.id+' · '+escapeHtml(x.status)+'</small></div><strong>'+rub(x.amount)+'</strong>'+(x.status!=='refunded'?'<button onclick="refundOrder('+x.id+')">Возврат</button>':'')+'</div>').join(''):'<p>Покупок нет</p>')+
+   '<h4>Продажи</h4>'+(d.sales.length?d.sales.map(x=>'<div class="data-row"><div><b>'+escapeHtml(x.title)+'</b><small>'+escapeHtml(x.buyer_name||'Покупатель')+' · Заказ #'+x.id+' · '+escapeHtml(x.status)+'</small></div><strong>'+rub(x.amount)+'</strong></div>').join(''):'<p>Продаж нет</p>')+
+   '<h4>Переводы средств</h4>'+(d.transfers.length?d.transfers.map(x=>'<div class="data-row"><div><b>'+(String(x.sender_id)===id?'Отправлено пользователю':'Получено от пользователя')+'</b><small>'+escapeHtml(x.status)+' · Telegram ID: '+escapeHtml(String(x.sender_id)===id?(x.recipient_id||'ожидает получателя'):x.sender_id)+'</small></div><strong>'+rub(x.amount)+'</strong></div>').join(''):'<p>Переводов нет</p>');
+ }catch(e){box.textContent=e.message;}
+}
+async function unbanSupportUser(){
+ const target_id=document.getElementById('banTargetId').value.trim()||document.getElementById('supportLookupId').value.trim();
+ if(!/^\d{1,20}$/.test(target_id)){alert('Введите Telegram ID.');return;}
+ try{const r=await jsonPost('/api/admin/action',{action:'unban',target_id}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');alert('Блокировка снята.');}catch(e){alert(e.message);}
+}
+async function requestBan(){
+ const telegram_id=document.getElementById('banTargetId').value.trim(),reason=document.getElementById('banReason').value.trim(),raw=document.getElementById('banDuration').value;
+ const duration_hours=raw===''?null:Number(raw),out=document.getElementById('ban-request-result');
+ try{const r=await jsonPost('/api/support/ban-request',{telegram_id,reason,duration_hours}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');out.textContent='Запрос отправлен владельцу. Ожидайте решения.';}catch(e){out.textContent=e.message;}
+}
+async function loadModeration(){
+ const box=document.getElementById('moderation-list');if(!box)return;
+ try{
+  const r=await apiFetch('/api/moderation/pending'),rows=await r.json();if(!r.ok)throw new Error(rows.error||'Ошибка');
+  box.innerHTML=rows.length?rows.map(m=>'<div class="data-row"><div><b>Заявка #'+m.id+' · '+(m.kind==='product'?'Публикация товара':'Блокировка пользователя')+'</b><small>'+(m.product_title?escapeHtml(m.product_title):'Telegram ID '+escapeHtml(m.target_user_id||''))+' · '+escapeHtml(m.reason||'')+(m.kind==='ban'?' · Срок: '+(m.duration_hours?m.duration_hours+' ч.':'навсегда'):'')+'</small></div><div class="action-row">'+(m.kind==='ban'&&currentRole!=='owner'?'Ожидает решения владельца':'<button onclick="decideModeration('+m.id+',\'approve\')">Одобрить</button><button class="danger-button" onclick="decideModeration('+m.id+',\'reject\')">Отклонить</button>')+'</div></div>').join(''):'<p>Ожидающих заявок нет.</p>';
+ }catch(e){box.textContent=e.message;}
+}
+async function decideModeration(request_id,decision){
+ if(!confirm(decision==='approve'?'Одобрить заявку?':'Отклонить заявку?'))return;
+ try{const r=await jsonPost('/api/moderation/decision',{request_id,decision}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');loadModeration();loadProducts();}catch(e){alert(e.message);}
+}
 function loadHistory(){const box=document.getElementById('history-list');apiFetch('/api/history').then(r=>r.json()).then(rows=>{box.innerHTML=Array.isArray(rows)&&rows.length?rows.map(x=>`<div class="data-row"><div><b>${escapeHtml(x.description)}</b><small>${new Date(x.created_at).toLocaleString('ru-RU')}</small></div><strong>${Number(x.amount)>0?'+':''}${rub(x.amount)}</strong></div>`).join(''):'<div class="no-products">Операций пока нет</div>';}).catch(()=>box.textContent='Не удалось загрузить историю.');}
 
 function buyProduct(productId) {
