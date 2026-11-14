@@ -90,8 +90,9 @@ apiFetch('/api/user', {
 })
 .then(res => res.json())
 .then(data => {
+    currentRole = data.role;
     document.getElementById('userrole-badge').innerText = data.role.toUpperCase();
-    document.getElementById('user-balance').innerText = data.balance + ' ₽';
+    document.getElementById('user-balance').innerText = rub(data.balance);
     
     if(data.role === 'owner') {
         document.getElementById('nav-manage').classList.remove('hidden');
@@ -113,11 +114,11 @@ function loadProducts() {
     apiFetch('/api/products')
     .then(res => res.json())
     .then(products => {
-        allProducts = products.length > 0 ? products : [
-            { id: 1, title: 'Telegram Звезды (100 шт)', category: 'Telegram', subcategory: 'Покупка Telegram Stars', price: 150, price_from: false },
-            { id: 2, title: 'Дизайн ТГК', category: 'Telegram', subcategory: 'Дизайн ТГК', price: 500, price_from: true, max_price: 3000 }
-        ];
+        allProducts = Array.isArray(products) ? products : [];
+        document.getElementById('catalog-count').textContent = allProducts.length + ' предложений';
         renderProducts(allProducts);
+    }).catch(() => {
+        document.getElementById('products-list').innerHTML = '<div class="no-products">Не удалось загрузить каталог. Попробуйте обновить страницу.</div>';
     });
 }
 
