@@ -794,6 +794,10 @@ app.post('/api/moderation/decision',roles('owner','support'),async(req,res)=>{
     const target=m.kind==='product'?m.requested_by:m.requested_by;
     const msg=m.kind==='product'?(approved?'Ваш товар одобрен и опубликован.':'Ваш товар отклонён.'):(approved?'Запрос на блокировку одобрен.':'Запрос на блокировку отклонён.');
     await telegramRequest('sendMessage',{chat_id:String(target),text:msg+' Заявка #'+id+(note?' Причина: '+note:'')}).catch(e=>console.error('Notify requester:',e.message));
+    if(m.kind==='ban'&&approved){
+      const duration=m.duration_hours?' на '+m.duration_hours+' ч.':' навсегда';
+      await telegramRequest('sendMessage',{chat_id:String(m.target_user_id),text:'Ваш аккаунт WORLD TG SHOP заблокирован'+duration+'. Причина: '+m.reason}).catch(e=>console.error('Notify banned user:',e.message));
+    }
     res.json({success:true,status:approved?'approved':'rejected'});
   }catch(e){await db.query('ROLLBACK');console.error('Moderation decision:',e.message);res.status(503).json({error:'Не удалось обработать заявку.'});}
   finally{db.release();}
