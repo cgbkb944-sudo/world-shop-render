@@ -302,19 +302,26 @@
             <div class="pay-methods">
                 <div class="pay-method-item selected" onclick="selectMethod('cryptobot', this)" id="method-cryptobot">
                     <span style="font-size: 20px;">🤖</span>
-                    <span>CryptoBot (временно отключён до настройки)</span>
+                    <span>CryptoBot — оплата в TON / USDT по курсу Crypto Pay</span>
                 </div>
+            <div id="directAssetWrap" class="hidden" style="margin-top:8px;">
+                <label for="directAsset">Криптовалюта для прямого перевода</label>
+                <select id="directAsset">
+                    <option value="TON">TON</option>
+                    <option value="USDT">USDT в сети TON</option>
+                </select>
+            </div>
                 <div class="pay-method-item" onclick="selectMethod('sbp', this)" id="method-sbp">
                     <span style="font-size: 20px;">⚡</span>
-                    <span>СБП (временно отключено)</span>
+                    <span>СБП</span>
                 </div>
                 <div class="pay-method-item" onclick="selectMethod('card', this)" id="method-card">
                     <span style="font-size: 20px;">💳</span>
-                    <span>Банковская карта (временно отключена)</span>
+                    <span>Банковская карта</span>
                 </div>
                 <div class="pay-method-item" onclick="selectMethod('direct_transfer', this)" id="method-direct_transfer">
                     <span style="font-size: 20px;">💎</span>
-                    <span>TON / USDT — пока не подключено</span>
+                    <span>Прямой перевод TON / USDT</span>
                 </div>
             </div>
 
@@ -377,26 +384,20 @@
     </div>
 </div>
 
-<!-- Модальное окно для прямого перевода -->
+<!-- Окно реквизитов прямого TON / USDT перевода -->
 <div id="transferModal" class="modal hidden">
-    <div class="card" style="width: 90%; max-width: 380px; text-align: center; margin: auto;">
-        <h3 style="margin-bottom: 8px; color: #818cf8;">Прямой перевод USDT / Gram</h3>
-        <p style="font-size: 13px; margin-bottom: 12px;">Отсканируйте QR-код или скопируйте реквизиты:</p>
-        
-        <div style="background: #fff; padding: 10px; display: inline-block; border-radius: 12px; margin-bottom: 12px;">
-            <img id="qrCodeImg" src="" alt="QR" width="150" height="150">
+    <div class="card" style="width:90%;max-width:380px;text-align:center;margin:auto;">
+        <h3 style="margin-bottom:8px;color:#818cf8;">Перевод <span id="transferAssetTitle">TON</span></h3>
+        <p style="font-size:13px;margin-bottom:12px;">Отправьте точную сумму на адрес магазина. Комментарий не требуется: платёж определяется по уникальной сумме.</p>
+        <div style="text-align:left;background:rgba(15,23,42,0.6);padding:12px;border-radius:10px;font-size:13px;margin-bottom:12px;word-break:break-all;">
+            <b>Адрес кошелька:</b><br><span id="walletAddressText" style="color:#38bdf8;">—</span><br><br>
+            <b>Точная сумма:</b><br><span id="transferAmountText" style="color:#10b981;font-weight:bold;">—</span><br><br>
+            <b>Сумма пополнения:</b> <span id="transferRubText">—</span><br>
+            <b>Оплатить до:</b> <span id="transferExpiryText">—</span><br><br>
+            <b>Статус:</b> <span id="transferStatusText">Ожидаем перевод</span>
         </div>
-
-        <div style="text-align: left; background: rgba(15,23,42,0.6); padding: 10px; border-radius: 10px; font-size: 12px; margin-bottom: 12px; word-break: break-all;">
-            <b>Кошелек:</b><br>
-            <span id="walletAddressText" style="color: #38bdf8;">UQBVqIZqbAt0CCiboMZ38hdBGjN7RkEZKLUuDX2F5zPRwG1v</span><br><br>
-            <b>Сумма к оплате:</b> <span id="transferAmountText" style="color: #10b981; font-weight:bold;">0 ₽</span><br><br>
-            <b>Комментарий (ОБЯЗАТЕЛЬНО):</b><br>
-            <span id="walletCommentText" style="color: #f59e0b; font-weight:bold;">topup_...</span>
-        </div>
-
-        <button onclick="openWalletApp()">🔗 Перейти в кошелек</button>
-        <button style="background: #475569; margin-top: 6px;" onclick="closeTransferModal()">Закрыть</button>
+        <button onclick="copyWalletAddress()">Скопировать адрес</button>
+        <button style="background:#475569;margin-top:6px;" onclick="closeTransferModal()">Закрыть</button>
     </div>
 </div>
 
