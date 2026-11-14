@@ -504,7 +504,7 @@ async function loadMyActivity(){
  }catch(e){box.textContent=e.message;}
 }
 function kindRefundAllowed(){return ['owner','support'].includes(currentRole);}
-function refundOrder(id){
+async function refundOrder(id){
  const reason=prompt('Причина возврата:','Возврат по обращению покупателя');if(reason===null)return;
  try{const r=await jsonPost('/api/orders/'+id+'/refund',{reason}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');alert('Возврат '+rub(d.amount)+' оформлен.');loadMyActivity();}catch(e){alert(e.message);}
 }
