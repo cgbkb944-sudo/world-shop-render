@@ -82,9 +82,9 @@ function setAmount(val) {
 }
 
 function selectMethod(method, element) {
+    if(paymentReadiness[method]===false){alert('Этот способ оплаты пока не настроен. Выберите доступный способ.');return;}
     selectedPaymentMethod = method;
     document.querySelectorAll('.pay-method-item').forEach(el => el.classList.remove('selected'));
-    if(paymentReadiness[method]===false){alert('Этот способ оплаты пока не настроен. Выберите доступный способ.');return;}
     element.classList.add('selected');
     document.getElementById('directAssetWrap').classList.toggle('hidden', method !== 'direct_transfer');
 }
@@ -503,7 +503,7 @@ async function loadMyActivity(){
   box.innerHTML='<h4>Покупки</h4>'+(d.purchases.length?d.purchases.map(x=>'<div class="data-row"><div><b>'+escapeHtml(x.title)+'</b><small>'+escapeHtml(x.store_name||'Магазин')+' · '+escapeHtml(x.status)+' · '+new Date(x.created_at).toLocaleString('ru-RU')+'</small></div><strong>'+rub(x.amount)+'</strong>'+(kindRefundAllowed()&&x.status!=='refunded'?'<button onclick="refundOrder('+x.id+')">Возврат</button>':'')+'</div>').join(''):'<p>Покупок пока нет</p>')+'<h4>Продажи</h4>'+(d.sales.length?render(d.sales,'sale'):'<p>Продаж пока нет</p>')+'<h4>Переводы</h4>'+(d.transfers.length?d.transfers.map(x=>'<div class="data-row"><div><b>'+(x.direction==='sent'?'Отправлено':'Получено')+'</b><small>'+escapeHtml(x.status)+' · '+new Date(x.created_at).toLocaleString('ru-RU')+'</small></div><strong>'+rub(x.amount)+'</strong></div>').join(''):'<p>Переводов пока нет</p>');
  }catch(e){box.textContent=e.message;}
 }
-async function kindRefundAllowed(){return ['owner','support'].includes(currentRole);}
+function kindRefundAllowed(){return ['owner','support'].includes(currentRole);}
 function refundOrder(id){
  const reason=prompt('Причина возврата:','Возврат по обращению покупателя');if(reason===null)return;
  try{const r=await jsonPost('/api/orders/'+id+'/refund',{reason}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');alert('Возврат '+rub(d.amount)+' оформлен.');loadMyActivity();}catch(e){alert(e.message);}
