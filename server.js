@@ -1,328 +1,157 @@
-// Global error handlers to prevent application crashes
-process.on('uncaughtException', (err) => { console.error('Uncaught Exception:', err); });
-process.on('unhandledRejection', (reason) => { console.error('Unhandled Rejection:', reason); });
-
+'use strict';
 const express = require('express');
 const { Pool } = require('pg');
 const path = require('path');
 const crypto = require('crypto');
-const app = express();
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname)));
+const app = express();
+const PORT = Number(process.env.PORT || 3000);
+const { DATABASE_URL, BOT_TOKEN, OWNER_TELEGRAM_ID } = process.env;
+if (!DATABASE_URL) throw new Error('DATABASE_URL is required');
+if (!BOT_TOKEN) throw new Error('BOT_TOKEN is required');
+if (!OWNER_TELEGRAM_ID || !/^\d+$/.test(OWNER_TELEGRAM_ID)) throw new Error('OWNER_TELEGRAM_ID must be numeric');
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+  connectionString: DATABASE_URL,
+  ssl: process.env.PGSSLMODE === 'disable' ? false : { rejectUnauthorized: false },
+  max: 10, idleTimeoutMillis: 30000, connectionTimeoutMillis: 10000
 });
+pool.on('error', e => console.error('PostgreSQL pool error:', e.message));
+app.disable('x-powered-by');
+app.use(express.json({ limit: '32kb' }));
+app.use(express.urlencoded({ extended: false, limit: '32kb' }));
+app.use(express.static(path.join(__dirname), { index: false }));
 
-pool.on('error', (err) => { console.error('PostgreSQL pool error:', err); });
-
-// Database initialization with full schema safety
-async function initDb() {
-  if (!process.env.DATABASE_URL) return;
+function verifyInitData(raw) {
+  if (!raw || typeof raw !== 'string' || raw.length > 4096) return null;
+  const p = new URLSearchParams(raw);
+  const hash = p.get('hash');
+  const authDate = Number(p.get('auth_date'));
+  if (!hash || !/^[a-f0-9]{64}$/i.test(hash) || !Number.isFinite(authDate) ||
+      Math.abs(Date.now() / 1000 - authDate) > 86400) return null;
+  p.delete('hash'); p.delete('signature');
+  const check = [...p.entries()].sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => k + '=' + v).join('\n');
+  const secret = crypto.createHmac('sha256', 'WebAppData').update(BOT_TOKEN).digest();
+  const calculated = crypto.createHmac('sha256', secret).update(check).digest('hex');
+  const a = Buffer.from(calculated, 'hex'), b = Buffer.from(hash, 'hex');
+  if (a.length !== b.length || !crypto.timingSafeEqual(a,b)) return null;
   try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        telegram_id TEXT PRIMARY KEY,
-        username TEXT,
-        balance NUMERIC DEFAULT 0,
-        is_banned BOOLEAN DEFAULT FALSE,
-        role TEXT DEFAULT 'user'
-      );
-      CREATE TABLE IF NOT EXISTS products (
-        id SERIAL PRIMARY KEY,
-        title TEXT,
-        price NUMERIC,
-        price_from BOOLEAN DEFAULT FALSE,
-        max_price NUMERIC,
-        category TEXT,
-        subcategory TEXT,
-        seller_id TEXT
-      );
-      CREATE TABLE IF NOT EXISTS activation_keys (
-        key TEXT PRIMARY KEY,
-        role TEXT,
-        is_used BOOLEAN DEFAULT FALSE
-      );
-    `);
-    
-    // Default keys
-    await pool.query(`
-      INSERT INTO activation_keys (key, role) VALUES ('WTS-SELL-123', 'seller'), ('WTS-SUP-123', 'support')
-      ON CONFLICT (key) DO NOTHING;
-    `);
-
-    console.log('Database successfully initialized');
-  } catch (err) {
-    console.error('Database initialization error:', err);
-  }
+    const u = JSON.parse(p.get('user') || '{}');
+    if (!u.id || !/^\d+$/.test(String(u.id))) return null;
+    return { id: String(u.id), username: String(u.username || '').slice(0,64) };
+  } catch { return null; }
 }
-initDb();
-
-// Ban check middleware
-async function checkBan(req, res, next) {
-  const telegram_id = req.headers['x-telegram-id'] || req.query.telegram_id || req.body.telegram_id;
-  if (!telegram_id) return next();
+async function auth(req,res,next) {
+  const u = verifyInitData(req.get('x-telegram-init-data'));
+  if (!u) return res.status(401).json({error:'Откройте магазин через Telegram.'});
   try {
-    const user = await pool.query('SELECT is_banned FROM users WHERE telegram_id = $1', [telegram_id]);
-    if (user.rows.length > 0 && user.rows[0].is_banned) {
-      return res.status(403).json({ error: 'Вы заблокированы, обратитесь в поддержку.' });
-    }
-  } catch (e) {}
-  next();
+    const role = u.id === OWNER_TELEGRAM_ID ? 'owner' : 'user';
+    const r = await pool.query(
+      "INSERT INTO users (telegram_id,username,role) VALUES ($1,$2,$3) " +
+      "ON CONFLICT (telegram_id) DO UPDATE SET username=EXCLUDED.username, " +
+      "role=CASE WHEN users.telegram_id=$4 THEN 'owner' ELSE users.role END, updated_at=NOW() " +
+      "RETURNING telegram_id,username,role,balance,is_banned",
+      [u.id,u.username,role,OWNER_TELEGRAM_ID]);
+    req.user = r.rows[0];
+    if (req.user.is_banned) return res.status(403).json({error:'Ваш аккаунт заблокирован. Обратитесь в поддержку.'});
+    next();
+  } catch(e) { console.error('Auth error:',e.message); res.status(503).json({error:'Сервис временно недоступен.'}); }
 }
-app.use(checkBan);
+const roles = (...allowed) => (req,res,next) => allowed.includes(req.user.role) ? next() : res.status(403).json({error:'Недостаточно прав.'});
+const money = v => { const n=Number(v); return Number.isFinite(n)&&n>0&&n<=1e7&&Math.round(n*100)===n*100?n:null; };
+const hashKey = v => crypto.createHash('sha256').update(String(v).trim().toUpperCase()).digest('hex');
 
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+app.get('/',(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
+app.get('/health',async(req,res)=>{try{await pool.query('SELECT 1');res.json({ok:true,database:'connected'});}catch{res.status(503).json({ok:false,database:'unavailable'});}});
+app.get('/api/products',async(req,res)=>{
+  try { const r=await pool.query("SELECT id,title,description,price,price_from,max_price,category,subcategory FROM products WHERE status='active' ORDER BY created_at DESC LIMIT 200"); res.json(r.rows); }
+  catch(e){console.error(e.message);res.status(503).json({error:'Не удалось загрузить товары.'});}
 });
+app.use('/api',auth);
+app.post('/api/user',(req,res)=>res.json(req.user));
 
-// Authorization / Profile fetch
-app.post('/api/user', async (req, res) => {
-  const { telegram_id, username } = req.body;
-  if (!telegram_id) return res.status(400).json({ error: 'No telegram_id' });
-
+app.post('/api/products/add',roles('seller','owner'),async(req,res)=>{
+  const b=req.body||{}, price=money(b.price), max= b.price_from ? money(b.max_price):null;
+  if(typeof b.title!=='string'||!b.title.trim()||b.title.length>160||typeof b.category!=='string'||!b.category||b.category.length>80||
+     typeof (b.subcategory||'')!=='string'||(b.subcategory||'').length>100||typeof (b.description||'')!=='string'||(b.description||'').length>5000||
+     !price||(b.price_from&&(!max||max<price))) return res.status(400).json({error:'Проверьте название, категорию и цену товара.'});
   try {
-    let result = await pool.query('SELECT * FROM users WHERE telegram_id = $1', [telegram_id]);
-    let role = 'user';
-    if (telegram_id === '8127900151') {
-      role = 'owner';
-    } else if (result.rows.length > 0) {
-      role = result.rows[0].role;
-    }
-
-    if (result.rows.length === 0) {
-      await pool.query(
-        'INSERT INTO users (telegram_id, username, balance, role) VALUES ($1, $2, 0, $3)',
-        [telegram_id, username || '', role]
-      );
-      result = await pool.query('SELECT * FROM users WHERE telegram_id = $1', [telegram_id]);
-    }
-
-    res.json(result.rows[0]);
-  } catch (err) {
-    res.status(500).json({ error: 'Database error' });
-  }
+    const r=await pool.query("INSERT INTO products (title,description,price,price_from,max_price,category,subcategory,seller_id,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'active') RETURNING id",
+      [b.title.trim(),b.description||'',price,Boolean(b.price_from),max,b.category,b.subcategory||'',req.user.telegram_id]);
+    res.json({success:true,product_id:r.rows[0].id});
+  } catch(e){console.error(e.message);res.status(503).json({error:'Не удалось сохранить товар.'});}
 });
 
-// Get products
-app.get('/api/products', async (req, res) => {
-  try {
-    const products = await pool.query('SELECT * FROM products ORDER BY id DESC');
-    res.json(products.rows);
-  } catch (err) {
-    res.json([]);
-  }
+app.post('/api/key/activate',async(req,res)=>{
+  const key=req.body?.key;
+  if(typeof key!=='string'||key.length<8||key.length>128)return res.status(400).json({error:'Неверный ключ.'});
+  const c=await pool.connect();
+  try{
+    await c.query('BEGIN');
+    const k=await c.query('SELECT key_hash,role FROM activation_keys WHERE key_hash=$1 AND used_by IS NULL FOR UPDATE',[hashKey(key)]);
+    if(!k.rowCount){await c.query('ROLLBACK');return res.status(400).json({error:'Неверный или уже использованный ключ.'});}
+    await c.query('UPDATE activation_keys SET used_by=$1,used_at=NOW() WHERE key_hash=$2',[req.user.telegram_id,k.rows[0].key_hash]);
+    await c.query('UPDATE users SET role=$1,updated_at=NOW() WHERE telegram_id=$2',[k.rows[0].role,req.user.telegram_id]);
+    await c.query('COMMIT');res.json({success:true,role:k.rows[0].role});
+  }catch(e){await c.query('ROLLBACK');console.error(e.message);res.status(500).json({error:'Не удалось активировать ключ.'});}
+  finally{c.release();}
+});
+app.post('/api/key/generate',roles('owner'),async(req,res)=>{
+  const role=req.body?.role;if(!['seller','support'].includes(role))return res.status(400).json({error:'Недопустимая роль.'});
+  const key='WTS-'+role.toUpperCase()+'-'+crypto.randomBytes(9).toString('hex').toUpperCase();
+  try{await pool.query('INSERT INTO activation_keys (key_hash,role) VALUES ($1,$2)',[hashKey(key),role]);res.json({success:true,key});}
+  catch(e){console.error(e.message);res.status(500).json({error:'Не удалось создать ключ.'});}
 });
 
-// Add product
-app.post('/api/products/add', async (req, res) => {
-  const { title, price, price_from, max_price, category, subcategory, seller_id } = req.body;
-  try {
-    const userCheck = await pool.query('SELECT role FROM users WHERE telegram_id = $1', [seller_id]);
-    if (seller_id !== '8127900151' && (userCheck.rows.length === 0 || (userCheck.rows[0].role !== 'seller' && userCheck.rows[0].role !== 'owner'))) {
-      return res.status(403).json({ error: 'Только продавцы могут выставлять товары!' });
-    }
-
-    await pool.query(
-      'INSERT INTO products (title, price, price_from, max_price, category, subcategory, seller_id) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [title, price, price_from || false, max_price || null, category, subcategory || '', seller_id]
-    );
-    res.json({ success: true });
-  } catch (err) {
-    console.error('Add product error:', err);
-    res.status(500).json({ error: 'Server error' });
-  }
+app.post('/api/buy',async(req,res)=>{
+  const id=Number(req.body?.product_id);if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'Неверный товар.'});
+  const c=await pool.connect();
+  try{
+    await c.query('BEGIN');
+    const p=await c.query("SELECT id,seller_id,price FROM products WHERE id=$1 AND status='active' FOR UPDATE",[id]);
+    if(!p.rowCount){await c.query('ROLLBACK');return res.status(404).json({error:'Товар не найден.'});}
+    const product=p.rows[0];if(String(product.seller_id)===String(req.user.telegram_id)){await c.query('ROLLBACK');return res.status(400).json({error:'Нельзя купить собственный товар.'});}
+    const amount=Number(product.price), fee=Math.round(amount*3)/100, sellerAmount=Math.round((amount-fee)*100)/100;
+    const debit=await c.query('UPDATE users SET balance=balance-$1,updated_at=NOW() WHERE telegram_id=$2 AND balance >= $1 RETURNING telegram_id',[amount,req.user.telegram_id]);
+    if(!debit.rowCount){await c.query('ROLLBACK');return res.status(400).json({error:'Недостаточно средств на балансе.'});}
+    await c.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2',[sellerAmount,product.seller_id]);
+    await c.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2',[fee,OWNER_TELEGRAM_ID]);
+    const order=await c.query("INSERT INTO orders (buyer_id,seller_id,product_id,amount,commission,status) VALUES ($1,$2,$3,$4,$5,'paid') RETURNING id",[req.user.telegram_id,product.seller_id,id,amount,fee]);
+    const ref='order_'+order.rows[0].id;
+    await c.query("INSERT INTO transactions (telegram_id,amount,type,reference,description) VALUES ($1,$2,'purchase',$3,$4),($5,$6,'sale',$7,$8),($9,$10,'commission',$11,$12)",
+      [req.user.telegram_id,-amount,ref,'Покупка товара #'+order.rows[0].id,product.seller_id,sellerAmount,ref+'_seller','Продажа товара #'+order.rows[0].id,OWNER_TELEGRAM_ID,fee,ref+'_fee','Комиссия магазина']);
+    await c.query('COMMIT');res.json({success:true,message:'Покупка успешно совершена!',order_id:order.rows[0].id});
+  }catch(e){await c.query('ROLLBACK');console.error('Purchase:',e.message);res.status(500).json({error:'Не удалось оформить покупку.'});}
+  finally{c.release();}
 });
 
-// Activate key
-app.post('/api/key/activate', async (req, res) => {
-  const { telegram_id, key } = req.body;
-  try {
-    const keyRes = await pool.query('SELECT * FROM activation_keys WHERE key = $1 AND is_used = FALSE', [key]);
-    if (keyRes.rows.length === 0) {
-      return res.status(400).json({ error: 'Неверный или уже использованный ключ!' });
+app.post('/api/payment/create',async(req,res)=>res.status(503).json({error:'Автоматическое пополнение временно отключено до настройки и проверки платёжного провайдера.'}));
+
+app.post('/api/admin/action',roles('owner','support'),async(req,res)=>{
+  const {action,target_id,amount}=req.body||{};
+  try{
+    if(action==='stats'&&req.user.role==='owner'){
+      const r=await pool.query('SELECT (SELECT COUNT(*) FROM users) total_users,(SELECT COALESCE(SUM(balance),0) FROM users) total_balance');
+      return res.json({totalUsers:Number(r.rows[0].total_users),totalBalance:Number(r.rows[0].total_balance)});
     }
-    const role = keyRes.rows[0].role;
-    await pool.query('UPDATE users SET role = $1 WHERE telegram_id = $2', [role, telegram_id]);
-    await pool.query('UPDATE activation_keys SET is_used = TRUE WHERE key = $1', [key]);
-    res.json({ success: true, role });
-  } catch (err) {
-    res.status(500).json({ error: 'Server error' });
-  }
+    if(req.user.role!=='owner')return res.status(403).json({error:'Только владелец может изменять аккаунты.'});
+    if(!target_id||!/^\d+$/.test(String(target_id)))return res.status(400).json({error:'Неверный Telegram ID.'});
+    if(action==='balance'){
+      const delta=Number(amount);if(!Number.isFinite(delta)||Math.abs(delta)>1e6)return res.status(400).json({error:'Неверная сумма.'});
+      const c=await pool.connect();
+      try{await c.query('BEGIN');
+        const r=await c.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2 AND balance+$1>=0 RETURNING telegram_id',[delta,target_id]);
+        if(!r.rowCount)throw new Error('Пользователь не найден или недостаточно средств.');
+        await c.query("INSERT INTO transactions (telegram_id,amount,type,reference,description) VALUES ($1,$2,'admin_adjustment',$3,'Изменение баланса владельцем')",[target_id,delta,'admin_'+crypto.randomUUID()]);
+        await c.query('COMMIT');
+      }catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
+    }else if(action==='ban'||action==='unban'){
+      await pool.query('UPDATE users SET is_banned=$1,updated_at=NOW() WHERE telegram_id=$2',[action==='ban',target_id]);
+    }else return res.status(400).json({error:'Неизвестное действие.'});
+    res.json({success:true});
+  }catch(e){console.error(e.message);res.status(400).json({error:e.message||'Ошибка операции.'});}
 });
-
-// Generate key (only for owner)
-app.post('/api/key/generate', async (req, res) => {
-  const { admin_id, role } = req.body;
-  if (admin_id !== '8127900151') {
-    return res.status(403).json({ error: 'Доступ запрещен' });
-  }
-  try {
-    const newKey = `WTS-${role.toUpperCase()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-    await pool.query('INSERT INTO activation_keys (key, role, is_used) VALUES ($1, $2, FALSE)', [newKey, role]);
-    res.json({ success: true, key: newKey });
-  } catch (err) {
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// Purchase product with 3% commission
-app.post('/api/buy', async (req, res) => {
-  const { telegram_id, product_id } = req.body;
-  try {
-    const productRes = await pool.query('SELECT * FROM products WHERE id = $1', [product_id]);
-    if (productRes.rows.length === 0) return res.status(404).json({ error: 'Товар не найден' });
-    
-    const product = productRes.rows[0];
-    const price = parseFloat(product.price);
-
-    const buyerRes = await pool.query('SELECT balance FROM users WHERE telegram_id = $1', [telegram_id]);
-    if (buyerRes.rows.length === 0) return res.status(400).json({ error: 'Пользователь не найден' });
-    
-    if (parseFloat(buyerRes.rows[0].balance) < price) {
-      return res.status(400).json({ error: 'Недостаточно средств на балансе' });
-    }
-
-    const commission = price * 0.03;
-    const sellerAmount = price - commission;
-
-    await pool.query('UPDATE users SET balance = balance - $1 WHERE telegram_id = $2', [price, telegram_id]);
-    await pool.query('UPDATE users SET balance = balance + $1 WHERE telegram_id = \'8127900151\'', [commission]);
-
-    if (product.seller_id && product.seller_id !== '8127900151') {
-      await pool.query('UPDATE users SET balance = balance + $1 WHERE telegram_id = $2', [sellerAmount, product.seller_id]);
-    } else {
-      await pool.query('UPDATE users SET balance = balance + $1 WHERE telegram_id = \'8127900151\'', [sellerAmount]);
-    }
-
-    res.json({ success: true, message: 'Покупка успешно совершена!' });
-  } catch (err) {
-    res.status(500).json({ error: 'Ошибка сервера' });
-  }
-});
-
-// Create Payment (SBP, Card via RollyPay, Crypto Bot with RUB->USDT conversion)
-app.post('/api/payment/create', async (req, res) => {
-  const { telegram_id, amount, method } = req.body;
-  if (!amount || amount <= 0) return res.status(400).json({ error: 'Неверная сумма' });
-
-  if (method === 'sbp' || method === 'card') {
-    const terminalId = 'c7085e83-49b4-4fdb-ab38-c9840ea853c9';
-    const apiKey = 'wB48FPrR0zqnrsDYm4wwp2tG0GZ9djZWgdcogwOC75c';
-    const nonce = crypto.randomBytes(16).toString('hex');
-
-    try {
-      const payload = {
-        amount: parseFloat(amount).toFixed(2),
-        payment_currency: 'RUB',
-        order_id: `topup_${telegram_id}_${Date.now()}`,
-        terminal_id: terminalId,
-        description: `Пополнение баланса через ${method.toUpperCase()}`
-      };
-
-      const response = await fetch('https://rollypay.io/api/v1/payments', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': apiKey,
-          'X-Nonce': nonce
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await response.json();
-      if (data.pay_url) {
-        return res.json({ paymentUrl: data.pay_url });
-      }
-    } catch (e) {}
-    return res.status(400).json({ error: 'Ошибка платежного шлюза' });
-  }
-
-  if (method === 'cryptobot') {
-    const cryptoToken = '665752:AAEu6varMhK9mT8H5dcnC20b7lqdbWj7Wb0';
-    try {
-      const response = await fetch('https://pay.crypt.bot/api/createInvoice', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Crypto-Pay-API-Token': cryptoToken
-        },
-        body: JSON.stringify({
-          currency_type: 'fiat',
-          fiat: 'RUB',
-          accepted_assets: 'USDT,TON,BTC,ETH',
-          amount: String(amount),
-          description: `Пополнение баланса на ${amount} RUB`,
-          payload: `topup_${telegram_id}_${amount}`
-        })
-      });
-
-      const data = await response.json();
-      if (data.ok && data.result) {
-        return res.json({ paymentUrl: data.result.pay_url });
-      } else {
-        console.error('CryptoBot API error:', data);
-      }
-    } catch (e) {
-      console.error('CryptoBot request exception:', e);
-    }
-    return res.status(400).json({ error: 'Ошибка создания счета в Crypto Bot' });
-  }
-
-  res.json({ success: true, message: 'Свяжитесь с поддержкой для прямого перевода: @Tobias_26' });
-});
-
-// Webhooks
-app.post('/api/webhook/rollypay', async (req, res) => {
-  const event = req.body;
-  if (event && (event.status === 'paid' || event.status === 'success')) {
-    const orderId = event.order_id || '';
-    const amount = parseFloat(event.amount);
-    const parts = orderId.split('_');
-    if (parts.length >= 2 && parts[0] === 'topup') {
-      const telegramId = parts[1];
-      await pool.query('UPDATE users SET balance = balance + $1 WHERE telegram_id = $2', [amount, telegramId]);
-    }
-  }
-  res.send('OK');
-});
-
-// Admin / Support actions
-app.post('/api/admin/action', async (req, res) => {
-  const { admin_id, target_id, action, amount } = req.body;
-  try {
-    const adminCheck = await pool.query('SELECT role FROM users WHERE telegram_id = $1', [admin_id]);
-    if (admin_id !== '8127900151' && (adminCheck.rows.length === 0 || (adminCheck.rows[0].role !== 'owner' && adminCheck.rows[0].role !== 'support'))) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-
-    if (action === 'stats') {
-      const usersCount = await pool.query('SELECT COUNT(*) FROM users');
-      const totalBalance = await pool.query('SELECT SUM(balance) FROM users');
-      return res.json({
-        totalUsers: parseInt(usersCount.rows[0].count) || 0,
-        totalBalance: parseFloat(totalBalance.rows[0].sum) || 0
-      });
-    }
-
-    if (action === 'balance') {
-      await pool.query('UPDATE users SET balance = GREATEST(0, balance + $1) WHERE telegram_id = $2', [parseFloat(amount), target_id]);
-    } else if (action === 'ban') {
-      await pool.query('UPDATE users SET is_banned = TRUE WHERE telegram_id = $1', [target_id]);
-    } else if (action === 'unban') {
-      await pool.query('UPDATE users SET is_banned = FALSE WHERE telegram_id = $1', [target_id]);
-    }
-
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+app.use((err,req,res,next)=>{console.error('Request error:',err.message);res.status(400).json({error:'Некорректный запрос.'});});
+const server=app.listen(PORT,'0.0.0.0',()=>console.log('WORLD TG SHOP listening on '+PORT));
+async function stop(){server.close(async()=>{await pool.end();process.exit(0);});setTimeout(()=>process.exit(1),10000).unref();}
+process.on('SIGTERM',stop);process.on('SIGINT',stop);
