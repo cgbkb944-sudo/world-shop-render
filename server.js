@@ -462,6 +462,7 @@ app.post('/api/withdrawals',roles('seller','admin','owner'),async(req,res)=>{
   const amount=money(req.body?.amount),method=String(req.body?.method||'');
   const details=req.body?.details&&typeof req.body.details==='object'?req.body.details:{};
   if(!amount)return res.status(400).json({error:'Введите корректную сумму вывода.'});
+  if(method==='stars'&&!Number.isInteger(amount))return res.status(400).json({error:'Для вывода в Telegram Stars укажите целое количество рублей/звёзд.'});
   if(!['stars','rub','crypto'].includes(method))return res.status(400).json({error:'Выберите способ вывода.'});
   let payout={};
   if(method==='stars') payout={currency:'XTR',stars:amount,rate:'1 звезда = 1 ₽'};
