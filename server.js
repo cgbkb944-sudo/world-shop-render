@@ -323,10 +323,16 @@ async function createPayment(req,res) {
 async function paymentStatus(req,res) {
   const id=Number(req.params.id);
   if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'Неверный номер платежа.'});
-  const r=await pool.query('SELECT id,status,amount,currency,asset,expected_crypto,expires_at FROM payments WHERE id=$1 AND telegram_id=$2',[id,req.user.telegram_id]);
-  if(!r.rowCount)return res.status(404).json({error:'Платёж не найден.'});
-  const p=r.rows[0];
-  res.json({paymentId:p.id,status:p.status,amount:p.amount,currency:p.currency,asset:p.asset,cryptoAmount:p.expected_crypto,expiresAt:p.expires_at});
+  try {
+    const r=await pool.query('SELECT id,status,amount,currency,asset,expected_crypto,expires_at FROM payments WHERE id=$1 AND telegram_id=$2',[id,req.user.telegram_id]);
+    if(!r.rowCount)return res.status(404).json({error:'Платёж не найден.'});
+    const p=r.rows[0];
+    if(p.status==='pending'&&p.expires_at&&new Date(p.expires_at).getTime()<Date.now()) {
+      await pool.query("UPDATE payments SET status='expired' WHERE id=$1 AND status='pending'",[id]);
+      p.status='expired';
+    }
+    res.json({paymentId:p.id,status:p.status,amount:p.amount,currency:p.currency,asset:p.asset,cryptoAmount:p.expected_crypto,expiresAt:p.expires_at});
+  } catch(e) { console.error('Payment status:',e.message); res.status(503).json({error:'Не удалось проверить статус платежа.'}); }
 }
 let tonPollBusy=false;
 async function pollTonPayments() {
