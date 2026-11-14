@@ -490,9 +490,10 @@ app.post('/api/withdrawals',roles('seller','admin','owner'),async(req,res)=>{
     const detailText=method==='stars'?`Количество: ${amount} ⭐ (1 ⭐ = 1 ₽)`:method==='rub'?`Канал: ${payout.channel==='phone'?'по номеру телефона':'электронный кошелёк'}\nРеквизиты: ${payout.value}\nБанк/сервис: ${payout.bank||'не указан'}`:`Актив: ${payout.asset}\nСеть: ${payout.network}\nАдрес: ${payout.address}\nСумма указана в рублях; криптоэквивалент рассчитывает владелец.`;
     const msg=`💸 Заявка на вывод средств #${id}\nПродавец: ${req.user.username?'@'+req.user.username:'без username'}\nTelegram ID: ${req.user.telegram_id}\nСумма: ${amount.toFixed(2)} ₽\nСпособ: ${methodName}\n${detailText}\nСтатус: ожидает решения`;
     await notifyOwner(msg);
+    let groupNotified=true;
     try{await telegramRequest('sendMessage',{chat_id:WITHDRAWAL_GROUP_ID,text:msg,disable_web_page_preview:true});}
-    catch(e){console.error('Withdrawal group notification failed:',e.message);}
-    res.json({success:true,request_id:id,balance:Number(debit.rows[0].seller_balance),message:'Заявка отправлена владельцу.'});
+    catch(e){groupNotified=false;console.error('Withdrawal group notification failed:',e.message);}
+    res.json({success:true,request_id:id,balance:Number(debit.rows[0].seller_balance),groupNotified,message:groupNotified?'Заявка отправлена владельцу и в группу.':'Заявка создана и отправлена владельцу, но сообщение в группу не доставлено. Проверьте, что бот добавлен в группу и может отправлять сообщения.'});
   }catch(e){await db.query('ROLLBACK');console.error('Withdrawal request:',e.message);res.status(503).json({error:'Не удалось создать заявку на вывод.'});}
   finally{db.release();}
 });
