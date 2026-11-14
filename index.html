@@ -220,14 +220,12 @@
             position: fixed; top: 0; left: 0; right: 0; bottom: 0;
             background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 200;
         }
-        .modal-content {
-            background: #1e293b; width: 92%; max-width: 400px; padding: 24px; border-radius: 20px; text-align: center; border: 1px solid var(--card-border);
-        }
     </style>
 </head>
 <body>
 
 <div id="app" class="container">
+    <!-- Главная вкладка -->
     <div id="tab-main" class="tab-content">
         <div class="card profile-card">
             <span class="badge" id="userrole-badge">Пользователь</span>
@@ -246,6 +244,7 @@
         </div>
     </div>
 
+    <!-- История -->
     <div id="tab-history" class="tab-content hidden">
         <div class="card">
             <h3>📜 История операций</h3>
@@ -253,6 +252,7 @@
         </div>
     </div>
 
+    <!-- Управление -->
     <div id="tab-manage" class="tab-content hidden">
         <div class="card">
             <h3>📊 Статистика сервиса</h3>
@@ -282,8 +282,7 @@
             <button style="background: #ef4444; margin-top: 10px;" onclick="setUserBan(true)">Заблокировать</button>
             <button style="background: #10b981;" onclick="setUserBan(false)">Разблокировать</button>
         </div>
-    </div>
-
+    </div>    <!-- Профиль -->
     <div id="tab-profile" class="tab-content hidden">
         <div class="card">
             <h3>💳 Пополнить баланс</h3>
@@ -301,17 +300,14 @@
 
             <p style="margin-top: 14px;">Способ оплаты</p>
             <div class="pay-methods">
-                <!-- 1. Crypto Bot -->
                 <div class="pay-method-item selected" onclick="selectMethod('cryptobot', this)" id="method-cryptobot">
                     <span style="font-size: 20px;">🤖</span>
                     <span>Crypto Bot (Авто-оплата в USDT/TON)</span>
                 </div>
-                <!-- 2. СБП / Карты -->
                 <div class="pay-method-item" onclick="selectMethod('sbp', this)" id="method-sbp">
                     <span style="font-size: 20px;">⚡</span>
                     <span>СБП / Банковская карта</span>
                 </div>
-                <!-- 3. Прямой перевод -->
                 <div class="pay-method-item" onclick="selectMethod('direct_transfer', this)" id="method-direct_transfer">
                     <span style="font-size: 20px;">💎</span>
                     <span>Прямой перевод (USDT / Gram)</span>
@@ -377,28 +373,30 @@
     </div>
 </div>
 
-<!-- МОДАЛЬНОЕ ОКНО ДЛЯ ПРЯМОГО ПЕРЕВОДА (QR И КОММЕНТАРИЙ) -->
+<!-- Модальное окно для прямого перевода -->
 <div id="transferModal" class="modal hidden">
-    <div class="modal-content">
-        <h3 style="margin-bottom: 12px; color: #818cf8;">Прямой перевод USDT / Gram</h3>
-        <p style="font-size: 13px; margin-bottom: 14px;">Отсканируйте QR-код или скопируйте реквизиты для оплаты:</p>
+    <div class="card" style="width: 90%; max-width: 380px; text-align: center; margin: auto;">
+        <h3 style="margin-bottom: 8px; color: #818cf8;">Прямой перевод USDT / Gram</h3>
+        <p style="font-size: 13px; margin-bottom: 12px;">Отсканируйте QR-код или скопируйте реквизиты:</p>
         
-        <div style="background: #fff; padding: 10px; display: inline-block; border-radius: 12px; margin-bottom: 14px;">
-            <img id="qrCodeImg" src="" alt="QR Code" width="160" height="160">
+        <div style="background: #fff; padding: 10px; display: inline-block; border-radius: 12px; margin-bottom: 12px;">
+            <img id="qrCodeImg" src="" alt="QR" width="150" height="150">
         </div>
 
-        <div style="text-align: left; background: rgba(15,23,42,0.6); padding: 12px; border-radius: 10px; font-size: 13px; margin-bottom: 14px; word-break: break-all;">
-            <b>Адрес кошелька:</b><br>
-            <span id="walletAddressText" style="color: #38bdf8;">UQC...TOBIAS_WALLET_TON_USDT</span><br><br>
-            <b>Комментарий к платежу:</b><br>
-            <span id="walletCommentText" style="color: #f59e0b;">topup_8127900151</span>
+        <div style="text-align: left; background: rgba(15,23,42,0.6); padding: 10px; border-radius: 10px; font-size: 12px; margin-bottom: 12px; word-break: break-all;">
+            <b>Кошелек:</b><br>
+            <span id="walletAddressText" style="color: #38bdf8;">UQBVqIZqbAt0CCiboMZ38hdBGjN7RkEZKLUuDX2F5zPRwG1v</span><br><br>
+            <b>Сумма к оплате:</b> <span id="transferAmountText" style="color: #10b981; font-weight:bold;">0 ₽</span><br><br>
+            <b>Комментарий (ОБЯЗАТЕЛЬНО):</b><br>
+            <span id="walletCommentText" style="color: #f59e0b; font-weight:bold;">topup_...</span>
         </div>
 
         <button onclick="openWalletApp()">🔗 Перейти в кошелек</button>
-        <button style="background: #475569; margin-top: 8px;" onclick="closeTransferModal()">Закрыть</button>
+        <button style="background: #475569; margin-top: 6px;" onclick="closeTransferModal()">Закрыть</button>
     </div>
 </div>
 
+<!-- Нижняя навигация -->
 <div class="nav">
     <div class="nav-item active" onclick="switchTab('main', this)">
         <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
@@ -409,7 +407,7 @@
         <span>История</span>
     </div>
     <div id="nav-manage" class="nav-item hidden" onclick="switchTab('manage', this)">
-        <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36.25c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-.25c-.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+        <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36.25c-.59.24-1.13.56-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-.25c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
         <span>Управление</span>
     </div>
     <div class="nav-item" onclick="switchTab('profile', this)">
@@ -421,3 +419,5 @@
 <script src="script.js"></script>
 </body>
 </html>
+
+    
