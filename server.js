@@ -38,7 +38,8 @@ function verifyInitData(raw) {
   if (!hash || !/^[a-f0-9]{64}$/i.test(hash) || !Number.isFinite(authDate) ||
       Math.abs(Date.now() / 1000 - authDate) > 86400) return null;
   p.delete('hash'); p.delete('signature');
-  const check = [...p.entries()].sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => k + '=' + v).join('\n');
+  const check = [...p.entries()].sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => k + '=' + v).join('
+');
   const secret = crypto.createHmac('sha256', 'WebAppData').update(BOT_TOKEN).digest();
   const calculated = crypto.createHmac('sha256', secret).update(check).digest('hex');
   const a = Buffer.from(calculated, 'hex'), b = Buffer.from(hash, 'hex');
@@ -384,6 +385,8 @@ app.post('/api/admin/action',roles('owner','support'),async(req,res)=>{
   }catch(e){console.error(e.message);res.status(400).json({error:e.message||'Ошибка операции.'});}
 });
 app.use((err,req,res,next)=>{console.error('Request error:',err.message);res.status(400).json({error:'Некорректный запрос.'});});
-const tonMonitor=setInterval(()=>{pollTonPayments().catch(e=>console.error('TON poll failed:',e.message));},5000);\nsetTimeout(()=>pollTonPayments().catch(e=>console.error('TON poll failed:',e.message)),1500).unref();\nconst server=app.listen(PORT,'0.0.0.0',()=>console.log('WORLD TG SHOP listening on '+PORT));
+const tonMonitor=setInterval(()=>{pollTonPayments().catch(e=>console.error('TON poll failed:',e.message));},5000);
+setTimeout(()=>pollTonPayments().catch(e=>console.error('TON poll failed:',e.message)),1500).unref();
+const server=app.listen(PORT,'0.0.0.0',()=>console.log('WORLD TG SHOP listening on '+PORT));
 async function stop(){clearInterval(tonMonitor);server.close(async()=>{await pool.end();process.exit(0);});setTimeout(()=>process.exit(1),10000).unref();}
 process.on('SIGTERM',stop);process.on('SIGINT',stop);
