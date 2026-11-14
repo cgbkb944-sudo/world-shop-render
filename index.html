@@ -304,13 +304,6 @@
                     <span style="font-size: 20px;">🤖</span>
                     <span>CryptoBot — оплата в TON / USDT по курсу Crypto Pay</span>
                 </div>
-            <div id="directAssetWrap" class="hidden" style="margin-top:8px;">
-                <label for="directAsset">Криптовалюта для прямого перевода</label>
-                <select id="directAsset">
-                    <option value="TON">TON</option>
-                    <option value="USDT">USDT в сети TON</option>
-                </select>
-            </div>
                 <div class="pay-method-item" onclick="selectMethod('sbp', this)" id="method-sbp">
                     <span style="font-size: 20px;">⚡</span>
                     <span>СБП</span>
@@ -323,6 +316,13 @@
                     <span style="font-size: 20px;">💎</span>
                     <span>Прямой перевод TON / USDT</span>
                 </div>
+            </div>
+            <div id="directAssetWrap" class="hidden" style="margin-top:8px;">
+                <label for="directAsset">Криптовалюта для прямого перевода</label>
+                <select id="directAsset">
+                    <option value="TON">TON</option>
+                    <option value="USDT">USDT в сети TON</option>
+                </select>
             </div>
 
             <button onclick="makePayment()">Перейти к оплате</button>
