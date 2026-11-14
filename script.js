@@ -110,7 +110,7 @@ async function submitWithdrawal(){
  if(method==='crypto')details={asset:document.getElementById('withdrawCryptoAsset').value,network:document.getElementById('withdrawCryptoNetwork').value,address:document.getElementById('withdrawCryptoAddress').value};
  const result=document.getElementById('withdrawal-result');result.textContent='';
  if(!Number.isFinite(amount)||amount<=0){result.textContent='Введите корректную сумму.';return;}
- try{const r=await jsonPost('/api/withdrawals',{amount,method,details}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');result.textContent='Заявка #'+d.request_id+' отправлена владельцу и в группу.';document.getElementById('withdrawAmount').value='';loadSellerWallet();}catch(e){result.textContent=e.message;}
+ try{const r=await jsonPost('/api/withdrawals',{amount,method,details}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');result.textContent='Заявка #'+d.request_id+'. '+(d.message||'Заявка создана.');document.getElementById('withdrawAmount').value='';loadSellerWallet();}catch(e){result.textContent=e.message;}
 }
 
 function setAmount(val) {
