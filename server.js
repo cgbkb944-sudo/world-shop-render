@@ -224,7 +224,7 @@ async function handleCryptoPayWebhook(req,res) {
   const expected=crypto.createHmac('sha256',key).update(req.body).digest('hex');
   if(!safeEqual(signature,expected))return res.sendStatus(403);
   const update=JSON.parse(req.body.toString('utf8'));
-  if(update.request_date&&Math.abs(Date.now()-Date.parse(update.request_date))>24*60*60*1000)return res.sendStatus(403);
+  if(update.request_date){const requestTime=Date.parse(update.request_date);if(!Number.isFinite(requestTime)||Math.abs(Date.now()-requestTime)>24*60*60*1000)return res.sendStatus(403);}
   if(update.update_type!=='invoice_paid')return res.sendStatus(200);
   const invoice=update.payload||{},payload=JSON.parse(invoice.payload||'{}'),paymentId=Number(payload.payment_id);
   if(!Number.isSafeInteger(paymentId)||paymentId<1||!invoice.invoice_id)return res.sendStatus(400);
@@ -235,7 +235,7 @@ async function handleCryptoPayWebhook(req,res) {
     invoice.currency_type!=='fiat'||invoice.fiat!=='RUB'||!['TON','USDT'].includes(invoice.paid_asset)||cents(invoice.amount)!==cents(p.amount))return res.sendStatus(409);
   const verified=await cryptoPay('getInvoices',{invoice_ids:String(invoice.invoice_id)});
   const remote=Array.isArray(verified)?verified.find(x=>String(x.invoice_id)===String(invoice.invoice_id)):null;
-  if(!remote||remote.status!=='paid'||remote.currency_type!=='fiat'||remote.fiat!=='RUB'||cents(remote.amount)!==cents(p.amount))return res.sendStatus(409);
+  if(!remote||remote.status!=='paid'||remote.currency_type!=='fiat'||remote.fiat!=='RUB'||!['TON','USDT'].includes(remote.paid_asset)||cents(remote.amount)!==cents(p.amount))return res.sendStatus(409);
   await finalizePayment(paymentId,'cryptobot');res.sendStatus(200);
 }
 async function handleRollyPayWebhook(req,res) {
@@ -265,7 +265,7 @@ async function createPayment(req,res) {
   if(!['cryptobot','sbp','card','direct_transfer'].includes(method))return res.status(400).json({error:'Неизвестный способ оплаты.'});
   try {
     if(method==='cryptobot'){
-      if(!process.env.CRYPTO_PAY_WEBHOOK_SECRET)throw new Error('Crypto Pay webhook path secret is not configured');
+      if(!process.env.CRYPTO_PAY_API_TOKEN||!process.env.CRYPTO_PAY_WEBHOOK_SECRET)return res.status(503).json({error:'Crypto Pay ещё не настроен на сервере.'});
       const row=await pool.query("INSERT INTO payments(provider,telegram_id,amount,currency,status,idempotency_key,expires_at) VALUES ('cryptobot',$1,$2,'RUB','pending',$3,NOW()+INTERVAL '15 minutes') RETURNING id",
         [req.user.telegram_id,amount,crypto.randomUUID()]);
       const invoice=await cryptoPay('createInvoice',{
@@ -279,7 +279,7 @@ async function createPayment(req,res) {
       return res.json({paymentUrl:invoice.bot_invoice_url,paymentId:row.rows[0].id});
     }
     if(method==='sbp'||method==='card'){
-      if(!process.env.ROLLYPAY_WEBHOOK_SECRET)throw new Error('RollyPay webhook signing secret is not configured');
+      if(!process.env.ROLLYPAY_API_KEY||!process.env.ROLLYPAY_WEBHOOK_SECRET)return res.status(503).json({error:'RollyPay ещё не настроен на сервере.'});
       const row=await pool.query("INSERT INTO payments(provider,telegram_id,amount,currency,status,idempotency_key,expires_at) VALUES ($1,$2,$3,'RUB','pending',$4,NOW()+INTERVAL '30 minutes') RETURNING id",
         [method,req.user.telegram_id,amount,crypto.randomUUID()]);
       const body={amount:amount.toFixed(2),payment_currency:'RUB',payment_method:method,
