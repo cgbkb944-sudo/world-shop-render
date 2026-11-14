@@ -234,6 +234,23 @@ app.put('/api/profile',async(req,res)=>{
   }catch(e){res.status(503).json({error:'Не удалось сохранить настройки профиля.'});}
 });
 app.get('/api/history',async(req,res)=>{try{const r=await pool.query('SELECT amount,type,description,created_at FROM transactions WHERE telegram_id=$1 ORDER BY created_at DESC LIMIT 100',[req.user.telegram_id]);res.json(r.rows);}catch(e){console.error(e.message);res.status(503).json({error:'Не удалось загрузить историю.'});}});
+app.get('/api/my/activity',async(req,res)=>{
+  try{
+    const [purchases,sales,transfers]=await Promise.all([
+      pool.query('SELECT o.id,o.amount,o.status,o.created_at,p.title FROM orders o JOIN products p ON p.id=o.product_id WHERE o.buyer_id=$1 ORDER BY o.created_at DESC LIMIT 100',[req.user.telegram_id]),
+      pool.query('SELECT o.id,o.amount,o.status,o.created_at,p.title FROM orders o JOIN products p ON p.id=o.product_id WHERE o.seller_id=$1 ORDER BY o.created_at DESC LIMIT 100',[req.user.telegram_id]),
+      pool.query('SELECT id,amount,status,created_at,recipient_id,sender_id,CASE WHEN sender_id=$1 THEN \'sent\' ELSE \'received\' END direction FROM balance_transfer_codes WHERE sender_id=$1 OR recipient_id=$1 ORDER BY created_at DESC LIMIT 100',[req.user.telegram_id])
+    ]);
+    res.json({purchases:purchases.rows,sales:sales.rows,transfers:transfers.rows});
+  }catch(e){res.status(503).json({error:'Не удалось загрузить активность.'});}
+});
+app.get('/api/payment/methods',(req,res)=>res.json({
+  cryptobot:!!(process.env.CRYPTO_PAY_API_TOKEN&&process.env.CRYPTO_PAY_WEBHOOK_SECRET),
+  sbp:!!(process.env.ROLLYPAY_API_KEY&&process.env.ROLLYPAY_WEBHOOK_SECRET),
+  card:!!(process.env.ROLLYPAY_API_KEY&&process.env.ROLLYPAY_WEBHOOK_SECRET),
+  direct_transfer:!!(tonAddress&&normalizeTonAddress(tonAddress)&&process.env.CRYPTO_PAY_API_TOKEN),
+  telegram_stars:!!(process.env.TELEGRAM_WEBHOOK_SECRET&&appOrigin)
+}));
 
 app.post('/api/transfers/create',async(req,res)=>{
   const amount=money(req.body?.amount);
@@ -725,6 +742,7 @@ app.post('/api/moderation/decision',roles('owner','support'),async(req,res)=>{
     const q=await db.query("SELECT * FROM moderation_requests WHERE id=$1 AND status='pending' FOR UPDATE",[id]);
     if(!q.rowCount){await db.query('ROLLBACK');return res.status(404).json({error:'Заявка уже обработана или не найдена.'});}
     const m=q.rows[0],approved=decision==='approve';
+    if(m.kind==='ban'&&req.user.role!=='owner'){await db.query('ROLLBACK');return res.status(403).json({error:'Запросы на блокировку подтверждает только владелец.'});}
     if(m.kind==='product'){
       await db.query('UPDATE products SET status=$1 WHERE id=$2 AND status=\'pending\'',[approved?'active':'rejected',m.product_id]);
     }else if(m.kind==='ban'&&approved){
