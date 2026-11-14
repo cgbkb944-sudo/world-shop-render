@@ -320,6 +320,13 @@
             <select id="genRole"><option value="admin">Администратор</option><option value="support">Поддержка</option><option value="seller">Продавец</option></select>
             <button onclick="generateKey()">＋ Создать код</button>
             <div id="generatedKeyResult" class="generated-key"></div>
+            <div style="margin-top:18px;padding-top:14px;border-top:1px solid #293653">
+                <h4>Код пополнения баланса</h4>
+                <p>Создай одноразовый код на выбранную сумму. Код действует 30 дней.</p>
+                <input type="number" id="topupCodeAmount" min="10" max="10000000" step="0.01" placeholder="Сумма пополнения, ₽">
+                <button onclick="generateTopupCode()">＋ Создать код пополнения</button>
+                <div id="topupCodeResult" class="generated-key"></div>
+            </div>
             <h4 style="margin-top:16px">История создания кодов</h4><div id="key-history-list" class="data-list">История кодов появится здесь.</div>
         </div>
         <div class="card">
@@ -408,7 +415,7 @@
             <button onclick="makePayment()">Перейти к оплате</button>
             <div class="key-activation-inline" style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border-color,rgba(148,163,184,.2));">
                 <h3>🔑 Ключ сотрудника или код пополнения</h3>
-                <p>В это же поле можно ввести ключ администратора, продавца, поддержки или одноразовый код перевода баланса.</p>
+                <p>В это же поле вводится ключ администратора, продавца или поддержки, код пополнения баланса либо код перевода между пользователями.</p>
                 <input type="text" id="keyCode" autocomplete="off" placeholder="WTS-...">
                 <button onclick="activateKey()" style="background:#f59e0b;">Активировать ключ / пополнить баланс</button>
                 <p id="key-activation-result" role="status" aria-live="polite"></p>
