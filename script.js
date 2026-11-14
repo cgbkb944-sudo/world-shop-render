@@ -123,7 +123,6 @@ apiFetch('/api/user', {
 
     if(data.role === 'seller' || data.role === 'admin' || data.role === 'owner') {
         document.getElementById('seller-product-card').classList.remove('hidden');
-        document.getElementById('key-activation-card').classList.add('hidden');
     }
 
     loadProducts();
