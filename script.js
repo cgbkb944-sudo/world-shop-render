@@ -24,7 +24,51 @@ function escapeHtml(value) {
 let allProducts = [];
 let selectedPaymentMethod = 'cryptobot';
 let activeDirectPaymentId = null;
-let directPaymentPoll = null;
+let directPaymentPoll = null;\n
+let currentRole='user';
+function rub(value){return Number(value||0).toLocaleString('ru-RU',{maximumFractionDigits:2})+' ₽';}
+function jsonPost(url,body){return apiFetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});}
+function loadOwnerStats(){
+  apiFetch('/api/owner/overview').then(r=>r.json()).then(d=>{
+    if(d.error)throw new Error(d.error);
+    document.getElementById('stats-total-users').textContent=d.total_users;
+    document.getElementById('stats-sales-volume').textContent=rub(d.sales_volume);
+    document.getElementById('stats-shop-revenue').textContent=rub(d.shop_revenue);
+    document.getElementById('stats-total-orders').textContent=d.total_orders;
+    document.getElementById('stats-pending-payments').textContent=d.pending_payments;
+    document.getElementById('stats-total-balance').textContent=rub(d.total_balance);
+  }).catch(e=>console.error(e));
+}
+function loadOwnerSellers(){
+  const box=document.getElementById('owner-sellers-list');box.textContent='Загружаем продавцов…';
+  apiFetch('/api/owner/sellers').then(r=>r.json()).then(rows=>{
+    if(!Array.isArray(rows))throw new Error(rows.error||'Ошибка');
+    box.innerHTML=rows.length?rows.map(s=>`<div class="data-row"><div><b>${escapeHtml(s.username?'@'+s.username:s.telegram_id)}</b><small>ID ${escapeHtml(s.telegram_id)} · ${s.orders_count} заказов · оборот ${rub(s.sales_volume)}</small></div><button onclick="showSeller('${escapeHtml(s.telegram_id)}')">Подробнее</button></div>`).join(''):'<div class="no-products">Продавцов пока нет</div>';
+  }).catch(()=>box.textContent='Не удалось загрузить список продавцов.');
+}
+function showSeller(id){
+  const box=document.getElementById('seller-detail');box.classList.remove('hidden');box.textContent='Загружаем профиль…';
+  apiFetch('/api/owner/sellers/'+encodeURIComponent(id)).then(r=>r.json()).then(d=>{
+    if(d.error)throw new Error(d.error);
+    const u=d.user;
+    box.innerHTML=`<div class="section-title"><h3>${escapeHtml(u.username?'@'+u.username:u.telegram_id)}</h3><button class="small-action" onclick="document.getElementById('seller-detail').classList.add('hidden')">Закрыть</button></div><p>ID: ${escapeHtml(u.telegram_id)} · Роль: ${escapeHtml(u.role)} · Баланс: ${rub(u.balance)}</p><p>Заработано: <b>${rub(d.totalEarned)}</b> · Товаров: ${d.products.length} · Заказов: ${d.orders.length}</p><h4>Товары</h4>${d.products.length?d.products.map(p=>`<div class="data-row"><div><b>${escapeHtml(p.title)}</b><small>${escapeHtml(p.status)} · ${rub(p.price)}</small></div></div>`).join(''):'<p>Нет товаров</p>'}<h4 style="margin-top:14px">Последние продажи</h4>${d.orders.length?d.orders.slice(0,10).map(o=>`<div class="data-row"><div><b>#${o.id} · ${escapeHtml(o.title)}</b><small>${rub(o.amount)} · ${escapeHtml(o.status)}</small></div></div>`).join(''):'<p>Продаж пока нет</p>'}`;
+  }).catch(e=>box.textContent=e.message);
+}
+function assignUserRole(){
+ const id=document.getElementById('targetId').value.trim(),role=document.getElementById('assignRole').value;
+ if(!id){alert('Введите Telegram ID');return;}
+ jsonPost('/api/owner/role',{telegram_id:id,role}).then(async r=>({ok:r.ok,d:await r.json()})).then(x=>{if(!x.ok)throw new Error(x.d.error);alert('Роль назначена: '+role);loadOwnerSellers();}).catch(e=>alert(e.message));
+}
+function updateBalance(){
+ const target_id=document.getElementById('targetId').value.trim(),amount=Number(document.getElementById('balanceDelta').value);
+ if(!target_id||!Number.isFinite(amount)||amount===0){alert('Укажите Telegram ID и ненулевую сумму');return;}
+ jsonPost('/api/admin/action',{action:'balance',target_id,amount}).then(async r=>({ok:r.ok,d:await r.json()})).then(x=>{if(!x.ok)throw new Error(x.d.error);alert('Баланс изменён');loadOwnerStats();}).catch(e=>alert(e.message));
+}
+function setUserBan(ban){
+ const target_id=document.getElementById('targetId').value.trim();if(!target_id){alert('Введите Telegram ID');return;}
+ jsonPost('/api/admin/action',{action:ban?'ban':'unban',target_id}).then(async r=>({ok:r.ok,d:await r.json()})).then(x=>{if(!x.ok)throw new Error(x.d.error);alert(ban?'Пользователь заблокирован':'Блокировка снята');}).catch(e=>alert(e.message));
+}
+
 
 function setAmount(val) {
     document.getElementById('payAmount').value = val;
@@ -49,7 +93,7 @@ apiFetch('/api/user', {
     document.getElementById('userrole-badge').innerText = data.role.toUpperCase();
     document.getElementById('user-balance').innerText = data.balance + ' ₽';
     
-    if(data.role === 'owner' || data.role === 'support') {
+    if(data.role === 'owner' || data.role === 'admin' || data.role === 'support') {
         document.getElementById('nav-manage').classList.remove('hidden');
     }
 
@@ -57,7 +101,7 @@ apiFetch('/api/user', {
         document.getElementById('owner-key-gen').style.display = 'block';
     }
 
-    if(data.role === 'seller' || data.role === 'owner') {
+    if(data.role === 'seller' || data.role === 'admin' || data.role === 'owner') {
         document.getElementById('seller-product-card').classList.remove('hidden');
         document.getElementById('key-activation-card').classList.add('hidden');
     }
@@ -277,7 +321,7 @@ function switchTab(tabName, element) {
     document.getElementById('tab-' + tabName).classList.remove('hidden');
     element.classList.add('active');
 
-    if(tabName === 'manage') loadAdminStats();
+    if(tabName === 'manage') { if(currentRole==='owner'){loadOwnerStats();loadOwnerSellers();}else loadAdminStats(); }\n    if(tabName === 'history') loadHistory();
 }
 
 function loadAdminStats() {
@@ -295,7 +339,7 @@ function loadAdminStats() {
     });
 }
 
-function buyProduct(productId) {
+function loadHistory(){const box=document.getElementById('history-list');apiFetch('/api/history').then(r=>r.json()).then(rows=>{box.innerHTML=Array.isArray(rows)&&rows.length?rows.map(x=>`<div class="data-row"><div><b>${escapeHtml(x.description)}</b><small>${new Date(x.created_at).toLocaleString('ru-RU')}</small></div><strong>${Number(x.amount)>0?'+':''}${rub(x.amount)}</strong></div>`).join(''):'<div class="no-products">Операций пока нет</div>';}).catch(()=>box.textContent='Не удалось загрузить историю.');}\n\nfunction buyProduct(productId) {
     if(!confirm('Подтвердить покупку товара?')) return;
     apiFetch('/api/buy', {
         method: 'POST',
