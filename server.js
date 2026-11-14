@@ -99,6 +99,7 @@ async function migrateDatabase() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       decided_at TIMESTAMPTZ
     );
+    ALTER TABLE activation_keys ADD COLUMN IF NOT EXISTS created_by BIGINT REFERENCES users(telegram_id);
     CREATE INDEX IF NOT EXISTS moderation_pending_idx ON moderation_requests(status,created_at DESC);
     CREATE TABLE IF NOT EXISTS order_refunds (
       id BIGSERIAL PRIMARY KEY,
@@ -306,7 +307,7 @@ app.post('/api/products/add',roles('seller','admin','owner'),async(req,res)=>{
     const r=await pool.query("INSERT INTO products (title,description,price,price_from,max_price,category,subcategory,seller_id,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending') RETURNING id",
       [b.title.trim(),b.description||'',price,Boolean(b.price_from),max,b.category,b.subcategory||'',req.user.telegram_id]);
     const m=await pool.query("INSERT INTO moderation_requests(kind,requested_by,product_id,reason) VALUES ('product',$1,$2,'Проверка нового товара') RETURNING id",[req.user.telegram_id,r.rows[0].id]);
-    await notifyOwner('Новый товар ожидает проверки. Заявка #'+m.rows[0].id+', товар #'+r.rows[0].id+'. Откройте панель управления.');
+    await notifyModerators('Новый товар ожидает проверки. Заявка #'+m.rows[0].id+', товар #'+r.rows[0].id+'. Откройте панель управления.');
     res.json({success:true,pending:true,product_id:r.rows[0].id,request_id:m.rows[0].id});
   } catch(e){console.error(e.message);res.status(503).json({error:'Не удалось сохранить товар.'});}
 });
@@ -325,10 +326,18 @@ app.post('/api/key/activate',async(req,res)=>{
   }catch(e){await c.query('ROLLBACK');console.error(e.message);res.status(500).json({error:'Не удалось активировать ключ.'});}
   finally{c.release();}
 });
+app.get('/api/owner/keys',roles('owner'),async(req,res)=>{
+  try{
+    const q=await pool.query(`SELECT k.role,k.used_by,k.used_at,k.created_at,u.username AS used_username
+      FROM activation_keys k LEFT JOIN users u ON u.telegram_id=k.used_by
+      ORDER BY k.created_at DESC LIMIT 200`);
+    res.json(q.rows);
+  }catch(e){res.status(503).json({error:'Не удалось загрузить историю ключей.'});}
+});
 app.post('/api/key/generate',roles('owner'),async(req,res)=>{
   const role=req.body?.role;if(!['admin','seller','support'].includes(role))return res.status(400).json({error:'Недопустимая роль.'});
   const key='WTS-'+role.toUpperCase()+'-'+crypto.randomBytes(9).toString('hex').toUpperCase();
-  try{await pool.query('INSERT INTO activation_keys (key_hash,role) VALUES ($1,$2)',[hashKey(key),role]);res.json({success:true,key});}
+  try{await pool.query('INSERT INTO activation_keys (key_hash,role,created_by) VALUES ($1,$2,$3)',[hashKey(key),role,req.user.telegram_id]);res.json({success:true,key});}
   catch(e){console.error(e.message);res.status(500).json({error:'Не удалось создать ключ.'});}
 });
 
@@ -399,6 +408,13 @@ function decodedTonComment(value, depth=0) {
 async function notifyOwner(text) {
   try { await telegramRequest('sendMessage',{chat_id:OWNER_TELEGRAM_ID,text:String(text).slice(0,3500)}); }
   catch(e) { console.error('Owner notification failed:',e.message); }
+}
+async function notifyModerators(text) {
+  await notifyOwner(text);
+  try {
+    const q=await pool.query("SELECT telegram_id FROM users WHERE role='support' AND is_banned=FALSE");
+    await Promise.all(q.rows.map(u=>telegramRequest('sendMessage',{chat_id:String(u.telegram_id),text:String(text).slice(0,3500)}).catch(e=>console.error('Support notification:',e.message))));
+  } catch(e) { console.error('Moderator notification failed:',e.message); }
 }
 async function telegramRequest(method, params={}) {
   const r = await fetch('https://api.telegram.org/bot' + BOT_TOKEN + '/' + method, {
@@ -789,7 +805,8 @@ app.post('/api/admin/action',roles('owner','support','admin'),async(req,res)=>{
         await c.query('COMMIT');
       }catch(e){await c.query('ROLLBACK');throw e;}finally{c.release();}
     }else if(action==='ban'||action==='unban'){
-      await pool.query('UPDATE users SET is_banned=$1,updated_at=NOW() WHERE telegram_id=$2',[action==='ban',target_id]);
+      if(req.user.role==='support')return res.status(403).json({error:'Поддержка отправляет запрос владельцу через форму блокировки.'});
+      await pool.query('UPDATE users SET is_banned=$1,banned_until=NULL,banned_reason=NULL,updated_at=NOW() WHERE telegram_id=$2',[action==='ban',target_id]);
     }else return res.status(400).json({error:'Неизвестное действие.'});
     res.json({success:true});
   }catch(e){console.error(e.message);res.status(400).json({error:e.message||'Ошибка операции.'});}
