@@ -102,10 +102,11 @@ apiFetch('/api/user', {
     document.getElementById('userrole-badge').innerText = data.role.toUpperCase();
     document.getElementById('user-balance').innerText = rub(data.balance);
     document.getElementById('profileName').value = data.display_name || '';
-    document.getElementById('profileAvatarUrl').value = data.avatar_url || '';
+    document.getElementById('profileAvatarUrl').value = data.avatar_url || user.photo_url || '';
     document.getElementById('profile-display-name').textContent = data.display_name || (data.username ? '@'+data.username : 'Пользователь');
     const avatar=document.getElementById('profile-avatar');
-    if(data.avatar_url){avatar.src=data.avatar_url;avatar.style.visibility='visible';}else{avatar.removeAttribute('src');avatar.style.visibility='hidden';}
+    const shownAvatar=data.avatar_url || user.photo_url || '';
+    if(shownAvatar){avatar.src=shownAvatar;avatar.style.visibility='visible';}else{avatar.removeAttribute('src');avatar.style.visibility='hidden';}
     if(['owner','support','admin'].includes(data.role)) document.getElementById('nav-manage').classList.remove('hidden');
     if(data.role!=='owner'){
       document.querySelector('.owner-heading').classList.add('hidden');
