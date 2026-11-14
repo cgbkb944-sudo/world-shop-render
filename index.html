@@ -344,6 +344,7 @@
             <input id="banReason" placeholder="Причина блокировки">
             <input id="banDuration" type="number" min="1" max="8760" placeholder="Срок в часах (пусто — навсегда)">
             <button class="danger-button" onclick="requestBan()">Отправить запрос владельцу</button>
+            <button class="secondary-button" onclick="unbanSupportUser()">Снять блокировку</button>
             <p id="ban-request-result"></p>
         </div>
         <div class="card" id="owner-user-card">
