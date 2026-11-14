@@ -231,7 +231,7 @@ async function handleCryptoPayWebhook(req,res) {
   const local=await pool.query("SELECT * FROM payments WHERE id=$1 AND provider='cryptobot'",[paymentId]);
   if(!local.rowCount)return res.sendStatus(404);
   const p=local.rows[0];
-  if(String(p.provider_payment_id)!==String(invoice.invoice_id)||invoice.status!=='paid'||
+  if(String(p.provider_payment_id)!==String(invoice.invoice_id)||String(payload.user_id)!==String(p.telegram_id)||invoice.status!=='paid'||
     invoice.currency_type!=='fiat'||invoice.fiat!=='RUB'||!['TON','USDT'].includes(invoice.paid_asset)||cents(invoice.amount)!==cents(p.amount))return res.sendStatus(409);
   const verified=await cryptoPay('getInvoices',{invoice_ids:String(invoice.invoice_id)});
   const remote=Array.isArray(verified)?verified.find(x=>String(x.invoice_id)===String(invoice.invoice_id)):null;
@@ -243,6 +243,7 @@ async function handleRollyPayWebhook(req,res) {
   if(!secret||!Buffer.isBuffer(req.body))return res.sendStatus(404);
   const signature=req.get('x-signature')||'',timestamp=req.get('x-timestamp')||'',ts=Number(timestamp);
   if(!/^\d{10}$/.test(timestamp)||!Number.isFinite(ts))return res.sendStatus(403);
+  if(Math.abs(Date.now()/1000-ts)>300)return res.sendStatus(403);
   const expected=crypto.createHmac('sha256',secret).update(timestamp+'.').update(req.body).digest('hex');
   if(!safeEqual(signature,expected))return res.sendStatus(403);
   const event=JSON.parse(req.body.toString('utf8'));
@@ -341,7 +342,7 @@ async function pollTonPayments() {
   tonPollBusy=true;
   try {
     await pool.query("UPDATE payments SET status='expired' WHERE provider='ton_usdt' AND status='pending' AND expires_at<NOW()-INTERVAL '5 minutes'");
-    const pending=await pool.query("SELECT id,asset,amount,expected_crypto,wallet_address,created_at,expires_at FROM payments WHERE provider='ton_usdt' AND status='pending' AND expires_at>NOW() ORDER BY created_at ASC LIMIT 500");
+    const pending=await pool.query("SELECT id,asset,amount,expected_crypto,wallet_address,created_at,expires_at FROM payments WHERE provider='ton_usdt' AND status='pending' AND expires_at>NOW()-INTERVAL '5 minutes' ORDER BY created_at ASC LIMIT 500");
     if(!pending.rowCount)return;
     const byAsset={TON:[],USDT:[]};
     for(const p of pending.rows)if(byAsset[p.asset])byAsset[p.asset].push(p);
@@ -444,14 +445,15 @@ app.get('/api/owner/sellers/:id',roles('owner'),async(req,res)=>{
   const id=String(req.params.id||'');
   if(!/^\d{1,20}$/.test(id))return res.status(400).json({error:'Некорректный Telegram ID.'});
   try{
-    const [u,p,o,t]=await Promise.all([
+    const [u,p,o,t,ledger]=await Promise.all([
       pool.query('SELECT telegram_id,username,role,balance,is_banned,created_at FROM users WHERE telegram_id=$1',[id]),
       pool.query('SELECT id,title,price,status,created_at FROM products WHERE seller_id=$1 ORDER BY created_at DESC LIMIT 100',[id]),
       pool.query('SELECT o.id,o.amount,o.commission,o.status,o.created_at,p.title FROM orders o JOIN products p ON p.id=o.product_id WHERE o.seller_id=$1 ORDER BY o.created_at DESC LIMIT 100',[id]),
-      pool.query("SELECT COALESCE(SUM(amount),0) AS total FROM transactions WHERE telegram_id=$1 AND type='sale'",[id])
+      pool.query("SELECT COALESCE(SUM(amount),0) AS total FROM transactions WHERE telegram_id=$1 AND type='sale'",[id]),
+      pool.query('SELECT amount,type,description,created_at FROM transactions WHERE telegram_id=$1 ORDER BY created_at DESC LIMIT 100',[id])
     ]);
     if(!u.rowCount)return res.status(404).json({error:'Продавец не найден.'});
-    res.json({user:u.rows[0],products:p.rows,orders:o.rows,totalEarned:Number(t.rows[0].total)});
+    res.json({user:u.rows[0],products:p.rows,orders:o.rows,totalEarned:Number(t.rows[0].total),transactions:ledger.rows});
   }catch(e){console.error('Owner seller detail:',e.message);res.status(503).json({error:'Не удалось загрузить профиль продавца.'});}
 });
 app.get('/api/owner/users',roles('owner'),async(req,res)=>{
