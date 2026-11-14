@@ -209,7 +209,7 @@ async function auth(req,res,next) {
   } catch(e) { console.error('Auth error:',e.message); res.status(503).json({error:'Сервис временно недоступен.'}); }
 }
 const roles = (...allowed) => (req,res,next) => allowed.includes(req.user.role) ? next() : res.status(403).json({error:'Недостаточно прав.'});
-const money = v => { const n=Number(v); return Number.isFinite(n)&&n>0&&n<=1e7&&Math.round(n*100)===n*100?n:null; };
+const money = v => { const n=Number(v); return Number.isFinite(n)&&n>0&&n<=1e7&&Math.round(n*100)/100===n?n:null; };
 const hashKey = v => crypto.createHash('sha256').update(String(v).trim().toUpperCase()).digest('hex');
 
 app.get('/',(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
