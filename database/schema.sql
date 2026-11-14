@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS activation_keys (
 
 CREATE TABLE IF NOT EXISTS payments (
   id BIGSERIAL PRIMARY KEY,
-  provider TEXT NOT NULL CHECK (provider IN ('cryptobot','sbp','card','ton_usdt')),
+  provider TEXT NOT NULL CHECK (provider IN ('cryptobot','sbp','card','ton_usdt','telegram_stars')),
   provider_payment_id TEXT,
   telegram_id BIGINT NOT NULL REFERENCES users(telegram_id),
   amount NUMERIC(18,2) NOT NULL CHECK (amount > 0),

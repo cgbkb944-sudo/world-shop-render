@@ -1,10 +1,13 @@
-const tg = window.Telegram.WebApp;
-tg.expand();
+const tg = window.Telegram?.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
 
-const user = tg.initDataUnsafe?.user;
-const initData = tg.initData || '';
-if (!user || !initData) {
-    document.getElementById('products-list').innerText = 'Откройте магазин через Telegram.';
+const user = tg?.initDataUnsafe?.user;
+const initData = tg?.initData || '';
+if (!tg || !user || !initData) {
+    const notice = 'Авторизация Telegram не получена. Откройте магазин через кнопку «Открыть магазин» в Telegram-боте.';
+    const list = document.getElementById('products-list');
+    if (list) list.innerText = notice;
+    document.querySelectorAll('[onclick]').forEach(el => { el.style.pointerEvents = 'none'; el.setAttribute('aria-disabled','true'); });
     throw new Error('Telegram WebApp initData is required');
 }
 function apiFetch(url, options = {}) {
@@ -288,7 +291,18 @@ function makePayment() {
     .then(async res => ({ ok:res.ok, data:await res.json() }))
     .then(({ok,data}) => {
         if(!ok) { alert(data.error || 'Ошибка создания платежа'); return; }
-        if(data.directTransfer) {
+        if(data.invoiceLink) {
+            try { localStorage.setItem('world_tg_pending_payment',String(data.paymentId)); } catch(e) {}
+            if (!tg || typeof tg.openInvoice !== 'function') { alert('Откройте оплату внутри Telegram Mini App.'); return; }
+            tg.openInvoice(data.invoiceLink, status => {
+                if (status === 'paid') {
+                    alert('Telegram подтвердил оплату. Проверяем зачисление баланса…');
+                    resumePendingPayment();
+                } else if (status === 'failed') {
+                    alert('Не удалось провести оплату Stars. Попробуйте ещё раз.');
+                }
+            });
+        } else if(data.directTransfer) {
             if(!data.transferUri || !data.comment) { alert('Сервер не вернул реквизиты с комментарием. Платёж не запущен.'); return; }
             activeDirectPaymentId = data.paymentId;
             activeDirectPaymentUri = data.transferUri;
