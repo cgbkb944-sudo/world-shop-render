@@ -11,6 +11,9 @@ const PORT = Number(process.env.PORT || 3000);
 const { DATABASE_URL, BOT_TOKEN } = process.env;
 const OWNER_TELEGRAM_ID = process.env.OWNER_TELEGRAM_ID || '8127900151';
 const WITHDRAWAL_GROUP_ID = '-1004497861005';
+const SALES_NOTIFICATION_GROUP_ID = process.env.SALES_NOTIFICATION_GROUP_ID || WITHDRAWAL_GROUP_ID;
+const SALES_REPORT_TIMEZONE = process.env.SALES_REPORT_TIMEZONE || 'Europe/Minsk';
+const SALES_REPORT_HOUR = Number.isInteger(Number(process.env.SALES_REPORT_HOUR)) && Number(process.env.SALES_REPORT_HOUR)>=0 && Number(process.env.SALES_REPORT_HOUR)<=23 ? Number(process.env.SALES_REPORT_HOUR) : 20;
 if (!DATABASE_URL) throw new Error('DATABASE_URL is required');
 if (!BOT_TOKEN) throw new Error('BOT_TOKEN is required');
 if (!OWNER_TELEGRAM_ID || !/^\d+$/.test(OWNER_TELEGRAM_ID)) throw new Error('OWNER_TELEGRAM_ID must be numeric');
@@ -158,6 +161,12 @@ async function migrateDatabase() {
     );
     CREATE INDEX IF NOT EXISTS withdrawal_requests_status_idx ON withdrawal_requests(status,created_at DESC);
   `);
+  await pool.query(`CREATE TABLE IF NOT EXISTS sales_report_runs (
+    report_date DATE PRIMARY KEY,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sent')),
+    sent_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
 }
 
 app.disable('x-powered-by');
@@ -669,6 +678,7 @@ app.post('/api/buy',async(req,res)=>{
     const info=Object.entries(clean).map(([k,v])=>k+': '+v).join('\n');
     const sellerMessage='🛒 Новый оплаченный заказ #'+order.rows[0].id+'\nТовар: '+product.title+'\nСумма: '+amount.toFixed(2)+' ₽\nПокупатель: '+(req.user.username?'@'+req.user.username:'без username')+(info?'\nДанные покупателя:\n'+info:'');
     telegramRequest('sendMessage',{chat_id:String(product.seller_id),text:sellerMessage.slice(0,3500)}).catch(e=>console.error('Seller order notification:',e.message));
+    notifySalesGroup('🛒 НОВАЯ ПОКУПКА\nЗаказ: #'+order.rows[0].id+'\nТовар: '+product.title+'\nСумма: '+amount.toFixed(2)+' ₽\nПродавец: '+(product.seller_name||('ID '+product.seller_id))+'\nПокупатель: '+(req.user.username?'@'+req.user.username:('ID '+req.user.telegram_id))+'\nКомиссия магазина (3%): '+fee.toFixed(2)+' ₽\nПродавцу начислено: '+sellerAmount.toFixed(2)+' ₽').catch(e=>console.error('Sales group purchase notification:',e.message));
     res.json({success:true,message:'Покупка успешно совершена!',order_id:order.rows[0].id,total:amount,quantity});
   }catch(e){await c.query('ROLLBACK');console.error('Purchase:',e.message);res.status(503).json({error:'Не удалось оформить заказ.'});}
   finally{c.release();}
@@ -737,6 +747,55 @@ async function notifyModerators(text) {
     const q=await pool.query("SELECT telegram_id FROM users WHERE role='support' AND is_banned=FALSE");
     await Promise.all(q.rows.map(u=>telegramRequest('sendMessage',{chat_id:String(u.telegram_id),text:String(text).slice(0,3500)}).catch(e=>console.error('Support notification:',e.message))));
   } catch(e) { console.error('Moderator notification failed:',e.message); }
+}
+async function notifySalesGroup(text) {
+  if(!SALES_NOTIFICATION_GROUP_ID) return;
+  await telegramRequest('sendMessage',{chat_id:SALES_NOTIFICATION_GROUP_ID,text:String(text).slice(0,3900)});
+}
+function salesReportClock(now=new Date()) {
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:SALES_REPORT_TIMEZONE,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(now);
+  return Object.fromEntries(parts.filter(p=>p.type!=='literal').map(p=>[p.type,p.value]));
+}
+async function sendDailySalesReportIfDue() {
+  const clock=salesReportClock();
+  if(Number(clock.hour)<SALES_REPORT_HOUR) return;
+  const reportDate=clock.year+'-'+clock.month+'-'+clock.day;
+  const claim=await pool.query(`INSERT INTO sales_report_runs(report_date,status,updated_at) VALUES ($1,'pending',NOW())
+    ON CONFLICT(report_date) DO UPDATE SET updated_at=NOW()
+    WHERE sales_report_runs.status='pending' AND sales_report_runs.updated_at<NOW()-INTERVAL '5 minutes'
+    RETURNING report_date`,[reportDate]);
+  if(!claim.rowCount) return;
+  try {
+    const q=await pool.query(`WITH sales AS (
+      SELECT o.seller_id,COUNT(*)::int AS orders_count,COALESCE(SUM(o.amount),0) AS gross,
+        COALESCE(SUM(o.commission),0) AS commission,COALESCE(SUM(o.amount-o.commission),0) AS seller_net
+      FROM orders o WHERE (o.created_at AT TIME ZONE $1)::date=$2::date GROUP BY o.seller_id
+    ), refunds AS (
+      SELECT o.seller_id,COUNT(*)::int AS refund_count,COALESCE(SUM(r.amount),0) AS refund_amount
+      FROM order_refunds r JOIN orders o ON o.id=r.order_id
+      WHERE (r.created_at AT TIME ZONE $1)::date=$2::date GROUP BY o.seller_id
+    )
+    SELECT COALESCE(s.seller_id,r.seller_id) AS seller_id,
+      COALESCE(u.display_name,CASE WHEN u.username IS NOT NULL THEN '@'||u.username END,'Продавец #'||COALESCE(s.seller_id,r.seller_id)::text) AS seller_name,
+      COALESCE(s.orders_count,0)::int AS orders_count,COALESCE(s.gross,0)::numeric AS gross,
+      COALESCE(s.commission,0)::numeric AS commission,COALESCE(s.seller_net,0)::numeric AS seller_net,
+      COALESCE(r.refund_count,0)::int AS refund_count,COALESCE(r.refund_amount,0)::numeric AS refund_amount
+    FROM sales s FULL OUTER JOIN refunds r ON r.seller_id=s.seller_id
+    LEFT JOIN users u ON u.telegram_id=COALESCE(s.seller_id,r.seller_id)
+    ORDER BY COALESCE(s.gross,0) DESC,COALESCE(r.refund_amount,0) DESC`,[SALES_REPORT_TIMEZONE,reportDate]);
+    const rows=q.rows;
+    const sum=key=>rows.reduce((v,r)=>v+Number(r[key]||0),0);
+    const salesCount=sum('orders_count'),gross=sum('gross'),commission=sum('commission'),sellerNet=sum('seller_net'),refundCount=sum('refund_count'),refundAmount=sum('refund_amount');
+    const lines=['📊 ЕЖЕДНЕВНЫЙ ОТЧЁТ WORLD TG SHOP','Дата: '+reportDate,'','🛒 Покупок: '+salesCount,'💰 Оборот: '+gross.toFixed(2)+' ₽','🏦 Комиссия магазина: '+commission.toFixed(2)+' ₽','👤 Начислено продавцам: '+sellerNet.toFixed(2)+' ₽','↩️ Возвратов: '+refundCount+' на '+refundAmount.toFixed(2)+' ₽','📉 Оборот за вычетом возвратов: '+(gross-refundAmount).toFixed(2)+' ₽'];
+    if(rows.length){lines.push('','ПО ПРОДАВЦАМ:');for(const r of rows){lines.push('• '+r.seller_name+': '+Number(r.orders_count)+' покупок; оборот '+Number(r.gross).toFixed(2)+' ₽; комиссия '+Number(r.commission).toFixed(2)+' ₽; продавцу '+Number(r.seller_net).toFixed(2)+' ₽; возвраты '+Number(r.refund_count)+' / '+Number(r.refund_amount).toFixed(2)+' ₽');}}
+    else lines.push('','За этот день продаж и возвратов не было.');
+    await notifySalesGroup(lines.join('\n'));
+    await pool.query("UPDATE sales_report_runs SET status='sent',sent_at=NOW(),updated_at=NOW() WHERE report_date=$1",[reportDate]);
+    console.log('Daily sales report sent for '+reportDate+' ('+SALES_REPORT_TIMEZONE+')');
+  } catch(e) {
+    await pool.query("DELETE FROM sales_report_runs WHERE report_date=$1 AND status='pending'",[reportDate]).catch(()=>{});
+    throw e;
+  }
 }
 async function telegramRequest(method, params={}) {
   const r = await fetch('https://api.telegram.org/bot' + BOT_TOKEN + '/' + method, {
@@ -1184,6 +1243,7 @@ app.post('/api/orders/:id/refund',roles('owner','support'),async(req,res)=>{
       [o.buyer_id,o.amount,ref+'_buyer','Возврат за заказ #'+orderId+' — '+o.title,o.seller_id,-sellerShare,ref+'_seller','Списание средств с баланса продавца при возврате заказа #'+orderId]);
     if(Number(o.commission)>0)await db.query("INSERT INTO shop_ledger(amount,kind,reference,description) VALUES($1,'refund',$2,$3)",[Number(o.commission),'refund_'+rf.rows[0].id+'_fee','Возврат комиссии по заказу #'+orderId]);
     await db.query('COMMIT');
+    notifySalesGroup('↩️ ВОЗВРАТ ЗАКАЗА\nЗаказ: #'+orderId+'\nТовар: '+o.title+'\nСумма возврата: '+Number(o.amount).toFixed(2)+' ₽\nПокупатель: ID '+o.buyer_id+'\nПродавец: ID '+o.seller_id+'\nПричина: '+reason).catch(e=>console.error('Sales group refund notification:',e.message));
     res.json({success:true,refund_id:rf.rows[0].id,amount:Number(o.amount),message:'Возврат зачислен покупателю, товар возвращён продавцу.'});
   }catch(e){await db.query('ROLLBACK');console.error('Refund:',e.message);res.status(503).json({error:'Не удалось оформить возврат.'});}
   finally{db.release();}
@@ -1355,7 +1415,9 @@ app.post('/api/owner/role',roles('owner'),async(req,res)=>{
 app.use((err,req,res,next)=>{console.error('Request error:',err.message);res.status(400).json({error:'Некорректный запрос.'});});
 const tonMonitor=setInterval(()=>{pollTonPayments().catch(e=>console.error('TON poll failed:',e.message));},15000);
 const transferExpiryMonitor=setInterval(()=>{expireTransferCodes().catch(e=>console.error('Transfer expiry failed:',e.message));},60000);
+const salesReportMonitor=setInterval(()=>{sendDailySalesReportIfDue().catch(e=>console.error('Daily sales report failed:',e.message));},60000);
 setTimeout(()=>pollTonPayments().catch(e=>console.error('TON poll failed:',e.message)),1500).unref();
+setTimeout(()=>sendDailySalesReportIfDue().catch(e=>console.error('Daily sales report failed:',e.message)),5000).unref();
 let server;
 async function start() {
   try {
@@ -1370,6 +1432,6 @@ async function start() {
     process.exit(1);
   }
 }
-async function stop(){clearInterval(tonMonitor);clearInterval(transferExpiryMonitor);if(server)server.close(async()=>{await pool.end();process.exit(0);});else{await pool.end();process.exit(0);}setTimeout(()=>process.exit(1),10000).unref();}
+async function stop(){clearInterval(tonMonitor);clearInterval(transferExpiryMonitor);clearInterval(salesReportMonitor);if(server)server.close(async()=>{await pool.end();process.exit(0);});else{await pool.end();process.exit(0);}setTimeout(()=>process.exit(1),10000).unref();}
 process.on('SIGTERM',stop);process.on('SIGINT',stop);
 start();
