@@ -348,8 +348,9 @@ app.post('/api/subscription/check',async(req,res)=>{
   }catch(e){console.error('Subscription check:',e.message);res.status(503).json({error:'Не удалось проверить подписку. Попробуйте ещё раз.'});}
 });
 app.use('/api',auth);
-app.post('/api/promos/create',roles('owner','admin','support'),async(req,res)=>{const type=String(req.body?.type||''),value=Number(req.body?.value),maxUses=Number(req.body?.max_uses||1),days=Number(req.body?.expires_days||0);if(!['topup','discount_percent','discount_fixed'].includes(type)||!Number.isFinite(value)||value<=0||value>(type==='discount_percent'?100:1000000)||!Number.isInteger(maxUses)||maxUses<1||maxUses>100000||!Number.isInteger(days)||days<0||days>3650)return res.status(400).json({error:'Проверьте тип, значение, лимит и срок действия.'});const code='WTS-'+crypto.randomBytes(5).toString('hex').toUpperCase();try{const q=await pool.query('INSERT INTO promo_codes(code,promo_type,value,max_uses,expires_at,created_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING code,promo_type,value,max_uses,expires_at',[code,type,value,maxUses,days?new Date(Date.now()+days*86400000):null,req.user.telegram_id]);res.json({success:true,promo:q.rows[0]});}catch(e){console.error('Promo create:',e.message);res.status(503).json({error:'Не удалось создать промокод.'});}});
+app.post('/api/promos/create',roles('owner','admin','support'),async(req,res)=>{const type=String(req.body?.type||''),value=Number(req.body?.value),maxUses=Number(req.body?.max_uses||1),hours=Number(req.body?.expires_hours??(Number(req.body?.expires_days||0)*24));if(!['topup','discount_percent','discount_fixed'].includes(type)||!Number.isFinite(value)||value<=0||value>(type==='discount_percent'?100:1000000)||!Number.isInteger(maxUses)||maxUses<1||maxUses>100000||!Number.isInteger(hours)||hours<0||hours>87600)return res.status(400).json({error:'Проверьте тип, значение, лимит и срок действия (в часах).'});const code='WTS-'+crypto.randomBytes(5).toString('hex').toUpperCase();try{const q=await pool.query('INSERT INTO promo_codes(code,promo_type,value,max_uses,expires_at,created_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING code,promo_type,value,max_uses,expires_at',[code,type,value,maxUses,hours?new Date(Date.now()+hours*3600000):null,req.user.telegram_id]);res.json({success:true,promo:q.rows[0]});}catch(e){console.error('Promo create:',e.message);res.status(503).json({error:'Не удалось создать промокод.'});}});
 app.get('/api/promos',roles('owner','admin','support'),async(req,res)=>{try{const q=await pool.query('SELECT code,promo_type,value,max_uses,uses_count,expires_at,is_active,created_at FROM promo_codes ORDER BY created_at DESC LIMIT 100');res.json(q.rows);}catch(e){res.status(503).json({error:'Не удалось загрузить промокоды.'});}});
+app.post('/api/promos/:code/disable',roles('owner','admin','support'),async(req,res)=>{try{const q=await pool.query('UPDATE promo_codes SET is_active=FALSE WHERE code=$1 RETURNING code',[String(req.params.code||'').toUpperCase()]);if(!q.rowCount)return res.status(404).json({error:'Промокод не найден.'});res.json({success:true});}catch(e){res.status(503).json({error:'Не удалось отключить промокод.'});}});
 app.post('/api/promos/redeem',async(req,res)=>{const code=String(req.body?.code||'').trim().toUpperCase();if(!/^[A-Z0-9-]{4,40}$/.test(code))return res.status(400).json({error:'Введите корректный промокод.'});const db=await pool.connect();try{await db.query('BEGIN');const p=await db.query('SELECT * FROM promo_codes WHERE code=$1 AND is_active=TRUE FOR UPDATE',[code]);if(!p.rowCount)throw new Error('Промокод не найден или отключён.');const promo=p.rows[0];if(promo.promo_type!=='topup')throw new Error('Этот промокод предназначен для скидки при покупке.');if(promo.expires_at&&new Date(promo.expires_at)<=new Date())throw new Error('Срок действия промокода истёк.');if(Number(promo.uses_count)>=Number(promo.max_uses))throw new Error('Лимит активаций исчерпан.');const used=await db.query('SELECT 1 FROM promo_redemptions WHERE promo_id=$1 AND user_id=$2',[promo.id,req.user.telegram_id]);if(used.rowCount)throw new Error('Вы уже использовали этот промокод.');const amount=Number(promo.value);await db.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2',[amount,req.user.telegram_id]);await db.query("INSERT INTO transactions(telegram_id,amount,type,reference,description) VALUES($1,$2,'topup',$3,$4)",[req.user.telegram_id,amount,'promo_'+promo.id+'_'+req.user.telegram_id,'Пополнение по промокоду '+code]);await db.query('INSERT INTO promo_redemptions(promo_id,user_id,reward_amount) VALUES($1,$2,$3)',[promo.id,req.user.telegram_id,amount]);await db.query('UPDATE promo_codes SET uses_count=uses_count+1 WHERE id=$1',[promo.id]);await db.query('COMMIT');res.json({success:true,amount,message:'На баланс начислено '+amount.toFixed(2)+' ₽.'});}catch(e){await db.query('ROLLBACK');res.status(400).json({error:e.message||'Не удалось активировать промокод.'});}finally{db.release();}});
 app.get('/api/products',async(req,res)=>{
   try { const r=await pool.query("SELECT p.id,p.title,p.description,p.price,p.price_from,p.max_price,p.category,p.subcategory,p.product_type,COALESCE(u.display_name,u.username,'Продавец') AS seller_name FROM products p JOIN users u ON u.telegram_id=p.seller_id WHERE p.status='active' ORDER BY p.created_at DESC LIMIT 200"); res.json(r.rows); }
@@ -806,6 +807,31 @@ function salesReportClock(now=new Date()) {
   const parts=new Intl.DateTimeFormat('en-CA',{timeZone:SALES_REPORT_TIMEZONE,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(now);
   return Object.fromEntries(parts.filter(p=>p.type!=='literal').map(p=>[p.type,p.value]));
 }
+async function sendSalesReportForDate(reportDate) {
+  const q=await pool.query(`WITH sales AS (
+    SELECT o.seller_id,COUNT(*)::int AS orders_count,COALESCE(SUM(o.amount),0) AS gross,
+      COALESCE(SUM(o.commission),0) AS commission,COALESCE(SUM(o.amount-o.commission),0) AS seller_net
+    FROM orders o WHERE (o.created_at AT TIME ZONE $1)::date=$2::date GROUP BY o.seller_id
+  ), refunds AS (
+    SELECT o.seller_id,COUNT(*)::int AS refund_count,COALESCE(SUM(r.amount),0) AS refund_amount
+    FROM order_refunds r JOIN orders o ON o.id=r.order_id
+    WHERE (r.created_at AT TIME ZONE $1)::date=$2::date GROUP BY o.seller_id
+  )
+  SELECT COALESCE(s.seller_id,r.seller_id) AS seller_id,
+    COALESCE(u.display_name,CASE WHEN u.username IS NOT NULL THEN '@'||u.username END,'Продавец #'||COALESCE(s.seller_id,r.seller_id)::text) AS seller_name,
+    COALESCE(s.orders_count,0)::int AS orders_count,COALESCE(s.gross,0)::numeric AS gross,
+    COALESCE(s.commission,0)::numeric AS commission,COALESCE(s.seller_net,0)::numeric AS seller_net,
+    COALESCE(r.refund_count,0)::int AS refund_count,COALESCE(r.refund_amount,0)::numeric AS refund_amount
+  FROM sales s FULL OUTER JOIN refunds r ON r.seller_id=s.seller_id
+  LEFT JOIN users u ON u.telegram_id=COALESCE(s.seller_id,r.seller_id)
+  ORDER BY COALESCE(s.gross,0) DESC,COALESCE(r.refund_amount,0) DESC`,[SALES_REPORT_TIMEZONE,reportDate]);
+  const rows=q.rows,sum=key=>rows.reduce((v,r)=>v+Number(r[key]||0),0);
+  const salesCount=sum('orders_count'),gross=sum('gross'),commission=sum('commission'),sellerNet=sum('seller_net'),refundCount=sum('refund_count'),refundAmount=sum('refund_amount');
+  const lines=['📊 ОТЧЁТ WORLD TG SHOP','Дата: '+reportDate,'','🛒 Покупок: '+salesCount,'💰 Оборот: '+gross.toFixed(2)+' ₽','🏦 Комиссия магазина: '+commission.toFixed(2)+' ₽','👤 Начислено продавцам: '+sellerNet.toFixed(2)+' ₽','↩️ Возвратов: '+refundCount+' на '+refundAmount.toFixed(2)+' ₽','📉 Оборот за вычетом возвратов: '+(gross-refundAmount).toFixed(2)+' ₽'];
+  if(rows.length){lines.push('','ПО ПРОДАВЦАМ:');for(const r of rows)lines.push('• '+r.seller_name+': '+Number(r.orders_count)+' покупок; оборот '+Number(r.gross).toFixed(2)+' ₽; комиссия '+Number(r.commission).toFixed(2)+' ₽; продавцу '+Number(r.seller_net).toFixed(2)+' ₽; возвраты '+Number(r.refund_count)+' / '+Number(r.refund_amount).toFixed(2)+' ₽');}
+  else lines.push('','За этот день продаж и возвратов не было.');
+  await notifySalesGroup(lines.join('\\n'));
+}
 async function sendDailySalesReportIfDue() {
   const clock=salesReportClock();
   if(Number(clock.hour)<SALES_REPORT_HOUR) return;
@@ -1052,11 +1078,27 @@ async function handleTelegramBotMessage(message) {
   const currentRole=isOwner?'owner':(known.rows[0]?.role||'user');
   if(command==='/promocreate'){
     if(!['owner','admin','support'].includes(currentRole)){await sendBotText(chatId,'Недостаточно прав для создания промокодов.');return;}
-    const parts=text.split(/\\s+/),type=String(parts[1]||''),value=Number(parts[2]),maxUses=Number(parts[3]||1),days=Number(parts[4]||0);
-    if(!['topup','discount_percent','discount_fixed'].includes(type)||!Number.isFinite(value)||value<=0||value>(type==='discount_percent'?100:1000000)||!Number.isInteger(maxUses)||maxUses<1||!Number.isInteger(days)||days<0||days>3650){await sendBotText(chatId,'Формат:\\n/promocreate topup 100 50 7\\n/promocreate discount_percent 15 100 7\\n/promocreate discount_fixed 50 20 3\\n\\nПараметры: тип, сумма/процент, лимит активаций, срок в днях (0 — без срока).');return;}
+    const parts=text.split(/\\s+/),type=String(parts[1]||''),value=Number(parts[2]),maxUses=Number(parts[3]||1),hours=Number(parts[4]||0);
+    if(!['topup','discount_percent','discount_fixed'].includes(type)||!Number.isFinite(value)||value<=0||value>(type==='discount_percent'?100:1000000)||!Number.isInteger(maxUses)||maxUses<1||!Number.isInteger(hours)||hours<0||hours>87600){await sendBotText(chatId,'Формат:\\n/promocreate topup 100 50 24\\n/promocreate discount_percent 15 100 72\\n/promocreate discount_fixed 50 20 12\\n\\nПараметры: тип, сумма/процент, лимит активаций, срок в часах (0 — без срока).');return;}
     const code='WTS-'+crypto.randomBytes(5).toString('hex').toUpperCase();
-    const q=await pool.query('INSERT INTO promo_codes(code,promo_type,value,max_uses,expires_at,created_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING code',[code,type,value,maxUses,days?new Date(Date.now()+days*86400000):null,id]);
+    const q=await pool.query('INSERT INTO promo_codes(code,promo_type,value,max_uses,expires_at,created_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING code',[code,type,value,maxUses,hours?new Date(Date.now()+hours*3600000):null,id]);
     await sendBotText(chatId,'✅ Промокод создан\\nКод: '+q.rows[0].code+'\\nТип: '+type+'\\nЗначение: '+value+(type==='discount_percent'?'%':' ₽')+'\\nЛимит: '+maxUses+' активаций\\nСрок: '+(days?days+' дн.':'без ограничения')+'\\n\\nОтправьте код пользователям.');return;
+  }
+  if(command==='/promos'){
+    if(!['owner','admin','support'].includes(currentRole)){await sendBotText(chatId,'Недостаточно прав.');return;}
+    const q=await pool.query('SELECT code,promo_type,value,max_uses,uses_count,expires_at,is_active FROM promo_codes ORDER BY created_at DESC LIMIT 30');
+    const lines=q.rows.map(p=>'• '+p.code+' — '+p.promo_type+' '+p.value+'; '+p.uses_count+'/'+p.max_uses+'; '+(p.expires_at?'до '+new Date(p.expires_at).toLocaleString('ru-RU'):'без срока')+'; '+(p.is_active?'активен':'отключён'));
+    await sendBotText(chatId,lines.length?'🎟 ПРОМОКОДЫ\\n'+lines.join('\\n'):'Промокодов пока нет.');return;
+  }
+  if(command==='/report'||command==='/salesreport'||command==='/reportyesterday'){
+    if(!['owner','admin','support'].includes(currentRole)){await sendBotText(chatId,'Недостаточно прав для просмотра отчётов.');return;}
+    const d=new Date();if(command==='/reportyesterday')d.setDate(d.getDate()-1);
+    const p=new Intl.DateTimeFormat('en-CA',{timeZone:SALES_REPORT_TIMEZONE,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(d);
+    const reportDate=Object.fromEntries(p.filter(x=>x.type!=='literal').map(x=>[x.type,x.value]));
+    const date=reportDate.year+'-'+reportDate.month+'-'+reportDate.day;
+    try{await sendSalesReportForDate(date);await sendBotText(chatId,'✅ Отчёт за '+date+' отправлен в группу отчётов.');}
+    catch(e){console.error('Manual sales report:',e.message);await sendBotText(chatId,'❌ Не удалось отправить отчёт. Проверьте, настроена ли группа отчётов.');}
+    return;
   }
   if(command==='/promo'){
     const code=String(text.split(/\\s+/)[1]||'').trim().toUpperCase();if(!code){await sendBotText(chatId,'Использование: /promo WTS-XXXXXXXXXX');return;}
