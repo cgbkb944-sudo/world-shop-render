@@ -401,6 +401,13 @@ function resumePendingPayment(){
 function makePayment() {
     const amount = Number(document.getElementById('payAmount').value);
     if(!Number.isFinite(amount) || amount <= 0 || amount > 10000000) { alert('Введите корректную сумму'); return; }
+    if(selectedPaymentMethod==='owner_transfer'){
+        apiFetch('/api/payment/manual-transfer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount})})
+          .then(async res=>({ok:res.ok,data:await res.json()}))
+          .then(({ok,data})=>{if(!ok)throw new Error(data.error||'Не удалось открыть чат владельца.');if(tg&&typeof tg.openTelegramLink==='function')tg.openTelegramLink(data.url);else window.location.href=data.url;})
+          .catch(e=>alert(e.message));
+        return;
+    }
     const body = { amount, method: selectedPaymentMethod };
     if (selectedPaymentMethod === 'direct_transfer') body.asset = document.getElementById('directAsset').value;
     apiFetch('/api/payment/create', {
@@ -531,7 +538,7 @@ async function loadPaymentReadiness(){
  try{
   const status=await fetch('/health/payments').then(r=>r.json());
   paymentReadiness=status;
-  const names={cryptobot:'CryptoBot',sbp:'СБП',card:'Банковская карта',direct_transfer:'TON / USDT',telegram_stars:'Telegram Stars'};
+  const names={cryptobot:'CryptoBot',owner_transfer:'Перевод на карту владельцу',direct_transfer:'TON / USDT',telegram_stars:'Telegram Stars'};
   const ready=Object.keys(names).filter(k=>status[k]);
   Object.keys(names).forEach(k=>{
    const el=document.getElementById('method-'+k);if(!el)return;
