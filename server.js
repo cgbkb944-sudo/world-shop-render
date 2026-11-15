@@ -161,6 +161,11 @@ async function migrateDatabase() {
     );
     CREATE INDEX IF NOT EXISTS withdrawal_requests_status_idx ON withdrawal_requests(status,created_at DESC);
   `);
+  await pool.query(`CREATE TABLE IF NOT EXISTS channel_subscription_rewards (
+    telegram_id BIGINT PRIMARY KEY REFERENCES users(telegram_id),
+    amount NUMERIC(18,2) NOT NULL DEFAULT 10,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
   await pool.query(`CREATE TABLE IF NOT EXISTS sales_report_runs (
     report_date DATE PRIMARY KEY,
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sent')),
@@ -266,6 +271,11 @@ async function auth(req,res,next) {
       "RETURNING telegram_id,username,role,balance,seller_balance,is_banned,banned_until,banned_reason",
       [u.id,u.username,role,OWNER_TELEGRAM_ID]);
     req.user = r.rows[0];
+    if (u.id !== OWNER_TELEGRAM_ID && subscriptionGateEnabled()) {
+      const member = await checkRequiredChannelMembership(u.id);
+      if (!member) return res.status(403).json(subscriptionRequiredPayload());
+      await grantChannelSubscriptionReward(u.id);
+    }
     if (req.user.is_banned && req.user.banned_until && new Date(req.user.banned_until) <= new Date()) {
       await pool.query('UPDATE users SET is_banned=FALSE,banned_until=NULL,banned_reason=NULL,updated_at=NOW() WHERE telegram_id=$1',[u.id]);
       req.user.is_banned=false;
@@ -317,11 +327,24 @@ app.get('/health/payments',async(req,res)=>{
     }
   });
 });
+app.post('/api/subscription/check',async(req,res)=>{
+  const u=verifyInitData(req.get('x-telegram-init-data'));
+  if(!u)return res.status(401).json({error:'Откройте магазин через Telegram.'});
+  if(!subscriptionGateEnabled())return res.status(503).json({error:'Проверка подписки ещё не настроена. Сообщите владельцу магазина.'});
+  try{
+    await pool.query("INSERT INTO users (telegram_id,username,role) VALUES ($1,$2,$3) ON CONFLICT (telegram_id) DO UPDATE SET username=EXCLUDED.username,updated_at=NOW()",
+      [u.id,u.username,u.id===OWNER_TELEGRAM_ID?'owner':'user']);
+    const member=await checkRequiredChannelMembership(u.id);
+    if(!member)return res.status(403).json(subscriptionRequiredPayload());
+    const reward=await grantChannelSubscriptionReward(u.id);
+    res.json({success:true,rewarded:reward,amount:reward?10:0});
+  }catch(e){console.error('Subscription check:',e.message);res.status(503).json({error:'Не удалось проверить подписку. Попробуйте ещё раз.'});}
+});
+app.use('/api',auth);
 app.get('/api/products',async(req,res)=>{
   try { const r=await pool.query("SELECT p.id,p.title,p.description,p.price,p.price_from,p.max_price,p.category,p.subcategory,p.product_type,COALESCE(u.display_name,u.username,'Продавец') AS seller_name FROM products p JOIN users u ON u.telegram_id=p.seller_id WHERE p.status='active' ORDER BY p.created_at DESC LIMIT 200"); res.json(r.rows); }
   catch(e){console.error(e.message);res.status(503).json({error:'Не удалось загрузить товары.'});}
 });
-app.use('/api',auth);
 app.post('/api/user',async(req,res)=>{
   try{
     const q=await pool.query('SELECT telegram_id,username,role,balance,seller_balance,is_banned,display_name,avatar_url,banned_until FROM users WHERE telegram_id=$1',[req.user.telegram_id]);
@@ -803,6 +826,38 @@ async function sendDailySalesReportIfDue() {
     throw e;
   }
 }
+function subscriptionGateEnabled(){return Boolean(String(process.env.REQUIRED_CHANNEL_ID||'').trim()&&String(process.env.REQUIRED_CHANNEL_URL||'').trim());}
+function subscriptionRequiredPayload(){return {error:'Для доступа подпишитесь на Telegram-канал и нажмите «Проверить подписку».',subscription_required:true,channel_url:String(process.env.REQUIRED_CHANNEL_URL||'')};}
+function subscriptionGateMarkup(){
+  const url=String(process.env.REQUIRED_CHANNEL_URL||'');
+  return {inline_keyboard:[
+    ...(url?[[{text:'📢 Подписаться на канал',url}]]:[]),
+    [{text:'✅ Проверить подписку',callback_data:'bot:check_subscription'}]
+  ]};
+}
+const channelMembershipCache=new Map();
+async function checkRequiredChannelMembership(telegramId){
+  if(!subscriptionGateEnabled())return true;
+  const key=String(telegramId),cached=channelMembershipCache.get(key);
+  if(cached&&cached.expires>Date.now())return cached.member;
+  const member=await telegramRequest('getChatMember',{chat_id:process.env.REQUIRED_CHANNEL_ID,user_id:Number(key)});
+  const allowed=['creator','administrator','member'].includes(member.status)||(member.status==='restricted'&&member.is_member===true);
+  channelMembershipCache.set(key,{member:allowed,expires:Date.now()+15000});
+  return allowed;
+}
+async function grantChannelSubscriptionReward(telegramId){
+  const db=await pool.connect();
+  try{
+    await db.query('BEGIN');
+    const inserted=await db.query('INSERT INTO channel_subscription_rewards(telegram_id,amount) VALUES($1,10) ON CONFLICT(telegram_id) DO NOTHING RETURNING telegram_id',[telegramId]);
+    if(!inserted.rowCount){await db.query('COMMIT');return false;}
+    await db.query('UPDATE users SET balance=balance+10,updated_at=NOW() WHERE telegram_id=$1',[telegramId]);
+    await db.query("INSERT INTO transactions(telegram_id,amount,type,reference,description) VALUES($1,10,'admin_adjustment',$2,'Одноразовый бонус за подписку на Telegram-канал')",[telegramId,'channel_subscription_bonus_'+telegramId]);
+    await db.query('COMMIT');
+    return true;
+  }catch(e){await db.query('ROLLBACK');throw e;}
+  finally{db.release();}
+}
 async function telegramRequest(method, params={}) {
   const r = await fetch('https://api.telegram.org/bot' + BOT_TOKEN + '/' + method, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -919,9 +974,24 @@ async function handleTelegramBotCallback(query) {
   const chatId=query.message?.chat?.id,messageId=query.message?.message_id,userId=query.from?.id;
   if(!chatId||!userId||query.message?.chat?.type!=='private'){await telegramRequest('answerCallbackQuery',{callback_query_id:query.id});return;}
   const action=String(query.data||'').replace(/^bot:/,'');
+  if(action==='check_subscription'){
+    await telegramRequest('answerCallbackQuery',{callback_query_id:query.id});
+    if(!subscriptionGateEnabled()){await sendBotText(chatId,'Проверка подписки пока не настроена владельцем магазина.');return;}
+    if(!await checkRequiredChannelMembership(String(userId))){await sendBotText(chatId,'❌ Подписка пока не обнаружена. Подпишитесь на канал и нажмите «Проверить подписку».',subscriptionGateMarkup());return;}
+    const rewarded=await grantChannelSubscriptionReward(String(userId));
+    const screen={text:'✅ Подписка подтверждена! Полный доступ открыт.'+(rewarded?'\n\n🎁 Вам начислено 10 ₽ на баланс!':'\n\nБонус 10 ₽ ранее уже был получен.')+'\n\nВыберите раздел:',markup:await botHomeMarkup()};
+    try{await telegramRequest('editMessageText',{chat_id:chatId,message_id:messageId,text:screen.text,reply_markup:screen.markup});}
+    catch(e){await sendBotText(chatId,screen.text,screen.markup);}
+    return;
+  }
   if(!['home','profile','balance','catalog','topup','history','help','support','orders'].includes(action)&&!action.startsWith('product:')){
     await telegramRequest('answerCallbackQuery',{callback_query_id:query.id,text:'Неизвестный раздел.'});return;
   }
+  if(String(userId)!==OWNER_TELEGRAM_ID&&subscriptionGateEnabled()&&!await checkRequiredChannelMembership(String(userId))){
+    await telegramRequest('answerCallbackQuery',{callback_query_id:query.id,text:'Сначала подпишитесь на канал.',show_alert:true});
+    await sendBotText(chatId,'🔒 Для доступа к WORLD TG SHOP подпишитесь на наш Telegram-канал.',subscriptionGateMarkup());return;
+  }
+  if(String(userId)!==OWNER_TELEGRAM_ID&&subscriptionGateEnabled())await grantChannelSubscriptionReward(String(userId));
   await telegramRequest('answerCallbackQuery',{callback_query_id:query.id});
   const screen=action==='home'?{text:'✨ WORLD TG SHOP\n\nДобро пожаловать! Выберите нужный раздел:',markup:await botHomeMarkup()}:await botScreen(action,String(userId));
   try{await telegramRequest('editMessageText',{chat_id:chatId,message_id:messageId,text:screen.text,reply_markup:screen.markup});}
@@ -956,6 +1026,10 @@ async function handleTelegramBotMessage(message) {
   if(!['/start','/shop','/help','/balance','/profile','/support','/orders'].includes(command))return;
   const username=String(from.username||'').slice(0,64),role=isOwner?'owner':'user';
   await pool.query("INSERT INTO users (telegram_id,username,role) VALUES ($1,$2,$3) ON CONFLICT (telegram_id) DO UPDATE SET username=EXCLUDED.username,role=CASE WHEN users.telegram_id=$4 THEN 'owner' ELSE users.role END,updated_at=NOW()",[id,username,role,OWNER_TELEGRAM_ID]);
+  if(!isOwner&&subscriptionGateEnabled()&&!await checkRequiredChannelMembership(id)){
+    await sendBotText(chatId,'🔒 Чтобы пользоваться WORLD TG SHOP, сначала подпишитесь на наш Telegram-канал. После проверки откроется полный доступ, а на баланс один раз начислится бонус 10 ₽.',subscriptionGateMarkup());return;
+  }
+  if(!isOwner&&subscriptionGateEnabled())await grantChannelSubscriptionReward(id);
   if(command==='/start'||command==='/shop'){
     const first=String(from.first_name||'').slice(0,60);
     const greeting='✨ WORLD TG SHOP\n\n'+(first?'Привет, '+first+'! ':'Добро пожаловать! ')+
