@@ -1007,7 +1007,7 @@ app.post('/api/orders/:id/refund',roles('owner','support'),async(req,res)=>{
     }
     await db.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2',[o.amount,o.buyer_id]);
     await db.query("UPDATE orders SET status='refunded' WHERE id=$1",[orderId]);
-    await db.query("UPDATE products SET status='active' WHERE id=$1",[o.product_id]);
+    await db.query("UPDATE products SET status=CASE WHEN status IN ('deleted','frozen') THEN status ELSE 'active' END WHERE id=$1",[o.product_id]);
     const rf=await db.query('INSERT INTO order_refunds(order_id,refunded_by,amount,reason) VALUES ($1,$2,$3,$4) RETURNING id',[orderId,req.user.telegram_id,o.amount,reason]);
     const ref='refund_'+rf.rows[0].id;
     await db.query("INSERT INTO transactions(telegram_id,amount,type,reference,description) VALUES ($1,$2,'refund',$3,$4),($5,$6,'admin_adjustment',$7,$8)",
