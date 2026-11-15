@@ -404,7 +404,7 @@ app.post('/api/products/:id/delete',roles('seller','owner'),async(req,res)=>{
     if(req.user.role==='seller'&&String(p.seller_id)!==String(req.user.telegram_id)){await db.query('ROLLBACK');return res.status(403).json({error:'Вы можете удалять только собственные товары.'});}
     if(p.status==='deleted'){await db.query('ROLLBACK');return res.status(400).json({error:'Товар уже удалён.'});}
     await db.query("UPDATE products SET status='deleted' WHERE id=$1",[id]);
-    await db.query("UPDATE moderation_requests SET status='rejected',decision_note='Товар удалён продавцом или владельцем до решения',decided_by=$1,decided_at=NOW() WHERE product_id=$2 AND kind='product_delete' AND status='pending'",[req.user.telegram_id,id]);
+    await db.query("UPDATE moderation_requests SET status='rejected',decision_note='Товар удалён продавцом или владельцем до решения',decided_by=$1,decided_at=NOW() WHERE product_id=$2 AND kind IN ('product','product_delete') AND status='pending'",[req.user.telegram_id,id]);
     await db.query('COMMIT');
     res.json({success:true,message:'Товар удалён из каталога.'});
   }catch(e){await db.query('ROLLBACK');console.error('Product delete:',e.message);res.status(503).json({error:'Не удалось удалить товар.'});}
@@ -587,7 +587,8 @@ app.post('/api/buy',async(req,res)=>{
     if(!p.rowCount){await c.query('ROLLBACK');return res.status(404).json({error:'Товар не найден.'});}
     const product=p.rows[0];
     if(product.status==='frozen'){await c.query('ROLLBACK');return res.status(409).json({error:'Товар временно заморожен и недоступен для покупки. Ожидается решение владельца.'});}
-    if(product.status!=='active'){await c.query('ROLLBACK');return res.status(404).json({error:'Товар больше недоступен для покупки.'});}if(String(product.seller_id)===String(req.user.telegram_id)){await c.query('ROLLBACK');return res.status(400).json({error:'Нельзя купить собственный товар.'});}
+    if(product.status!=='active'){await c.query('ROLLBACK');return res.status(404).json({error:'Товар больше недоступен для покупки.'});}
+    if(String(product.seller_id)===String(req.user.telegram_id)){await c.query('ROLLBACK');return res.status(400).json({error:'Нельзя купить собственный товар.'});}
     const type=product.product_type||'standard';
     const quantity=type==='telegram_stars'?Number(req.body?.quantity):1;
     if(type==='telegram_stars'&&(!Number.isInteger(quantity)||quantity<50||quantity>1000)){await c.query('ROLLBACK');return res.status(400).json({error:'Количество Telegram Stars должно быть от 50 до 1 000.'});}
