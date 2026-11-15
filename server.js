@@ -473,7 +473,9 @@ app.post('/api/products/add',roles('seller','admin','owner'),async(req,res)=>{
     await notifyModerators('Новый товар ожидает проверки. Заявка #'+m.rows[0].id+', товар #'+r.rows[0].id+'. Откройте панель управления.');
     res.json({success:true,pending:true,product_id:r.rows[0].id,request_id:m.rows[0].id});
   }catch(e){console.error('Product create:',e.message);res.status(503).json({error:'Не удалось сохранить товар.'});}
-});app.post('/api/key/activate',async(req,res)=>{
+});
+
+app.post('/api/key/activate',async(req,res)=>{
   const key=req.body?.key;
   if(typeof key!=='string'||key.trim().length<8||key.trim().length>128)return res.status(400).json({error:'Введите корректный ключ или код пополнения.'});
   const keyHash=hashKey(key.trim()),c=await pool.connect();
@@ -612,7 +614,7 @@ app.post('/api/buy',async(req,res)=>{
     const p=await c.query("SELECT id,seller_id,price,product_type,title,status,private_data FROM products WHERE id=$1 FOR UPDATE",[id]);
     if(!p.rowCount){await c.query('ROLLBACK');return res.status(404).json({error:'Товар не найден.'});}
     const product=p.rows[0];
-    if(product.status==='frozen'){await c.query('ROLLBACK');return res.status(409).json({error:'Товар временно заморожен и недоступен для покупки.'});}
+    if(product.status==='frozen'){await c.query('ROLLBACK');return res.status(409).json({error:'Товар временно заморожен и недоступен для покупки. Ожидается решение владельца.'});}
     if(product.status!=='active'){await c.query('ROLLBACK');return res.status(404).json({error:'Товар больше недоступен для покупки.'});}
     if(String(product.seller_id)===String(req.user.telegram_id)){await c.query('ROLLBACK');return res.status(400).json({error:'Нельзя купить собственный товар.'});}
     const type=product.product_type||'standard',quantity=['telegram_stars','robux'].includes(type)?Number(req.body?.quantity):1;
@@ -654,7 +656,7 @@ app.post('/api/buy',async(req,res)=>{
     await c.query('UPDATE shop_wallet SET balance=balance+$1,updated_at=NOW() WHERE id=1',[fee]);
     const order=await c.query("INSERT INTO orders (buyer_id,seller_id,product_id,amount,commission,status,buyer_details) VALUES ($1,$2,$3,$4,$5,'paid',$6) RETURNING id",
       [req.user.telegram_id,product.seller_id,id,amount,fee,clean]);
-    await c.query("INSERT INTO shop_ledger(amount,kind,reference,description) VALUES($1,'commission',$2,$3)",[fee,'order_'+order.rows[0].id+'_fee','Комиссия 3% по заказу #'+order.rows[0].id]);
+    await c.query('INSERT INTO shop_ledger(amount,kind,reference,description) VALUES($1,\'commission\',$2,$3)',[fee,'order_'+order.rows[0].id+'_fee','Комиссия 3% по заказу #'+order.rows[0].id]);
     const ref='order_'+order.rows[0].id;
     await c.query("INSERT INTO transactions (telegram_id,amount,type,reference,description) VALUES ($1,$2,'purchase',$3,$4),($5,$6,'sale',$7,$8)",
       [req.user.telegram_id,-amount,ref,'Покупка товара #'+order.rows[0].id,product.seller_id,sellerAmount,ref+'_seller','Продажа товара #'+order.rows[0].id]);
@@ -678,6 +680,375 @@ app.get('/api/orders/:id/delivery',async(req,res)=>{
     res.json({success:true,delivery:{roblox_username:d.roblox_username,account_email:d.account_email,account_password:d.account_password,email_password:d.email_password}});
   }catch(e){console.error('Order delivery:',e.message);res.status(503).json({error:'Не удалось получить данные покупки. Обратитесь в поддержку.'});}
 });
+
+
+const USDT_TON_MASTER = 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs';
+const tonAddress = process.env.TON_WALLET_ADDRESS || '';
+const appOrigin = process.env.APP_ORIGIN || '';
+function safeEqual(a,b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const x=Buffer.from(a), y=Buffer.from(b);
+  return x.length===y.length && crypto.timingSafeEqual(x,y);
+}
+function cents(value) { return Math.round(Number(value) * 100); }
+function decimalToUnits(value, decimals) {
+  const s=String(value), parts=s.split('.');
+  return BigInt(parts[0]||'0')*(10n**BigInt(decimals))+BigInt(((parts[1]||'')+'0'.repeat(decimals)).slice(0,decimals)||'0');
+}
+function unitsToDecimal(value, decimals) {
+  const n=BigInt(value), base=10n**BigInt(decimals);
+  return (n/base).toString()+'.'+(n%base).toString().padStart(decimals,'0');
+}
+function normalizeTonAddress(value) {
+  if (!value || typeof value !== 'string') return '';
+  if (/^-?\d+:[0-9a-f]{64}$/i.test(value)) return value.toLowerCase();
+  try {
+    const b=Buffer.from(value.replace(/-/g,'+').replace(/_/g,'/'),'base64');
+    if (b.length!==36) return '';
+    return b.readInt8(1)+':'+b.subarray(2,34).toString('hex');
+  } catch { return ''; }
+}
+function decodedTonComment(value, depth=0) {
+  if (!value || depth>6) return '';
+  if (Array.isArray(value)) {
+    for (const item of value) { const found=decodedTonComment(item,depth+1); if(found) return found; }
+    return '';
+  }
+  if (typeof value !== 'object') return '';
+  if (typeof value.comment === 'string') return value.comment;
+  if ((value.type==='text_comment'||value.type==='text') && typeof value.text==='string') return value.text;
+  for (const key of ['forward_payload','decoded','message_content','payload']) {
+    const found=decodedTonComment(value[key],depth+1);
+    if(found) return found;
+  }
+  return '';
+}
+async function notifyOwner(text) {
+  try { await telegramRequest('sendMessage',{chat_id:OWNER_TELEGRAM_ID,text:String(text).slice(0,3500)}); }
+  catch(e) { console.error('Owner notification failed:',e.message); }
+}
+async function notifyModerators(text) {
+  await notifyOwner(text);
+  try {
+    const q=await pool.query("SELECT telegram_id FROM users WHERE role='support' AND is_banned=FALSE");
+    await Promise.all(q.rows.map(u=>telegramRequest('sendMessage',{chat_id:String(u.telegram_id),text:String(text).slice(0,3500)}).catch(e=>console.error('Support notification:',e.message))));
+  } catch(e) { console.error('Moderator notification failed:',e.message); }
+}
+async function telegramRequest(method, params={}) {
+  const r = await fetch('https://api.telegram.org/bot' + BOT_TOKEN + '/' + method, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params), signal: AbortSignal.timeout(12000)
+  });
+  const data = await r.json();
+  if (!r.ok || !data.ok) throw new Error('Telegram Bot API ' + method + ' failed: ' + (data.description || r.status));
+  return data.result;
+}
+async function registerTelegramWebhook() {
+  if (!appOrigin || !process.env.TELEGRAM_WEBHOOK_SECRET) {
+    console.warn('Telegram webhook not registered: APP_ORIGIN or TELEGRAM_WEBHOOK_SECRET is missing');
+    return;
+  }
+  const url = new URL('/webhooks/telegram', appOrigin).toString();
+  await telegramRequest('setWebhook', {
+    url, secret_token: process.env.TELEGRAM_WEBHOOK_SECRET,
+    allowed_updates: ['message', 'pre_checkout_query'], drop_pending_updates: false
+  });
+  await telegramRequest('setChatMenuButton', {
+    menu_button: { type: 'web_app', text: 'Открыть магазин', web_app: { url: appOrigin } }
+  });
+  console.log('Telegram Mini App menu and payment webhook configured');
+}
+async function cryptoPay(method, params={}) {
+  if (!process.env.CRYPTO_PAY_API_TOKEN) throw new Error('Crypto Pay API token is not configured');
+  const r=await fetch('https://pay.crypt.bot/api/'+method,{
+    method:'POST',headers:{'Content-Type':'application/json','Crypto-Pay-API-Token':process.env.CRYPTO_PAY_API_TOKEN},
+    body:JSON.stringify(params),signal:AbortSignal.timeout(12000)
+  });
+  const data=await r.json();
+  if(!r.ok||!data.ok) throw new Error('Crypto Pay API request failed: '+(data.error||r.status));
+  return data.result;
+}
+async function rollyRequest(method,path,body) {
+  if(!process.env.ROLLYPAY_API_KEY) throw new Error('RollyPay API key is not configured');
+  const headers={'X-API-Key':process.env.ROLLYPAY_API_KEY,'X-Nonce':crypto.randomUUID()};
+  const options={method,headers,signal:AbortSignal.timeout(12000)};
+  if(body){headers['Content-Type']='application/json';options.body=JSON.stringify(body);}
+  const r=await fetch('https://rollypay.io/api/v1'+path,options),data=await r.json();
+  if(!r.ok) throw new Error('RollyPay API request failed: '+(data.error||r.status));
+  return data;
+}
+async function tonApi(path,params={}) {
+  const url=new URL('https://toncenter.com/api/v3'+path);
+  for(const [k,v] of Object.entries(params)) if(v!==undefined&&v!==null&&v!=='') url.searchParams.set(k,String(v));
+  const headers={};if(process.env.TONCENTER_API_KEY)headers['X-API-Key']=process.env.TONCENTER_API_KEY;
+  const r=await fetch(url,{headers,signal:AbortSignal.timeout(15000)});
+  if(!r.ok)throw new Error('TON indexer request failed: '+r.status);
+  return r.json();
+}
+async function getTonRate(asset) {
+  const rates=await cryptoPay('getExchangeRates');
+  const row=rates.find(x=>x.source===asset&&x.target==='RUB'&&x.is_valid===true);
+  const rate=Number(row?.rate);
+  if(!Number.isFinite(rate)||rate<=0)throw new Error('Актуальный курс '+asset+'/RUB временно недоступен.');
+  return rate;
+}
+async function finalizePayment(paymentId,provider,txHash=null) {
+  const c=await pool.connect();
+  try {
+    await c.query('BEGIN');
+    const q=await c.query('SELECT * FROM payments WHERE id=$1 AND provider=$2 FOR UPDATE',[paymentId,provider]);
+    if(!q.rowCount){await c.query('ROLLBACK');return false;}
+    const p=q.rows[0];
+    if(p.status==='paid'){await c.query('ROLLBACK');return true;}
+    if(p.status!=='pending'){await c.query('ROLLBACK');return false;}
+    if(txHash){
+      const duplicate=await c.query('SELECT id FROM payments WHERE tx_hash=$1 AND id<>$2',[txHash,paymentId]);
+      if(duplicate.rowCount){await c.query('ROLLBACK');return false;}
+    }
+    await c.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2',[p.amount,p.telegram_id]);
+    await c.query("INSERT INTO transactions (telegram_id,amount,type,reference,description) VALUES ($1,$2,'topup',$3,$4)",
+      [p.telegram_id,p.amount,'topup_pay_'+p.id,'Пополнение через '+provider+(p.asset?' ('+p.asset+')':'')]);
+    await c.query("UPDATE payments SET status='paid',paid_at=NOW(),tx_hash=COALESCE($1,tx_hash) WHERE id=$2",[txHash,paymentId]);
+    await c.query('COMMIT');return true;
+  } catch(e){await c.query('ROLLBACK');throw e;}
+  finally{c.release();}
+}
+async function handleCryptoPayWebhook(req,res) {
+  const secret=process.env.CRYPTO_PAY_WEBHOOK_SECRET,token=process.env.CRYPTO_PAY_API_TOKEN;
+  if(!secret||!token||!safeEqual(req.params.secret,secret))return res.sendStatus(404);
+  if(!Buffer.isBuffer(req.body))return res.sendStatus(400);
+  const signature=req.get('crypto-pay-api-signature')||'';
+  const key=crypto.createHash('sha256').update(token).digest();
+  const expected=crypto.createHmac('sha256',key).update(req.body).digest('hex');
+  if(!safeEqual(signature,expected))return res.sendStatus(403);
+  const update=JSON.parse(req.body.toString('utf8'));
+  if(update.update_type!=='invoice_paid')return res.sendStatus(200);
+  const invoice=update.payload||{},payload=JSON.parse(invoice.payload||'{}'),paymentId=Number(payload.payment_id);
+  if(!Number.isSafeInteger(paymentId)||paymentId<1||!invoice.invoice_id)return res.sendStatus(400);
+  const local=await pool.query("SELECT * FROM payments WHERE id=$1 AND provider='cryptobot'",[paymentId]);
+  if(!local.rowCount)return res.sendStatus(404);
+  const p=local.rows[0];
+  if(String(p.provider_payment_id)!==String(invoice.invoice_id)||String(payload.user_id)!==String(p.telegram_id)||invoice.status!=='paid'||
+    invoice.currency_type!=='fiat'||invoice.fiat!=='RUB'||!['TON','USDT'].includes(invoice.paid_asset)||cents(invoice.amount)!==cents(p.amount))return res.sendStatus(409);
+  const verified=await cryptoPay('getInvoices',{invoice_ids:String(invoice.invoice_id)});
+  const remote=Array.isArray(verified)?verified.find(x=>String(x.invoice_id)===String(invoice.invoice_id)):null;
+  if(!remote||remote.status!=='paid'||remote.currency_type!=='fiat'||remote.fiat!=='RUB'||!['TON','USDT'].includes(remote.paid_asset)||cents(remote.amount)!==cents(p.amount))return res.sendStatus(409);
+  await finalizePayment(paymentId,'cryptobot');res.sendStatus(200);
+}
+async function handleRollyPayWebhook(req,res) {
+  const secret=process.env.ROLLYPAY_WEBHOOK_SECRET;
+  if(!secret||!Buffer.isBuffer(req.body))return res.sendStatus(404);
+  const signature=req.get('x-signature')||'',timestamp=req.get('x-timestamp')||'',ts=Number(timestamp);
+  if(!/^\d{10}$/.test(timestamp)||!Number.isFinite(ts))return res.sendStatus(403);
+  if(Math.abs(Date.now()/1000-ts)>300)return res.sendStatus(403);
+  const expected=crypto.createHmac('sha256',secret).update(timestamp+'.').update(req.body).digest('hex');
+  if(!safeEqual(signature,expected))return res.sendStatus(403);
+  const event=JSON.parse(req.body.toString('utf8'));
+  if(event.event_type!=='payment.paid'||event.status!=='paid')return res.sendStatus(200);
+  const match=/^wts_(\d+)$/.exec(String(event.order_id||''));
+  if(!match||!event.payment_id)return res.sendStatus(400);
+  const paymentId=Number(match[1]);
+  const local=await pool.query('SELECT * FROM payments WHERE id=$1 AND provider IN ($2,$3)',[paymentId,'sbp','card']);
+  if(!local.rowCount)return res.sendStatus(404);
+  const p=local.rows[0];
+  if(String(p.provider_payment_id)!==String(event.payment_id)||cents(event.amount)!==cents(p.amount))return res.sendStatus(409);
+  const remote=await rollyRequest('GET','/payments/'+encodeURIComponent(event.payment_id));
+  if(remote.status!=='paid'||String(remote.order_id)!==String(event.order_id)||cents(remote.amount)!==cents(p.amount)||
+    (remote.payment_currency||'RUB')!=='RUB')return res.sendStatus(409);
+  await finalizePayment(paymentId,p.provider);res.sendStatus(200);
+}
+async function createPayment(req,res) {
+  let pendingPaymentId=null;
+  const amount=money(req.body?.amount),method=String(req.body?.method||'');
+  if(!amount||amount<10)return res.status(400).json({error:'Минимальная сумма пополнения — 10 ₽.'});
+  if(!['cryptobot','direct_transfer','telegram_stars'].includes(method))return res.status(400).json({error:'Этот способ оплаты отключён или неизвестен.'});
+  try {
+    if(method==='telegram_stars'){
+      if(!Number.isInteger(amount))return res.status(400).json({error:'Для оплаты Stars укажите целую сумму в рублях.'});
+      if(!process.env.TELEGRAM_WEBHOOK_SECRET||!appOrigin)return res.status(503).json({error:'Оплата Telegram Stars ещё не настроена.'});
+      const row=await pool.query("INSERT INTO payments(provider,telegram_id,amount,currency,status,idempotency_key,expires_at) VALUES ('telegram_stars',$1,$2,'XTR','pending',$3,NOW()+INTERVAL '15 minutes') RETURNING id",
+        [req.user.telegram_id,amount,crypto.randomUUID()]);
+      pendingPaymentId=row.rows[0].id;
+      const invoicePayload='wts_stars_'+row.rows[0].id+'_'+crypto.randomBytes(8).toString('hex');
+      await pool.query('UPDATE payments SET provider_payload=$1 WHERE id=$2',
+        [JSON.stringify({invoice_payload:invoicePayload,stars:amount}),row.rows[0].id]);
+      const invoiceLink=await telegramRequest('createInvoiceLink',{
+        title:'Пополнение баланса',
+        description:'Пополнение баланса WORLD TG SHOP на '+amount+' ₽',
+        payload:invoicePayload,
+        currency:'XTR',
+        prices:[{label:'Пополнение баланса ('+amount+' ₽)',amount}],
+      });
+      return res.json({invoiceLink,paymentId:row.rows[0].id,stars:amount});
+    }
+    if(method==='cryptobot'){
+      if(!process.env.CRYPTO_PAY_API_TOKEN)return res.status(503).json({error:'Не задан CRYPTO_PAY_API_TOKEN в настройках сервера.'});
+      const row=await pool.query("INSERT INTO payments(provider,telegram_id,amount,currency,status,idempotency_key,expires_at) VALUES ('cryptobot',$1,$2,'RUB','pending',$3,NOW()+INTERVAL '15 minutes') RETURNING id",
+        [req.user.telegram_id,amount,crypto.randomUUID()]);
+      pendingPaymentId=row.rows[0].id;
+      const invoice=await cryptoPay('createInvoice',{
+        currency_type:'fiat',fiat:'RUB',amount:amount.toFixed(2),accepted_assets:'USDT,TON',
+        description:'Пополнение баланса WORLD TG SHOP',
+        payload:JSON.stringify({payment_id:row.rows[0].id,user_id:String(req.user.telegram_id)}),
+        allow_comments:false,allow_anonymous:false,expires_in:900
+      });
+      await pool.query('UPDATE payments SET provider_payment_id=$1,provider_payload=$2 WHERE id=$3',
+        [String(invoice.invoice_id),JSON.stringify({bot_invoice_url:invoice.bot_invoice_url}),row.rows[0].id]);
+      return res.json({paymentUrl:invoice.bot_invoice_url,paymentId:row.rows[0].id});
+    }
+    if(method==='sbp'||method==='card'){
+      if(!process.env.ROLLYPAY_API_KEY)return res.status(503).json({error:'Не задан ROLLYPAY_API_KEY в настройках сервера.'});
+      const row=await pool.query("INSERT INTO payments(provider,telegram_id,amount,currency,status,idempotency_key,expires_at) VALUES ($1,$2,$3,'RUB','pending',$4,NOW()+INTERVAL '30 minutes') RETURNING id",
+        [method,req.user.telegram_id,amount,crypto.randomUUID()]);
+      pendingPaymentId=row.rows[0].id;
+      const body={amount:amount.toFixed(2),payment_currency:'RUB',payment_method:method,
+        order_id:'wts_'+row.rows[0].id,description:'Пополнение баланса WORLD TG SHOP',customer_id:String(req.user.telegram_id)};
+      if(appOrigin){const returnUrl=new URL(appOrigin);returnUrl.searchParams.set('payment_id',String(row.rows[0].id));body.success_redirect_url=returnUrl.toString();body.fail_redirect_url=returnUrl.toString();}
+      const result=await rollyRequest('POST','/payments',body);
+      if(!result.payment_id||!result.pay_url)throw new Error('RollyPay не вернул ссылку на оплату.');
+      await pool.query('UPDATE payments SET provider_payment_id=$1,provider_payload=$2 WHERE id=$3',
+        [String(result.payment_id),JSON.stringify({pay_url:result.pay_url}),row.rows[0].id]);
+      return res.json({paymentUrl:result.pay_url,paymentId:row.rows[0].id});
+    }
+    const asset=String(req.body?.asset||'').toUpperCase();
+    if(!['TON','USDT'].includes(asset))return res.status(400).json({error:'Выберите TON или USDT.'});
+    if(!process.env.CRYPTO_PAY_API_TOKEN)return res.status(503).json({error:'Курс TON/USDT временно недоступен.'});
+    if(!tonAddress||!normalizeTonAddress(tonAddress))return res.status(503).json({error:'TON-кошелёк магазина не настроен.'});
+    const rate=await getTonRate(asset),decimals=asset==='TON'?9:6;
+    const rawBase=BigInt(Math.ceil((amount/rate)*Number(10n**BigInt(decimals))));
+    if(rawBase<=0n)throw new Error('Не удалось рассчитать сумму в криптовалюте.');
+    const row=await pool.query("INSERT INTO payments(provider,telegram_id,amount,currency,status,idempotency_key,asset,wallet_address,expires_at) VALUES ('ton_usdt',$1,$2,'RUB','pending',$3,$4,$5,NOW()+INTERVAL '20 minutes') RETURNING id",
+      [req.user.telegram_id,amount,crypto.randomUUID(),asset,tonAddress]);
+    pendingPaymentId=row.rows[0].id;
+    const paymentComment='WTS-'+row.rows[0].id+'-'+crypto.randomBytes(4).toString('hex').toUpperCase();
+    let cryptoAmount, saved=false;
+    for(let attempt=0;attempt<12&&!saved;attempt++){
+      const rawAmount=rawBase+BigInt(crypto.randomInt(1,1000));
+      cryptoAmount=unitsToDecimal(rawAmount,decimals);
+      try{
+        await pool.query('UPDATE payments SET expected_crypto=$1,provider_payload=$2 WHERE id=$3',
+          [cryptoAmount,JSON.stringify({rate,decimals,comment:paymentComment}),row.rows[0].id]);
+        saved=true;
+      }catch(e){if(e.code!=='23505')throw e;}
+    }
+    if(!saved){
+      await pool.query("UPDATE payments SET status='failed' WHERE id=$1",[row.rows[0].id]);
+      throw new Error('Could not reserve a unique crypto amount for this invoice');
+    }
+    const transferParams=new URLSearchParams({
+      amount:decimalToUnits(cryptoAmount,decimals).toString(),
+      text:paymentComment
+    });
+    if(asset==='USDT')transferParams.set('jetton',USDT_TON_MASTER);
+    const transferUri='ton://transfer/'+encodeURIComponent(tonAddress)+'?'+transferParams.toString();
+    return res.json({directTransfer:true,paymentId:row.rows[0].id,asset,cryptoAmount,walletAddress:tonAddress,
+      comment:paymentComment,transferUri,jettonMaster:USDT_TON_MASTER,
+      expiresAt:new Date(Date.now()+20*60*1000).toISOString(),rate});
+  } catch(e){
+    if(pendingPaymentId)await pool.query("UPDATE payments SET status='failed' WHERE id=$1 AND status='pending'",[pendingPaymentId]).catch(()=>{});
+    console.error('Payment create ('+method+'):',e.message);
+    return res.status(503).json({error:'Провайдер отклонил создание платежа: '+String(e.message||'ошибка сервера').slice(0,180)});
+  }
+}
+async function paymentStatus(req,res) {
+  const id=Number(req.params.id);
+  if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'Неверный номер платежа.'});
+  try {
+    const r=await pool.query('SELECT id,status,provider,provider_payment_id,provider_payload,telegram_id,amount,currency,asset,expected_crypto,expires_at FROM payments WHERE id=$1 AND telegram_id=$2',[id,req.user.telegram_id]);
+    if(!r.rowCount)return res.status(404).json({error:'Платёж не найден.'});
+    let p=r.rows[0];
+    // Вебхук может задержаться или быть не настроен. Подтверждаем оплату напрямую у провайдера.
+    if(p.status==='pending'&&p.provider_payment_id){
+      try{
+        if(p.provider==='cryptobot'&&process.env.CRYPTO_PAY_API_TOKEN){
+          const list=await cryptoPay('getInvoices',{invoice_ids:String(p.provider_payment_id)});
+          const remote=Array.isArray(list)?list.find(x=>String(x.invoice_id)===String(p.provider_payment_id)):null;
+          const payload=remote?.payload?JSON.parse(remote.payload):{};
+          if(remote?.status==='paid'&&remote.currency_type==='fiat'&&remote.fiat==='RUB'&&
+             ['TON','USDT'].includes(remote.paid_asset)&&cents(remote.amount)===cents(p.amount)&&
+             String(payload.user_id)===String(p.telegram_id)&&Number(payload.payment_id)===Number(p.id)){
+            await finalizePayment(p.id,'cryptobot');
+          }
+        }else if(['sbp','card'].includes(p.provider)&&process.env.ROLLYPAY_API_KEY){
+          const remote=await rollyRequest('GET','/payments/'+encodeURIComponent(p.provider_payment_id));
+          if(remote.status==='paid'&&String(remote.order_id)==='wts_'+p.id&&
+             cents(remote.amount)===cents(p.amount)&&(remote.payment_currency||'RUB')==='RUB'){
+            await finalizePayment(p.id,p.provider);
+          }
+        }
+      }catch(providerError){console.warn('Payment status reconciliation ('+p.provider+'): '+providerError.message);}
+      const refreshed=await pool.query('SELECT status FROM payments WHERE id=$1',[id]);
+      if(refreshed.rowCount)p.status=refreshed.rows[0].status;
+    }
+    if(p.status==='pending'&&p.expires_at&&new Date(p.expires_at).getTime()+5*60*1000<Date.now()) {
+      await pool.query("UPDATE payments SET status='expired' WHERE id=$1 AND status='pending'",[id]);
+      p.status='expired';
+    }
+    res.json({paymentId:p.id,status:p.status,amount:p.amount,currency:p.currency,asset:p.asset,cryptoAmount:p.expected_crypto,expiresAt:p.expires_at});
+  } catch(e) { console.error('Payment status:',e.message); res.status(503).json({error:'Не удалось проверить статус платежа.'}); }
+}
+let tonPollBusy=false;
+async function pollTonPayments() {
+  if(tonPollBusy||!tonAddress||!process.env.CRYPTO_PAY_API_TOKEN)return;
+  tonPollBusy=true;
+  try {
+    await pool.query("UPDATE payments SET status='expired' WHERE provider='ton_usdt' AND status='pending' AND expires_at<NOW()-INTERVAL '5 minutes'");
+    const pending=await pool.query("SELECT id,asset,amount,expected_crypto,wallet_address,provider_payload,created_at,expires_at FROM payments WHERE provider='ton_usdt' AND status='pending' AND expires_at>NOW()-INTERVAL '5 minutes' ORDER BY created_at ASC LIMIT 500");
+    if(!pending.rowCount)return;
+    const byAsset={TON:[],USDT:[]};
+    for(const p of pending.rows)if(byAsset[p.asset])byAsset[p.asset].push(p);
+    for(const asset of ['TON','USDT']){
+      const list=byAsset[asset];if(!list.length)continue;
+      const start=Math.max(0,Math.floor(new Date(list[0].created_at).getTime()/1000)-60);
+      let candidates=[];
+      if(asset==='TON'){
+        const data=await tonApi('/transactions',{account:tonAddress,start_utime:start,limit:1000,sort:'desc'});
+        const expectedRaw=new Set(list.map(p=>decimalToUnits(p.expected_crypto,9).toString()));
+        candidates=(data.transactions||[]).filter(tx=>{
+          const msg=tx.in_msg||{};
+          return expectedRaw.has(String(msg.value||'0'))&&Number(tx.mc_block_seqno)>0&&msg.destination&&normalizeTonAddress(msg.destination)===normalizeTonAddress(tonAddress)&&
+            BigInt(msg.value||'0')>0n&&tx.description?.aborted!==true;
+        }).map(tx=>({raw:BigInt(tx.in_msg.value),hash:String(tx.hash),utime:Number(tx.now||tx.utime||0),
+          comment:decodedTonComment(tx.in_msg?.message_content?.decoded)||decodedTonComment(tx.in_msg?.message_content)}));
+      }else{
+        const data=await tonApi('/jetton/transfers',{owner_address:tonAddress,jetton_master:USDT_TON_MASTER,direction:'in',start_utime:start,limit:1000,sort:'desc'});
+        const expectedRaw=new Set(list.map(p=>decimalToUnits(p.expected_crypto,6).toString()));
+        for(const t of data.jetton_transfers||[]){
+          if(!expectedRaw.has(String(t.amount))||t.transaction_aborted===true||normalizeTonAddress(t.destination)!==normalizeTonAddress(tonAddress)||
+            normalizeTonAddress(t.jetton_master)!==normalizeTonAddress(USDT_TON_MASTER))continue;
+          const txData=await tonApi('/transactions',{hash:t.transaction_hash,limit:1}),tx=(txData.transactions||[])[0];
+          if(!tx||Number(tx.mc_block_seqno)<=0||tx.description?.aborted===true)continue;
+          const comment=decodedTonComment(t.decoded_forward_payload)||decodedTonComment(tx.in_msg?.message_content?.decoded)||
+            decodedTonComment(tx.in_msg?.message_content)||(typeof t.comment==='string'?t.comment:'');
+          candidates.push({raw:BigInt(t.amount),hash:String(t.transaction_hash),utime:Number(t.transaction_now||tx.now||0),comment});
+        }
+      }
+      for(const p of list){
+        const expected=decimalToUnits(p.expected_crypto,asset==='TON'?9:6);
+        const requiredComment=p.provider_payload?.comment;
+        const match=candidates.find(t=>t.raw===expected&&t.utime>=Math.floor(new Date(p.created_at).getTime()/1000)-60&&
+          t.utime<=Math.floor(new Date(p.expires_at).getTime()/1000)+300&&(!requiredComment||t.comment===requiredComment));
+        if(match)await finalizePayment(p.id,'ton_usdt',match.hash);
+      }
+    }
+  }catch(e){console.error('TON monitor:',e.message);}
+  finally{tonPollBusy=false;}
+}
+app.post('/api/payment/manual-transfer',async(req,res)=>{
+  const amount=money(req.body?.amount);
+  if(!amount||amount<10)return res.status(400).json({error:'Минимальная сумма пополнения — 10 ₽.'});
+  try{
+    const owner=await pool.query('SELECT username FROM users WHERE telegram_id=$1 LIMIT 1',[OWNER_TELEGRAM_ID]);
+    const username=String(process.env.OWNER_TELEGRAM_USERNAME||owner.rows[0]?.username||'').replace(/^@/,'');
+    if(!/^[A-Za-z0-9_]{5,32}$/.test(username))return res.status(503).json({error:'Не настроен Telegram username владельца.'});
+    const message='Здравствуйте! Хочу пополнить баланс WORLD TG SHOP переводом на карту. Сумма: '+amount.toFixed(2)+' ₽.';
+    const url='https://t.me/'+username+'?text='+encodeURIComponent(message);
+    res.json({url,username:'@'+username,message});
+  }catch(e){console.error('Manual transfer link:',e.message);res.status(503).json({error:'Не удалось открыть чат владельца. Попробуйте позже.'});}
+});
+app.post('/api/payment/create',createPayment);
+app.get('/api/payment/status/:id',paymentStatus);
+
 app.post('/api/orders/:id/refund',roles('owner','support'),async(req,res)=>{
   const orderId=Number(req.params.id),reason=String(req.body?.reason||'Возврат по обращению покупателя').slice(0,500);
   if(!Number.isSafeInteger(orderId)||orderId<1)return res.status(400).json({error:'Неверный номер заказа.'});
