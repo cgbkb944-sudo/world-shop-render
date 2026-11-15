@@ -816,10 +816,18 @@ async function notifySalesGroup(text) {
   if(!target) return;
   await telegramRequest('sendMessage',{chat_id:target,text:String(text).slice(0,3900)});
 }
-async function broadcastToUsers(message,excludeId=null){
+async function broadcastToUsers(message,excludeId=null,entities=[]){
   const q=await pool.query("SELECT telegram_id FROM users WHERE is_banned=FALSE AND ($1::bigint IS NULL OR telegram_id<>$1)",[excludeId]);
+  const text=String(message).slice(0,3900);
+  const safeEntities=(Array.isArray(entities)?entities:[]).filter(e=>
+    e&&e.type==='custom_emoji'&&typeof e.custom_emoji_id==='string'&&
+    Number.isInteger(e.offset)&&Number.isInteger(e.length)&&e.offset>=0&&e.length>0&&e.offset+e.length<=text.length
+  ).map(e=>({type:'custom_emoji',offset:e.offset,length:e.length,custom_emoji_id:e.custom_emoji_id}));
   let sent=0,failed=0;
-  for(const u of q.rows){try{await telegramRequest('sendMessage',{chat_id:String(u.telegram_id),text:String(message).slice(0,3900)});sent++;}catch(e){failed++;}}
+  for(const u of q.rows){try{
+    await telegramRequest('sendMessage',{chat_id:String(u.telegram_id),text,...(safeEntities.length?{entities:safeEntities}:{})});
+    sent++;
+  }catch(e){failed++;}}
   return {total:q.rowCount,sent,failed};
 }
 async function userRole(id){const q=await pool.query('SELECT role FROM users WHERE telegram_id=$1',[String(id)]);return q.rows[0]?.role||'user';}
@@ -1046,15 +1054,18 @@ async function handleTelegramBotCallback(query) {
     const role=String(userId)===OWNER_TELEGRAM_ID?'owner':await userRole(userId);
     const allowed=action==='broadcast_confirm'?['owner','admin','support'].includes(role):['owner','admin','support','seller'].includes(role);
     if(!allowed){await sendBotText(chatId,'Недостаточно прав.');return;}
-    const key='broadcast_draft:'+String(userId),draft=await getBotSetting(key);
-    if(!draft){await sendBotText(chatId,'Черновик рассылки не найден. Начните заново командой /broadcast или /discount.');return;}
+    const key='broadcast_draft:'+String(userId),storedDraft=await getBotSetting(key);
+    if(!storedDraft){await sendBotText(chatId,'Черновик рассылки не найден. Начните заново командой /broadcast или /discount.');return;}
     if(action==='broadcast_cancel'){await pool.query('DELETE FROM bot_settings WHERE setting_key=$1',[key]);await sendBotText(chatId,'Рассылка отменена.');return;}
+    let draft;
+    try{draft=JSON.parse(storedDraft);if(!draft||typeof draft.text!=='string')throw new Error('legacy');}
+    catch{draft={text:storedDraft,entities:[]};}
     if(role==='seller'){
       const claim=await pool.query(`INSERT INTO seller_discount_broadcasts(seller_id,last_sent_at) VALUES($1,NOW()) ON CONFLICT(seller_id) DO UPDATE SET last_sent_at=NOW() WHERE seller_discount_broadcasts.last_sent_at<=NOW()-INTERVAL '24 hours' RETURNING seller_id`,[String(userId)]);
       if(!claim.rowCount){await sendBotText(chatId,'⏳ Рассылку скидок можно отправлять только один раз в 24 часа.');return;}
     }
     await pool.query('DELETE FROM bot_settings WHERE setting_key=$1',[key]);
-    const result=await broadcastToUsers(draft,String(userId));
+    const result=await broadcastToUsers(draft.text,String(userId),draft.entities);
     await sendBotText(chatId,'✅ Рассылка завершена.\nДоставлено: '+result.sent+' из '+result.total+'\nНе доставлено: '+result.failed+(role==='seller'?'\nСледующая рассылка будет доступна через 24 часа.':''));return;
   }
   if(query.message?.chat?.type!=='private'){await telegramRequest('answerCallbackQuery',{callback_query_id:query.id});return;}
@@ -1133,8 +1144,14 @@ async function handleTelegramBotMessage(message) {
   const mode=await getBotSetting('broadcast_mode:'+id);
   if(mode&&text&&!command.startsWith('/')){
     await pool.query('DELETE FROM bot_settings WHERE setting_key=$1',['broadcast_mode:'+id]);
-    await setBotSetting('broadcast_draft:'+id,text.slice(0,3900));
-    await sendBotText(chatId,'Предпросмотр рассылки:\n\n'+text.slice(0,3000)+'\n\nОтправить всем пользователям?',{inline_keyboard:[[{text:'✅ Отправить',callback_data:'bot:broadcast_confirm'},{text:'✖️ Отменить',callback_data:'bot:broadcast_cancel'}]]});return;
+    const broadcastText=String(message.text||'').slice(0,3900);
+    const broadcastEntities=(message.entities||[]).filter(e=>e.type==='custom_emoji'&&e.custom_emoji_id&&e.offset>=0&&e.length>0&&e.offset+e.length<=broadcastText.length)
+      .map(e=>({type:'custom_emoji',offset:e.offset,length:e.length,custom_emoji_id:String(e.custom_emoji_id)}));
+    await setBotSetting('broadcast_draft:'+id,JSON.stringify({text:broadcastText,entities:broadcastEntities}));
+    const previewText='Предпросмотр рассылки:\n\n'+broadcastText.slice(0,3000)+'\n\nОтправить всем пользователям?';
+    const previewEntities=broadcastEntities.filter(e=>e.offset+e.length<=3000).map(e=>({...e,offset:e.offset+'Предпросмотр рассылки:\n\n'.length}));
+    await telegramRequest('sendMessage',{chat_id:chatId,text:previewText,...(previewEntities.length?{entities:previewEntities}:{}) ,reply_markup:{inline_keyboard:[[{text:'✅ Отправить',callback_data:'bot:broadcast_confirm'},{text:'✖️ Отменить',callback_data:'bot:broadcast_cancel'}]]}});
+    return;
   }
   if(isOwner&&message.sticker?.file_id){
     await setBotSetting('welcome_sticker_file_id',message.sticker.file_id);
