@@ -662,7 +662,7 @@ async function loadModeration(){
    const label=m.kind==='product_delete'?'Запрос удаления товара':m.kind==='product'?'Публикация товара':'Блокировка пользователя';
    const waiting=(m.kind==='ban'||m.kind==='product_delete')&&currentRole!=='owner';
    const subject=m.product_title?escapeHtml(m.product_title):'Telegram ID '+escapeHtml(m.target_user_id||'');
-   return '<div class="data-row"><div><b>Заявка #'+m.id+' · '+label+'</b><small>'+subject+' · '+escapeHtml(m.reason||'')+(m.kind==='ban'?' · Срок: '+(m.duration_hours?m.duration_hours+' ч.':'навсегда'):'')+'</small></div><div class="action-row">'+(waiting?'Ожидает решения владельца':'<button onclick="decideModeration('+m.id+',\\'approve\\')">Одобрить</button><button class="danger-button" onclick="decideModeration('+m.id+',\\'reject\\')">Отклонить</button>')+'</div></div>';
+   return `<div class="data-row"><div><b>Заявка #${m.id} · ${label}</b><small>${subject} · ${escapeHtml(m.reason||'')}${m.kind==='ban'?' · Срок: '+(m.duration_hours?m.duration_hours+' ч.':'навсегда'):''}</small></div><div class="action-row">${waiting?'Ожидает решения владельца':`<button onclick="decideModeration(${m.id}, 'approve')">Одобрить</button><button class="danger-button" onclick="decideModeration(${m.id}, 'reject')">Отклонить</button>`}</div></div>`;
   }).join(''):'<p>Ожидающих заявок нет.</p>';
  }catch(e){box.textContent=e.message;}
 }
