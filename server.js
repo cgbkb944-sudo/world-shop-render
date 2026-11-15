@@ -1082,7 +1082,7 @@ async function handleTelegramBotMessage(message) {
     if(!['topup','discount_percent','discount_fixed'].includes(type)||!Number.isFinite(value)||value<=0||value>(type==='discount_percent'?100:1000000)||!Number.isInteger(maxUses)||maxUses<1||!Number.isInteger(hours)||hours<0||hours>87600){await sendBotText(chatId,'Формат:\\n/promocreate topup 100 50 24\\n/promocreate discount_percent 15 100 72\\n/promocreate discount_fixed 50 20 12\\n\\nПараметры: тип, сумма/процент, лимит активаций, срок в часах (0 — без срока).');return;}
     const code='WTS-'+crypto.randomBytes(5).toString('hex').toUpperCase();
     const q=await pool.query('INSERT INTO promo_codes(code,promo_type,value,max_uses,expires_at,created_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING code',[code,type,value,maxUses,hours?new Date(Date.now()+hours*3600000):null,id]);
-    await sendBotText(chatId,'✅ Промокод создан\nКод: '+q.rows[0].code+'\nТип: '+type+'\nЗначение: '+value+(type==='discount_percent'?'%':' ₽')+'\nЛимит: '+maxUses+' активаций\\nСрок: '+(hours?hours+' ч.':'без ограничения')+'\n\nОтправьте код пользователям.');return;
+    await sendBotText(chatId,'✅ Промокод создан\nКод: '+q.rows[0].code+'\nТип: '+type+'\nЗначение: '+value+(type==='discount_percent'?'%':' ₽')+'\nЛимит: '+maxUses+' активаций\nСрок: '+(hours?hours+' ч.':'без ограничения')+'\n\nОтправьте код пользователям.');return;
   }
   if(command==='/promos'){
     if(!['owner','admin','support'].includes(currentRole)){await sendBotText(chatId,'Недостаточно прав.');return;}
