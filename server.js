@@ -68,7 +68,7 @@ async function migrateDatabase() {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_reason TEXT;
     ALTER TABLE products ALTER COLUMN status SET DEFAULT 'pending';
     ALTER TABLE products DROP CONSTRAINT IF EXISTS products_status_check;
-    ALTER TABLE products ADD CONSTRAINT products_status_check CHECK (status IN ('pending','active','rejected','paused'));
+    ALTER TABLE products ADD CONSTRAINT products_status_check CHECK (status IN ('pending','active','rejected','paused','frozen','deleted'));
     ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check;
     ALTER TABLE orders ADD CONSTRAINT orders_status_check CHECK (status IN ('paid','delivered','completed','disputed','refunded'));
     ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_type_check;
@@ -99,7 +99,7 @@ async function migrateDatabase() {
     CREATE INDEX IF NOT EXISTS balance_topup_codes_created_idx ON balance_topup_codes(created_at DESC);
     CREATE TABLE IF NOT EXISTS moderation_requests (
       id BIGSERIAL PRIMARY KEY,
-      kind TEXT NOT NULL CHECK (kind IN ('ban','product')),
+      kind TEXT NOT NULL CHECK (kind IN ('ban','product','product_delete')),
       requested_by BIGINT NOT NULL REFERENCES users(telegram_id),
       target_user_id BIGINT REFERENCES users(telegram_id),
       product_id BIGINT REFERENCES products(id),
@@ -111,6 +111,8 @@ async function migrateDatabase() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       decided_at TIMESTAMPTZ
     );
+    ALTER TABLE moderation_requests DROP CONSTRAINT IF EXISTS moderation_requests_kind_check;
+    ALTER TABLE moderation_requests ADD CONSTRAINT moderation_requests_kind_check CHECK (kind IN ('ban','product','product_delete'));
     ALTER TABLE activation_keys ADD COLUMN IF NOT EXISTS created_by BIGINT REFERENCES users(telegram_id);
     CREATE INDEX IF NOT EXISTS moderation_pending_idx ON moderation_requests(status,created_at DESC);
     CREATE TABLE IF NOT EXISTS order_refunds (
@@ -381,6 +383,53 @@ app.get('/api/transfers/history',async(req,res)=>{
   }catch(e){res.status(503).json({error:'Не удалось загрузить историю переводов.'});}
 });
 
+app.get('/api/products/manage',roles('seller','support','owner'),async(req,res)=>{
+  try{
+    const own=req.user.role==='seller';
+    const q=await pool.query(`SELECT p.id,p.title,p.price,p.status,p.created_at,COALESCE(u.display_name,u.username,'Продавец') AS seller_name
+      FROM products p JOIN users u ON u.telegram_id=p.seller_id ${own?'WHERE p.seller_id=$1':''}
+      ORDER BY p.created_at DESC LIMIT 200`,own?[req.user.telegram_id]:[]);
+    res.json(q.rows);
+  }catch(e){console.error('Manage products:',e.message);res.status(503).json({error:'Не удалось загрузить товары.'});}
+});
+app.post('/api/products/:id/delete',roles('seller','owner'),async(req,res)=>{
+  const id=Number(req.params.id);
+  if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'Неверный товар.'});
+  const db=await pool.connect();
+  try{
+    await db.query('BEGIN');
+    const q=await db.query('SELECT id,seller_id,status FROM products WHERE id=$1 FOR UPDATE',[id]);
+    if(!q.rowCount){await db.query('ROLLBACK');return res.status(404).json({error:'Товар не найден.'});}
+    const p=q.rows[0];
+    if(req.user.role==='seller'&&String(p.seller_id)!==String(req.user.telegram_id)){await db.query('ROLLBACK');return res.status(403).json({error:'Вы можете удалять только собственные товары.'});}
+    if(p.status==='deleted'){await db.query('ROLLBACK');return res.status(400).json({error:'Товар уже удалён.'});}
+    await db.query("UPDATE products SET status='deleted' WHERE id=$1",[id]);
+    await db.query("UPDATE moderation_requests SET status='rejected',decision_note='Товар удалён продавцом или владельцем до решения',decided_by=$1,decided_at=NOW() WHERE product_id=$2 AND kind IN ('product','product_delete') AND status='pending'",[req.user.telegram_id,id]);
+    await db.query('COMMIT');
+    res.json({success:true,message:'Товар удалён из каталога.'});
+  }catch(e){await db.query('ROLLBACK');console.error('Product delete:',e.message);res.status(503).json({error:'Не удалось удалить товар.'});}
+  finally{db.release();}
+});
+app.post('/api/products/delete-request',roles('support'),async(req,res)=>{
+  const id=Number(req.body?.product_id),reason=String(req.body?.reason||'').trim().slice(0,500);
+  if(!Number.isSafeInteger(id)||id<1||reason.length<5)return res.status(400).json({error:'Укажите товар и причину удаления (не менее 5 символов).'});
+  const db=await pool.connect();
+  try{
+    await db.query('BEGIN');
+    const q=await db.query("SELECT id,title,status FROM products WHERE id=$1 FOR UPDATE",[id]);
+    if(!q.rowCount){await db.query('ROLLBACK');return res.status(404).json({error:'Товар не найден.'});}
+    const p=q.rows[0];
+    if(p.status!=='active'){await db.query('ROLLBACK');return res.status(409).json({error:'Запросить удаление можно только для активного товара.'});}
+    const existing=await db.query("SELECT id FROM moderation_requests WHERE product_id=$1 AND kind='product_delete' AND status='pending'",[id]);
+    if(existing.rowCount){await db.query('ROLLBACK');return res.status(409).json({error:'Для этого товара уже ожидается решение владельца.'});}
+    await db.query("UPDATE products SET status='frozen' WHERE id=$1",[id]);
+    const m=await db.query("INSERT INTO moderation_requests(kind,requested_by,product_id,reason) VALUES ('product_delete',$1,$2,$3) RETURNING id",[req.user.telegram_id,id,reason]);
+    await db.query('COMMIT');
+    await notifyOwner('Запрос на удаление товара #'+id+' «'+p.title+'». Заявка #'+m.rows[0].id+'. Причина: '+reason);
+    res.json({success:true,request_id:m.rows[0].id,message:'Товар заморожен. Запрос отправлен владельцу на рассмотрение.'});
+  }catch(e){await db.query('ROLLBACK');console.error('Product delete request:',e.message);res.status(503).json({error:'Не удалось отправить запрос на удаление.'});}
+  finally{db.release();}
+});
 app.post('/api/products/add',roles('seller','admin','owner'),async(req,res)=>{
   const b=req.body||{}, price=money(b.price), max=b.price_from?money(b.max_price):null;
   const productType=String(b.product_type||'standard');
@@ -534,9 +583,12 @@ app.post('/api/buy',async(req,res)=>{
   const c=await pool.connect();
   try{
     await c.query('BEGIN');
-    const p=await c.query("SELECT id,seller_id,price,product_type,title FROM products WHERE id=$1 AND status='active' FOR UPDATE",[id]);
+    const p=await c.query("SELECT id,seller_id,price,product_type,title,status FROM products WHERE id=$1 FOR UPDATE",[id]);
     if(!p.rowCount){await c.query('ROLLBACK');return res.status(404).json({error:'Товар не найден.'});}
-    const product=p.rows[0];if(String(product.seller_id)===String(req.user.telegram_id)){await c.query('ROLLBACK');return res.status(400).json({error:'Нельзя купить собственный товар.'});}
+    const product=p.rows[0];
+    if(product.status==='frozen'){await c.query('ROLLBACK');return res.status(409).json({error:'Товар временно заморожен и недоступен для покупки. Ожидается решение владельца.'});}
+    if(product.status!=='active'){await c.query('ROLLBACK');return res.status(404).json({error:'Товар больше недоступен для покупки.'});}
+    if(String(product.seller_id)===String(req.user.telegram_id)){await c.query('ROLLBACK');return res.status(400).json({error:'Нельзя купить собственный товар.'});}
     const type=product.product_type||'standard';
     const quantity=type==='telegram_stars'?Number(req.body?.quantity):1;
     if(type==='telegram_stars'&&(!Number.isInteger(quantity)||quantity<50||quantity>1000)){await c.query('ROLLBACK');return res.status(400).json({error:'Количество Telegram Stars должно быть от 50 до 1 000.'});}
@@ -956,7 +1008,7 @@ app.post('/api/orders/:id/refund',roles('owner','support'),async(req,res)=>{
     }
     await db.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2',[o.amount,o.buyer_id]);
     await db.query("UPDATE orders SET status='refunded' WHERE id=$1",[orderId]);
-    await db.query("UPDATE products SET status='active' WHERE id=$1",[o.product_id]);
+    await db.query("UPDATE products SET status=CASE WHEN status IN ('deleted','frozen') THEN status ELSE 'active' END WHERE id=$1",[o.product_id]);
     const rf=await db.query('INSERT INTO order_refunds(order_id,refunded_by,amount,reason) VALUES ($1,$2,$3,$4) RETURNING id',[orderId,req.user.telegram_id,o.amount,reason]);
     const ref='refund_'+rf.rows[0].id;
     await db.query("INSERT INTO transactions(telegram_id,amount,type,reference,description) VALUES ($1,$2,'refund',$3,$4),($5,$6,'admin_adjustment',$7,$8)",
@@ -1000,16 +1052,21 @@ app.post('/api/moderation/decision',roles('owner','support'),async(req,res)=>{
     if(!q.rowCount){await db.query('ROLLBACK');return res.status(404).json({error:'Заявка уже обработана или не найдена.'});}
     const m=q.rows[0],approved=decision==='approve';
     if(m.kind==='ban'&&req.user.role!=='owner'){await db.query('ROLLBACK');return res.status(403).json({error:'Запросы на блокировку подтверждает только владелец.'});}
+    if(m.kind==='product_delete'&&req.user.role!=='owner'){await db.query('ROLLBACK');return res.status(403).json({error:'Запросы на удаление товаров подтверждает только владелец.'});}
     if(m.kind==='product'){
       await db.query('UPDATE products SET status=$1 WHERE id=$2 AND status=\'pending\'',[approved?'active':'rejected',m.product_id]);
+    }else if(m.kind==='product_delete'){
+      const changed=await db.query("UPDATE products SET status=$1 WHERE id=$2 AND status='frozen' RETURNING id",[approved?'deleted':'active',m.product_id]);
+      if(!changed.rowCount){await db.query('ROLLBACK');return res.status(409).json({error:'Товар уже изменил статус. Обновите список заявок.'});}
     }else if(m.kind==='ban'&&approved){
       const until=m.duration_hours?new Date(Date.now()+m.duration_hours*3600000):null;
       await db.query('UPDATE users SET is_banned=TRUE,banned_until=$1,banned_reason=$2,updated_at=NOW() WHERE telegram_id=$3',[until,m.reason,m.target_user_id]);
     }
     await db.query('UPDATE moderation_requests SET status=$1,decided_by=$2,decision_note=$3,decided_at=NOW() WHERE id=$4',[approved?'approved':'rejected',req.user.telegram_id,note,id]);
     await db.query('COMMIT');
-    const target=m.kind==='product'?m.requested_by:m.requested_by;
-    const msg=m.kind==='product'?(approved?'Ваш товар одобрен и опубликован.':'Ваш товар отклонён.'):(approved?'Запрос на блокировку одобрен.':'Запрос на блокировку отклонён.');
+    const target=m.requested_by;
+    const msg=m.kind==='product_delete'?(approved?'Запрос на удаление товара одобрен. Товар удалён из каталога.':'Запрос на удаление товара отклонён. Товар снова доступен в каталоге.'):
+      m.kind==='product'?(approved?'Ваш товар одобрен и опубликован.':'Ваш товар отклонён.'):(approved?'Запрос на блокировку одобрен.':'Запрос на блокировку отклонён.');
     await telegramRequest('sendMessage',{chat_id:String(target),text:msg+' Заявка #'+id+(note?' Причина: '+note:'')}).catch(e=>console.error('Notify requester:',e.message));
     if(m.kind==='ban'&&approved){
       const duration=m.duration_hours?' на '+m.duration_hours+' ч.':' навсегда';

@@ -159,11 +159,13 @@ apiFetch('/api/user', {
     if(data.role === 'owner') document.getElementById('owner-key-gen').style.display = 'block';
     if(data.role==='seller'||data.role==='admin')document.getElementById('seller-wallet-card').classList.remove('hidden');
     if(data.role==='seller'||data.role==='admin')loadSellerWallet();
+    if(data.role==='seller')loadSellerProducts();
 
     if(data.role === 'seller' || data.role === 'admin' || data.role === 'owner') {
         document.getElementById('seller-product-card').classList.remove('hidden');
     }
 
+    document.getElementById('manage-products-card')?.classList.toggle('hidden',!['owner','support'].includes(data.role));
     loadProducts();
     loadPaymentReadiness();
     resumePendingPayment();
@@ -503,7 +505,7 @@ function switchTab(tabName, element) {
 
     if(tabName === 'manage') {
       if(currentRole==='owner'){loadOwnerStats();loadOwnerSellers();loadKeyHistory();loadOwnerWithdrawals();}
-      if(['owner','support'].includes(currentRole)) loadModeration();
+      if(['owner','support'].includes(currentRole)) { loadModeration(); loadManageProducts(); }
     }
     if(tabName === 'history') loadHistory();
     if(tabName === 'profile') loadMyActivity();
@@ -625,16 +627,49 @@ async function requestBan(){
  const duration_hours=raw===''?null:Number(raw),out=document.getElementById('ban-request-result');
  try{const r=await jsonPost('/api/support/ban-request',{telegram_id,reason,duration_hours}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');out.textContent='Запрос отправлен владельцу. Ожидайте решения.';}catch(e){out.textContent=e.message;}
 }
+async function loadSellerProducts(){
+ const box=document.getElementById('seller-products-list');if(!box)return;
+ try{
+  const r=await apiFetch('/api/products/manage'),rows=await r.json();if(!r.ok)throw new Error(rows.error||'Ошибка');
+  box.innerHTML=rows.length?rows.map(p=>'<div class="data-row"><div><b>'+escapeHtml(p.title)+'</b><small>'+rub(p.price)+' · '+escapeHtml(p.status)+'</small></div>'+(p.status!=='deleted'?'<button class="danger-button" onclick="deleteOwnProduct('+p.id+')">Удалить</button>':'')+'</div>').join(''):'<p>Вы ещё не выставили товары.</p>';
+ }catch(e){box.textContent=e.message;}
+}
+async function deleteOwnProduct(id){
+ if(!confirm('Удалить этот товар из каталога?'))return;
+ try{const r=await jsonPost('/api/products/'+id+'/delete',{}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');loadSellerProducts();loadProducts();alert('Товар удалён.');}catch(e){alert(e.message);}
+}
+async function loadManageProducts(){
+ const box=document.getElementById('manage-products-list');if(!box)return;
+ try{
+  const r=await apiFetch('/api/products/manage'),rows=await r.json();if(!r.ok)throw new Error(rows.error||'Ошибка');
+  box.innerHTML=rows.length?rows.map(p=>'<div class="data-row"><div><b>'+escapeHtml(p.title)+'</b><small>#'+p.id+' · '+escapeHtml(p.seller_name)+' · '+rub(p.price)+' · '+escapeHtml(p.status)+'</small></div><div class="action-row">'+(p.status==='deleted'?'Удалён':currentRole==='owner'?'<button class="danger-button" onclick="deleteManagedProduct('+p.id+')">Удалить</button>':p.status==='active'?'<button class="danger-button" onclick="requestProductDeletion('+p.id+')">Запросить удаление</button>':'Недоступен')+'</div></div>').join(''):'<p>Товары не найдены.</p>';
+ }catch(e){box.textContent=e.message;}
+}
+async function deleteManagedProduct(id){
+ if(!confirm('Владелец: удалить этот товар из каталога?'))return;
+ try{const r=await jsonPost('/api/products/'+id+'/delete',{}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');loadManageProducts();loadProducts();alert('Товар удалён.');}catch(e){alert(e.message);}
+}
+async function requestProductDeletion(id){
+ const reason=prompt('Укажите причину, по которой нужно удалить товар:');
+ if(reason===null)return;
+ if(reason.trim().length<5){alert('Причина должна содержать не менее 5 символов.');return;}
+ try{const r=await jsonPost('/api/products/delete-request',{product_id:id,reason:reason.trim()}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');loadManageProducts();loadModeration();loadProducts();alert(d.message||'Товар заморожен, запрос отправлен владельцу.');}catch(e){alert(e.message);}
+}
 async function loadModeration(){
  const box=document.getElementById('moderation-list');if(!box)return;
  try{
   const r=await apiFetch('/api/moderation/pending'),rows=await r.json();if(!r.ok)throw new Error(rows.error||'Ошибка');
-  box.innerHTML=rows.length?rows.map(m=>'<div class="data-row"><div><b>Заявка #'+m.id+' · '+(m.kind==='product'?'Публикация товара':'Блокировка пользователя')+'</b><small>'+(m.product_title?escapeHtml(m.product_title):'Telegram ID '+escapeHtml(m.target_user_id||''))+' · '+escapeHtml(m.reason||'')+(m.kind==='ban'?' · Срок: '+(m.duration_hours?m.duration_hours+' ч.':'навсегда'):'')+'</small></div><div class="action-row">'+(m.kind==='ban'&&currentRole!=='owner'?'Ожидает решения владельца':'<button onclick="decideModeration('+m.id+',\'approve\')">Одобрить</button><button class="danger-button" onclick="decideModeration('+m.id+',\'reject\')">Отклонить</button>')+'</div></div>').join(''):'<p>Ожидающих заявок нет.</p>';
+  box.innerHTML=rows.length?rows.map(m=>{
+   const label=m.kind==='product_delete'?'Запрос удаления товара':m.kind==='product'?'Публикация товара':'Блокировка пользователя';
+   const waiting=(m.kind==='ban'||m.kind==='product_delete')&&currentRole!=='owner';
+   const subject=m.product_title?escapeHtml(m.product_title):'Telegram ID '+escapeHtml(m.target_user_id||'');
+   return `<div class="data-row"><div><b>Заявка #${m.id} · ${label}</b><small>${subject} · ${escapeHtml(m.reason||'')}${m.kind==='ban'?' · Срок: '+(m.duration_hours?m.duration_hours+' ч.':'навсегда'):''}</small></div><div class="action-row">${waiting?'Ожидает решения владельца':`<button onclick="decideModeration(${m.id}, 'approve')">Одобрить</button><button class="danger-button" onclick="decideModeration(${m.id}, 'reject')">Отклонить</button>`}</div></div>`;
+  }).join(''):'<p>Ожидающих заявок нет.</p>';
  }catch(e){box.textContent=e.message;}
 }
 async function decideModeration(request_id,decision){
  if(!confirm(decision==='approve'?'Одобрить заявку?':'Отклонить заявку?'))return;
- try{const r=await jsonPost('/api/moderation/decision',{request_id,decision}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');loadModeration();loadProducts();}catch(e){alert(e.message);}
+ try{const r=await jsonPost('/api/moderation/decision',{request_id,decision}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');loadModeration();loadProducts();loadManageProducts();}catch(e){alert(e.message);}
 }
 function loadHistory(){const box=document.getElementById('history-list');apiFetch('/api/history').then(r=>r.json()).then(rows=>{box.innerHTML=Array.isArray(rows)&&rows.length?rows.map(x=>`<div class="data-row"><div><b>${escapeHtml(x.description)}</b><small>${new Date(x.created_at).toLocaleString('ru-RU')}</small></div><strong>${Number(x.amount)>0?'+':''}${rub(x.amount)}</strong></div>`).join(''):'<div class="no-products">Операций пока нет</div>';}).catch(()=>box.textContent='Не удалось загрузить историю.');}
 
