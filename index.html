@@ -339,6 +339,11 @@
             <div class="section-title"><div><span class="eyebrow">PAYOUT REQUESTS</span><h3>Заявки на вывод продавцов</h3></div><button class="small-action" onclick="loadOwnerWithdrawals()">Обновить</button></div>
             <div id="owner-withdrawals-list" class="data-list">Заявки на вывод появятся здесь.</div>
         </div>
+        <div class="card" id="manage-products-card">
+            <div class="section-title"><div><span class="eyebrow">PRODUCT MODERATION</span><h3>Каталог товаров</h3></div><button class="small-action" onclick="loadManageProducts()">Обновить</button></div>
+            <p>Владелец может удалить любой товар. Поддержка может отправить запрос владельцу — на время рассмотрения товар замораживается.</p>
+            <div id="manage-products-list" class="data-list">Загрузка товаров…</div>
+        </div>
         <div class="card" id="support-tools-card">
             <div class="section-title"><div><span class="eyebrow">ACCOUNT TOOLS</span><h3>Управление аккаунтом</h3></div><button class="small-action" onclick="loadModeration()">Обновить заявки</button></div>
             <label>Статистика пользователя по Telegram ID</label>
@@ -513,6 +518,9 @@
             </div>
 
             <button onclick="addNewProduct()" style="background: var(--success);">Опубликовать товар</button>
+            <h4 style="margin-top:18px">Выставленные товары</h4>
+            <button class="secondary-button" onclick="loadSellerProducts()">Обновить список</button>
+            <div id="seller-products-list" class="data-list">Ваши товары появятся здесь.</div>
         </div>
 
         <div class="card footer-links">
