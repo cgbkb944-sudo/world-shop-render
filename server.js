@@ -183,6 +183,26 @@ async function migrateDatabase() {
     seller_id BIGINT PRIMARY KEY REFERENCES users(telegram_id),
     last_sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`);
+
+  // One-time balance reset explicitly requested by the owner. Preserve orders and transaction history.
+  const balanceResetVersion = 'world-shop-zero-balances-2026-11-15';
+  const balanceResetClient = await pool.connect();
+  try {
+    await balanceResetClient.query('BEGIN');
+    const alreadyReset = await balanceResetClient.query('SELECT 1 FROM schema_migrations WHERE version=$1', [balanceResetVersion]);
+    if (!alreadyReset.rowCount) {
+      await balanceResetClient.query('UPDATE users SET balance=0, seller_balance=0, updated_at=NOW()');
+      await balanceResetClient.query('UPDATE shop_wallet SET balance=0, updated_at=NOW() WHERE id=1');
+      await balanceResetClient.query('INSERT INTO schema_migrations(version) VALUES ($1)', [balanceResetVersion]);
+      console.log('All user, seller and shop balances reset to zero');
+    }
+    await balanceResetClient.query('COMMIT');
+  } catch (error) {
+    await balanceResetClient.query('ROLLBACK');
+    throw error;
+  } finally {
+    balanceResetClient.release();
+  }
 }
 
 app.disable('x-powered-by');
