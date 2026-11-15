@@ -185,7 +185,7 @@ async function migrateDatabase() {
   )`);
 
   // One-time balance reset explicitly requested by the owner. Preserve orders and transaction history.
-  const balanceResetVersion = 'world-shop-zero-balances-2026-11-15';
+  const balanceResetVersion = 'world-shop-zero-balances-2026-11-15-second-reset';
   const balanceResetClient = await pool.connect();
   try {
     await balanceResetClient.query('BEGIN');
