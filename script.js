@@ -741,16 +741,17 @@ async function buyProduct(productId) {
     }
     const total=Math.round(Number(product.price)*quantity*100)/100;
     const label=type==='robux'?quantity+' Robux × '+Number(product.price).toFixed(2)+' ₽ = ':type==='telegram_stars'?quantity+' ⭐ × '+Number(product.price).toFixed(2)+' ₽ = ':'';
-    if(!confirm('Подтвердить покупку «'+product.title+'»?\\n'+label+total.toFixed(2)+' ₽'))return;
+    const promoCode=(prompt('Промокод на скидку (оставьте поле пустым, если его нет):','')||'').trim().toUpperCase();
+    if(!confirm('Подтвердить покупку «'+product.title+'»?\\n'+label+total.toFixed(2)+' ₽'+(promoCode?'\\nПромокод: '+promoCode:'')))return;
     try{
-      const res=await apiFetch('/api/buy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product_id:productId,quantity,details})});
+      const res=await apiFetch('/api/buy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product_id:productId,quantity,details,promo_code:promoCode})});
       const data=await res.json();if(!res.ok||data.error)throw new Error(data.error||'Не удалось оформить заказ.');
       if(type==='roblox_account'){
         const dr=await apiFetch('/api/orders/'+data.order_id+'/delivery'),delivery=await dr.json();
         if(!dr.ok||!delivery.success)throw new Error(delivery.error||'Покупка прошла, но данные аккаунта пока не удалось загрузить. Заказ #'+data.order_id);
         const d=delivery.delivery||{};
         alert('Покупка прошла успешно! Данные аккаунта Roblox\\n\\nUsername: '+d.roblox_username+'\\nПочта: '+d.account_email+'\\nПароль аккаунта: '+d.account_password+'\\nПароль от почты: '+d.email_password+'\\n\\nСохраните данные. Заказ #'+data.order_id);
-      }else alert('Оплата прошла успешно! Номер заказа #'+data.order_id+'. Данные для выполнения заказа отправлены продавцу.');
+      }else alert('Оплата прошла успешно! Номер заказа #'+data.order_id+'.'+(data.discount>0?' Скидка: '+rub(data.discount)+'.':'')+' Данные для выполнения заказа отправлены продавцу.');
       location.reload();
     }catch(e){alert(e.message||'Ошибка соединения с сервером.');}
 }
