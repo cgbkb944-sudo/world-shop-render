@@ -481,7 +481,7 @@ app.post('/api/products/add',roles('seller','admin','owner'),async(req,res)=>{
     privateData={roblox_username:username,account_email:email,account_password:password,email_password:emailPassword};
   }
   if(typeof b.title!=='string'||!b.title.trim()||b.title.length>160||typeof b.category!=='string'||!b.category||b.category.length>80||
-     typeof (b.subcategory||'')!=='string'||(b.subcategory||'').length>100||typeof (b.description||'')!=='string'||b.description.length>5000||
+     typeof (b.subcategory||'')!=='string'||(b.subcategory||'').length>100||typeof (b.description||'')!=='string'||(b.description||'').length>5000||
      !price||!allowed.includes(productType)||(b.price_from&&(!max||max<price))||(special&&b.price_from))
     return res.status(400).json({error:'Проверьте название, тип объявления, категорию и цену. Для Robux указывается цена за 1 Robux.'});
   try{
