@@ -841,10 +841,11 @@ async function sendBotText(chatId,text,replyMarkup) {
 }
 async function botHomeMarkup() {
   const rows=[];
-  if(appOrigin)rows.push([{text:'🛍 Каталог и покупки',web_app:{url:appOrigin}}]);
-  rows.push([{text:'👤 Профиль',callback_data:'bot:profile'},{text:'💳 Баланс',callback_data:'bot:balance'}]);
-  if(appOrigin)rows.push([{text:'📦 Мои заказы',web_app:{url:appOrigin}}]);
-  rows.push([{text:'🆘 Поддержка',callback_data:'bot:support'},{text:'ℹ️ Помощь',callback_data:'bot:help'}]);
+  if(appOrigin)rows.push([{text:'🚀 Открыть приложение',web_app:{url:appOrigin}}]);
+  rows.push([{text:'🛍 Каталог',callback_data:'bot:catalog'},{text:'📦 Мои заказы',callback_data:'bot:orders'}]);
+  rows.push([{text:'💳 Баланс',callback_data:'bot:balance'},{text:'👤 Профиль',callback_data:'bot:profile'}]);
+  rows.push([{text:'➕ Пополнить',callback_data:'bot:topup'},{text:'🆘 Поддержка',callback_data:'bot:support'}]);
+  rows.push([{text:'ℹ️ Помощь',callback_data:'bot:help'}]);
   return {inline_keyboard:rows};
 }
 async function botProfileText(id) {
@@ -852,31 +853,73 @@ async function botProfileText(id) {
   const role={owner:'Владелец',admin:'Администратор',support:'Поддержка',seller:'Продавец',user:'Покупатель'}[u.role]||'Пользователь';
   return '👤 ВАШ ПРОФИЛЬ\n\nTelegram: '+(u.username?'@'+u.username:'не указан')+
     '\nСтатус: '+role+'\n\n💳 Баланс покупателя: '+Number(u.balance||0).toFixed(2)+' ₽'+
-    '\n🏪 Баланс продавца: '+Number(u.seller_balance||0).toFixed(2)+' ₽\n\nВсе действия с балансом доступны в приложении WORLD TG SHOP.';
+    '\n🏪 Баланс продавца: '+Number(u.seller_balance||0).toFixed(2)+' ₽';
 }
 async function botScreen(action,id) {
-  if(action==='profile'||action==='balance')return {text:await botProfileText(id),markup:{inline_keyboard:[
-    ...(appOrigin?[[{text:action==='balance'?'Пополнить баланс':'Открыть приложение',web_app:{url:appOrigin}}]]:[]),
+  if(action==='profile')return {text:await botProfileText(id),markup:{inline_keyboard:[
+    [{text:'💳 Перейти к балансу',callback_data:'bot:balance'}],
+    ...(appOrigin?[[{text:'🚀 Открыть приложение',web_app:{url:appOrigin}}]]:[]),
     [{text:'⬅️ Главное меню',callback_data:'bot:home'}]
   ]}};
-  if(action==='help')return {text:'ℹ️ ПОМОЩЬ WORLD TG SHOP\n\n🛍 Каталог — выбор и покупка товаров.\n💳 Баланс — пополнение и история операций.\n📦 Заказы — статусы и детали покупок.\n👤 Профиль — ваши данные и балансы.\n🆘 Поддержка — помощь по оплате и заказам.\n\nИспользуйте кнопки ниже, чтобы перейти в нужный раздел.',markup:{inline_keyboard:[
-    ...(appOrigin?[[{text:'🛍 Открыть магазин',web_app:{url:appOrigin}}]]:[]),
+  if(action==='balance'){
+    const q=await pool.query('SELECT balance,seller_balance FROM users WHERE telegram_id=$1',[id]),u=q.rows[0]||{};
+    return {text:'💳 ВАШ БАЛАНС\n\nБаланс покупателя: '+Number(u.balance||0).toFixed(2)+' ₽\nБаланс продавца: '+Number(u.seller_balance||0).toFixed(2)+' ₽\n\nВыберите действие:',markup:{inline_keyboard:[
+      [{text:'➕ Пополнить баланс',callback_data:'bot:topup'},{text:'📜 История операций',callback_data:'bot:history'}],
+      ...(appOrigin?[[{text:'🚀 Все способы пополнения',web_app:{url:appOrigin}}]]:[]),
+      [{text:'⬅️ Главное меню',callback_data:'bot:home'}]
+    ]}};
+  }
+  if(action==='catalog'){
+    const q=await pool.query("SELECT id,title,price FROM products WHERE status='active' ORDER BY created_at DESC LIMIT 8");
+    const rows=q.rows.map(p=>[{text:'🛍 '+String(p.title).slice(0,35)+' — '+Number(p.price).toFixed(2)+' ₽',callback_data:'bot:product:'+p.id}]);
+    if(!rows.length)rows.push([{text:'Пока нет доступных товаров',callback_data:'bot:home'}]);
+    if(appOrigin)rows.push([{text:'🚀 Полный каталог и покупка',web_app:{url:appOrigin}}]);
+    rows.push([{text:'⬅️ Главное меню',callback_data:'bot:home'}]);
+    return {text:'🛍 КАТАЛОГ WORLD TG SHOP\n\nВыберите товар для просмотра:',markup:{inline_keyboard:rows}};
+  }
+  if(action.startsWith('product:')){
+    const productId=Number(action.slice(8));
+    const q=await pool.query("SELECT p.id,p.title,p.description,p.price,COALESCE(u.display_name,u.username,'Продавец') seller_name FROM products p JOIN users u ON u.telegram_id=p.seller_id WHERE p.id=$1 AND p.status='active'",[productId]);
+    if(!q.rowCount)return {text:'Товар больше недоступен.',markup:{inline_keyboard:[[{text:'⬅️ Каталог',callback_data:'bot:catalog'}]]}};
+    const p=q.rows[0];
+    return {text:'🛍 '+p.title+'\n\n'+String(p.description||'Описание не добавлено').slice(0,700)+'\n\nЦена: '+Number(p.price).toFixed(2)+' ₽\nПродавец: '+p.seller_name,markup:{inline_keyboard:[
+      ...(appOrigin?[[{text:'🛒 Купить / оформить заказ',web_app:{url:appOrigin}}]]:[]),
+      [{text:'⬅️ Назад к каталогу',callback_data:'bot:catalog'}]
+    ]}};
+  }
+  if(action==='orders'){
+    const q=await pool.query("SELECT o.id,o.amount,o.status,p.title FROM orders o JOIN products p ON p.id=o.product_id WHERE o.buyer_id=$1 ORDER BY o.created_at DESC LIMIT 8",[id]);
+    const status={paid:'Оплачен',delivered:'Выдан',completed:'Завершён',disputed:'Спор',refunded:'Возврат'};
+    const lines=q.rows.map(o=>'• Заказ #'+o.id+' — '+o.title+'\n  '+Number(o.amount).toFixed(2)+' ₽ · '+(status[o.status]||o.status));
+    return {text:'📦 МОИ ЗАКАЗЫ\n\n'+(lines.join('\n')||'Пока заказов нет.'),markup:{inline_keyboard:[
+      ...(appOrigin?[[{text:'🚀 Открыть детали заказов',web_app:{url:appOrigin}}]]:[]),
+      [{text:'⬅️ Главное меню',callback_data:'bot:home'}]
+    ]}};
+  }
+  if(action==='history'){
+    const q=await pool.query('SELECT amount,type,description FROM transactions WHERE telegram_id=$1 ORDER BY created_at DESC LIMIT 8',[id]);
+    const lines=q.rows.map(t=>'• '+(t.description||t.type)+': '+(Number(t.amount)>0?'+':'')+Number(t.amount).toFixed(2)+' ₽');
+    return {text:'📜 ИСТОРИЯ ОПЕРАЦИЙ\n\n'+(lines.join('\n')||'Операций пока нет.'),markup:{inline_keyboard:[[{text:'⬅️ К балансу',callback_data:'bot:balance'}]]}};
+  }
+  if(action==='topup')return {text:'➕ ПОПОЛНЕНИЕ БАЛАНСА\n\nВ приложении доступны все подключённые способы оплаты, создание защищённого счёта и проверка платежа. Нажмите кнопку ниже, чтобы выбрать способ оплаты.',markup:{inline_keyboard:[
+    ...(appOrigin?[[{text:'💳 Перейти к пополнению',web_app:{url:appOrigin}}]]:[]),
+    [{text:'⬅️ К балансу',callback_data:'bot:balance'}]
+  ]}};
+  if(action==='help')return {text:'ℹ️ ПОМОЩЬ WORLD TG SHOP\n\n🛍 Каталог — просмотр доступных товаров.\n💳 Баланс — просмотр баланса и истории.\n➕ Пополнение — создание платёжного счёта.\n📦 Заказы — статусы последних покупок.\n👤 Профиль — ваши данные и оба баланса.\n🆘 Поддержка — помощь по оплате и заказам.',markup:{inline_keyboard:[
+    ...(appOrigin?[[{text:'🚀 Открыть приложение',web_app:{url:appOrigin}}]]:[]),
     [{text:'⬅️ Главное меню',callback_data:'bot:home'}]
   ]}};
-  if(action==='support')return {text:'🆘 ПОДДЕРЖКА\n\nЕсли возникла проблема с оплатой или заказом, откройте приложение и перейдите в раздел поддержки.\n\nЧтобы мы быстрее помогли, приложите номер заказа или платежа и кратко опишите проблему.',markup:{inline_keyboard:[
-    ...(appOrigin?[[{text:'Написать в поддержку',web_app:{url:appOrigin}}]]:[]),
+  if(action==='support')return {text:'🆘 ПОДДЕРЖКА\n\nНапишите сюда сообщение с описанием проблемы. Укажите номер заказа или платежа, если он есть. Также можно открыть раздел поддержки в приложении.',markup:{inline_keyboard:[
+    ...(appOrigin?[[{text:'Открыть раздел поддержки',web_app:{url:appOrigin}}]]:[]),
     [{text:'⬅️ Главное меню',callback_data:'bot:home'}]
   ]}};
-  return {text:'📦 Ваши заказы и история покупок доступны в приложении WORLD TG SHOP.',markup:{inline_keyboard:[
-    ...(appOrigin?[[{text:'Открыть мои заказы',web_app:{url:appOrigin}}]]:[]),
-    [{text:'⬅️ Главное меню',callback_data:'bot:home'}]
-  ]}};
+  return {text:'Выберите раздел в главном меню.',markup:await botHomeMarkup()};
 }
 async function handleTelegramBotCallback(query) {
   const chatId=query.message?.chat?.id,messageId=query.message?.message_id,userId=query.from?.id;
   if(!chatId||!userId||query.message?.chat?.type!=='private'){await telegramRequest('answerCallbackQuery',{callback_query_id:query.id});return;}
   const action=String(query.data||'').replace(/^bot:/,'');
-  if(!['home','profile','balance','help','support','orders'].includes(action)){
+  if(!['home','profile','balance','catalog','topup','history','help','support','orders'].includes(action)&&!action.startsWith('product:')){
     await telegramRequest('answerCallbackQuery',{callback_query_id:query.id,text:'Неизвестный раздел.'});return;
   }
   await telegramRequest('answerCallbackQuery',{callback_query_id:query.id});
