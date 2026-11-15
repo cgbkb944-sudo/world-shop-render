@@ -830,7 +830,7 @@ async function sendSalesReportForDate(reportDate) {
   const lines=['📊 ОТЧЁТ WORLD TG SHOP','Дата: '+reportDate,'','🛒 Покупок: '+salesCount,'💰 Оборот: '+gross.toFixed(2)+' ₽','🏦 Комиссия магазина: '+commission.toFixed(2)+' ₽','👤 Начислено продавцам: '+sellerNet.toFixed(2)+' ₽','↩️ Возвратов: '+refundCount+' на '+refundAmount.toFixed(2)+' ₽','📉 Оборот за вычетом возвратов: '+(gross-refundAmount).toFixed(2)+' ₽'];
   if(rows.length){lines.push('','ПО ПРОДАВЦАМ:');for(const r of rows)lines.push('• '+r.seller_name+': '+Number(r.orders_count)+' покупок; оборот '+Number(r.gross).toFixed(2)+' ₽; комиссия '+Number(r.commission).toFixed(2)+' ₽; продавцу '+Number(r.seller_net).toFixed(2)+' ₽; возвраты '+Number(r.refund_count)+' / '+Number(r.refund_amount).toFixed(2)+' ₽');}
   else lines.push('','За этот день продаж и возвратов не было.');
-  await notifySalesGroup(lines.join('\\n'));
+  await notifySalesGroup(lines.join('\n'));
 }
 async function sendDailySalesReportIfDue() {
   const clock=salesReportClock();
@@ -1078,17 +1078,17 @@ async function handleTelegramBotMessage(message) {
   const currentRole=isOwner?'owner':(known.rows[0]?.role||'user');
   if(command==='/promocreate'){
     if(!['owner','admin','support'].includes(currentRole)){await sendBotText(chatId,'Недостаточно прав для создания промокодов.');return;}
-    const parts=text.split(/\\s+/),type=String(parts[1]||''),value=Number(parts[2]),maxUses=Number(parts[3]||1),hours=Number(parts[4]||0);
+    const parts=text.split(/\s+/),type=String(parts[1]||''),value=Number(parts[2]),maxUses=Number(parts[3]||1),hours=Number(parts[4]||0);
     if(!['topup','discount_percent','discount_fixed'].includes(type)||!Number.isFinite(value)||value<=0||value>(type==='discount_percent'?100:1000000)||!Number.isInteger(maxUses)||maxUses<1||!Number.isInteger(hours)||hours<0||hours>87600){await sendBotText(chatId,'Формат:\\n/promocreate topup 100 50 24\\n/promocreate discount_percent 15 100 72\\n/promocreate discount_fixed 50 20 12\\n\\nПараметры: тип, сумма/процент, лимит активаций, срок в часах (0 — без срока).');return;}
     const code='WTS-'+crypto.randomBytes(5).toString('hex').toUpperCase();
     const q=await pool.query('INSERT INTO promo_codes(code,promo_type,value,max_uses,expires_at,created_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING code',[code,type,value,maxUses,hours?new Date(Date.now()+hours*3600000):null,id]);
-    await sendBotText(chatId,'✅ Промокод создан\\nКод: '+q.rows[0].code+'\\nТип: '+type+'\\nЗначение: '+value+(type==='discount_percent'?'%':' ₽')+'\\nЛимит: '+maxUses+' активаций\\nСрок: '+(days?days+' дн.':'без ограничения')+'\\n\\nОтправьте код пользователям.');return;
+    await sendBotText(chatId,'✅ Промокод создан\nКод: '+q.rows[0].code+'\nТип: '+type+'\nЗначение: '+value+(type==='discount_percent'?'%':' ₽')+'\nЛимит: '+maxUses+' активаций\\nСрок: '+(hours?hours+' ч.':'без ограничения')+'\n\nОтправьте код пользователям.');return;
   }
   if(command==='/promos'){
     if(!['owner','admin','support'].includes(currentRole)){await sendBotText(chatId,'Недостаточно прав.');return;}
     const q=await pool.query('SELECT code,promo_type,value,max_uses,uses_count,expires_at,is_active FROM promo_codes ORDER BY created_at DESC LIMIT 30');
     const lines=q.rows.map(p=>'• '+p.code+' — '+p.promo_type+' '+p.value+'; '+p.uses_count+'/'+p.max_uses+'; '+(p.expires_at?'до '+new Date(p.expires_at).toLocaleString('ru-RU'):'без срока')+'; '+(p.is_active?'активен':'отключён'));
-    await sendBotText(chatId,lines.length?'🎟 ПРОМОКОДЫ\\n'+lines.join('\\n'):'Промокодов пока нет.');return;
+    await sendBotText(chatId,lines.length?'🎟 ПРОМОКОДЫ\n'+lines.join('\\n'):'Промокодов пока нет.');return;
   }
   if(command==='/report'||command==='/salesreport'||command==='/reportyesterday'){
     if(!['owner','admin','support'].includes(currentRole)){await sendBotText(chatId,'Недостаточно прав для просмотра отчётов.');return;}
