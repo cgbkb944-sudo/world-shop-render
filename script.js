@@ -202,7 +202,7 @@ function renderProducts(products) {
                     <br><small style="color:var(--text-muted);">${escapeHtml(p.category)} / ${escapeHtml(p.subcategory || 'Общее')} · ${escapeHtml(p.seller_name||'Магазин')}</small>
                 </div>
                 <div style="text-align: right;">
-                    <b style="display:block; margin-bottom:6px; color:#818cf8;">${priceText}</b>
+                    <b style="display:block; margin-bottom:6px; color:#818cf8;">${p.product_type === 'telegram_stars' ? `${Number(p.price).toFixed(2)} ₽ / ⭐` : priceText}</b>
                     <button style="width:auto; padding:6px 14px; margin:0; font-size:13px;" onclick="buyProduct(${p.id})">Купить</button>
                 </div>
             </div>
@@ -239,7 +239,8 @@ const subsByCat = {
  'Xbox':['Пополнение кошелька','Game Pass','Аккаунты'],
  'Nintendo':['Пополнение','Подписки','Аккаунты'],
  'VPN':['Доступ на 1 месяц','Доступ на 1 год','Прокси'],
- 'Подписки':['Premium','Plus','Pro','Семейные подписки'],
+ 'Подписки':['Telegram Premium','YouTube Premium','Spotify','Netflix','PlayStation Plus','Xbox Game Pass','VPN','Другие подписки'],
+  'Баллы магазинов':['Баллы Пятёрочки','Баллы Магнит','Спасибо от Сбербанка','Бонусы Fix Price','Баллы других магазинов'],
  'Аккаунты':['Аккаунты сервисов','Игровые аккаунты','Почта'],
  'Пополнение':['Донат','Внутриигровая валюта','Подарочные карты'],
  'Программное обеспечение':['Лицензии','Ключи активации','Подписки'],
@@ -259,8 +260,19 @@ function toggleMaxPriceField() {
     document.getElementById('maxPriceContainer').classList.toggle('hidden', !isChecked);
 }
 
+function updateProductTypeHelp() {
+    const type=document.getElementById('newProductType')?.value||'standard';
+    const help=document.getElementById('newProductTypeHelp');
+    const priceLabel=document.getElementById('newPriceLabel');
+    if(help) help.textContent=type==='telegram_stars'?'Укажите цену за одну звезду в рублях. Покупатель выберет от 50 до 1 000 звёзд.':type==='channel_customization'?'После покупки покупатель укажет username владельца и ссылку на канал.':type==='subscription'?'Покупатель укажет аккаунт или данные для оформления подписки.':type==='loyalty_points'?'Покупатель укажет номер телефона или идентификатор карты лояльности.':'Обычный товар или услуга.';
+    if(priceLabel) priceLabel.textContent=type==='telegram_stars'?'Цена за одну звезду (₽):':'Цена (₽):';
+    document.getElementById('newPriceFrom')?.closest('div')?.classList.toggle('hidden',type==='telegram_stars');
+    if(type==='telegram_stars'){const range=document.getElementById('newPriceFrom');if(range)range.checked=false;document.getElementById('maxPriceContainer')?.classList.add('hidden');}
+}
+
 function addNewProduct() {
     const title = document.getElementById('newTitle').value;
+    const product_type = document.getElementById('newProductType')?.value||'standard';
     const category = document.getElementById('newCategory').value;
     const subcategory = document.getElementById('newSubcategory').value;
     const price = document.getElementById('newPrice').value;
@@ -276,7 +288,7 @@ function addNewProduct() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            title, category, subcategory, price, price_from, max_price,
+            title, product_type, category, subcategory, price, price_from: product_type==='telegram_stars'?false:price_from, max_price,
             seller_id: String(user.id)
         })
     })
@@ -569,7 +581,7 @@ async function loadMyActivity(){
  const box=document.getElementById('my-activity');if(!box)return;
  try{
   const d=await apiFetch('/api/my/activity').then(r=>r.json());if(d.error)throw new Error(d.error);
-  const render=(arr,kind)=>arr.map(x=>'<div class="data-row"><div><b>'+escapeHtml(x.title||('Перевод #'+x.id))+'</b><small>'+escapeHtml(x.status)+' · '+new Date(x.created_at).toLocaleString('ru-RU')+'</small></div><strong>'+rub(x.amount)+'</strong>'+(kind==='purchase'&&x.status!=='refunded'&&['owner','support'].includes(currentRole)?'<button onclick="refundOrder('+x.id+')">Возврат</button>':'')+'</div>').join('');
+  const render=(arr,kind)=>arr.map(x=>{const details=kind==='sale'&&x.buyer_details&&Object.keys(x.buyer_details).length?Object.entries(x.buyer_details).map(([k,v])=>k+': '+v).join(' · '):'';return '<div class="data-row"><div><b>'+escapeHtml(x.title||('Перевод #'+x.id))+'</b><small>'+escapeHtml(x.status)+' · '+new Date(x.created_at).toLocaleString('ru-RU')+(details?' · '+escapeHtml(details):'')+'</small></div><strong>'+rub(x.amount)+'</strong>'+(kind==='purchase'&&x.status!=='refunded'&&['owner','support'].includes(currentRole)?'<button onclick="refundOrder('+x.id+')">Возврат</button>':'')+'</div>';}).join('');
   box.innerHTML='<h4>Покупки</h4>'+(d.purchases.length?d.purchases.map(x=>'<div class="data-row"><div><b>'+escapeHtml(x.title)+'</b><small>'+escapeHtml(x.store_name||'Магазин')+' · '+escapeHtml(x.status)+' · '+new Date(x.created_at).toLocaleString('ru-RU')+'</small></div><strong>'+rub(x.amount)+'</strong>'+(kindRefundAllowed()&&x.status!=='refunded'?'<button onclick="refundOrder('+x.id+')">Возврат</button>':'')+'</div>').join(''):'<p>Покупок пока нет</p>')+'<h4>Продажи</h4>'+(d.sales.length?render(d.sales,'sale'):'<p>Продаж пока нет</p>')+'<h4>Переводы</h4>'+(d.transfers.length?d.transfers.map(x=>'<div class="data-row"><div><b>'+(x.direction==='sent'?'Отправлено':'Получено')+'</b><small>'+escapeHtml(x.status)+' · '+new Date(x.created_at).toLocaleString('ru-RU')+'</small></div><strong>'+rub(x.amount)+'</strong></div>').join(''):'<p>Переводов пока нет</p>');
  }catch(e){box.textContent=e.message;}
 }
@@ -626,16 +638,30 @@ async function decideModeration(request_id,decision){
 }
 function loadHistory(){const box=document.getElementById('history-list');apiFetch('/api/history').then(r=>r.json()).then(rows=>{box.innerHTML=Array.isArray(rows)&&rows.length?rows.map(x=>`<div class="data-row"><div><b>${escapeHtml(x.description)}</b><small>${new Date(x.created_at).toLocaleString('ru-RU')}</small></div><strong>${Number(x.amount)>0?'+':''}${rub(x.amount)}</strong></div>`).join(''):'<div class="no-products">Операций пока нет</div>';}).catch(()=>box.textContent='Не удалось загрузить историю.');}
 
-function buyProduct(productId) {
-    if(!confirm('Подтвердить покупку товара?')) return;
-    apiFetch('/api/buy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telegram_id: String(user.id), product_id: productId })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if(data.error) alert(data.error);
-        else { alert('Успешно оформлено!'); location.reload(); }
-    });
+async function buyProduct(productId) {
+    const product=allProducts.find(p=>Number(p.id)===Number(productId));
+    if(!product){alert('Товар не найден. Обновите каталог.');return;}
+    const type=product.product_type||'standard';let quantity=1,details={};
+    if(type==='telegram_stars'){
+      const raw=prompt('Сколько Telegram Stars нужно купить? Введите от 50 до 1 000.','50');
+      if(raw===null)return;quantity=Number(raw);
+      if(!Number.isInteger(quantity)||quantity<50||quantity>1000){alert('Можно купить от 50 до 1 000 звёзд.');return;}
+      const recipient=prompt('Укажите Telegram username аккаунта, куда прислать звёзды (например, @username):');
+      if(recipient===null)return;details.recipient_username=recipient.trim();
+    }else if(type==='channel_customization'){
+      const owner=prompt('Укажите Telegram username владельца канала, который нужно кастомизировать:');
+      if(owner===null)return;details.owner_username=owner.trim();
+      const link=prompt('Вставьте ссылку на Telegram-канал (https://t.me/...):');
+      if(link===null)return;details.channel_url=link.trim();
+    }else if(type==='subscription'||type==='loyalty_points'){
+      const account=prompt(type==='subscription'?'Укажите аккаунт или данные для оформления подписки:':'Укажите номер телефона или номер карты лояльности для начисления баллов:');
+      if(account===null)return;details.account=account.trim();
+    }
+    const total=Math.round(Number(product.price)*quantity*100)/100;
+    if(!confirm(`Подтвердить покупку «${product.title}»?\n${type==='telegram_stars'?quantity+' ⭐ × '+Number(product.price).toFixed(2)+' ₽ = ':''}${total.toFixed(2)} ₽`))return;
+    try{
+      const res=await apiFetch('/api/buy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product_id:productId,quantity,details})});
+      const data=await res.json();if(!res.ok||data.error)throw new Error(data.error||'Не удалось оформить заказ.');
+      alert('Оплата прошла успешно! Номер заказа #'+data.order_id+'. Данные для выполнения заказа отправлены продавцу.');location.reload();
+    }catch(e){alert(e.message||'Ошибка соединения с сервером.');}
 }

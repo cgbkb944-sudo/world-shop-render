@@ -122,6 +122,10 @@ async function migrateDatabase() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     ALTER TABLE users ADD COLUMN IF NOT EXISTS seller_balance NUMERIC(18,2) NOT NULL DEFAULT 0 CHECK (seller_balance >= 0);
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS product_type TEXT NOT NULL DEFAULT 'standard';
+    ALTER TABLE products DROP CONSTRAINT IF EXISTS products_product_type_check;
+    ALTER TABLE products ADD CONSTRAINT products_product_type_check CHECK (product_type IN ('standard','channel_customization','telegram_stars','subscription','loyalty_points'));
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS buyer_details JSONB NOT NULL DEFAULT '{}'::jsonb;
     CREATE TABLE IF NOT EXISTS shop_wallet (
       id SMALLINT PRIMARY KEY CHECK (id=1),
       balance NUMERIC(18,2) NOT NULL DEFAULT 0 CHECK (balance >= 0),
@@ -278,7 +282,7 @@ app.get('/health/payments',(req,res)=>{
   });
 });
 app.get('/api/products',async(req,res)=>{
-  try { const r=await pool.query("SELECT p.id,p.title,p.description,p.price,p.price_from,p.max_price,p.category,p.subcategory,COALESCE(u.display_name,u.username,'Продавец') AS seller_name FROM products p JOIN users u ON u.telegram_id=p.seller_id WHERE p.status='active' ORDER BY p.created_at DESC LIMIT 200"); res.json(r.rows); }
+  try { const r=await pool.query("SELECT p.id,p.title,p.description,p.price,p.price_from,p.max_price,p.category,p.subcategory,p.product_type,COALESCE(u.display_name,u.username,'Продавец') AS seller_name FROM products p JOIN users u ON u.telegram_id=p.seller_id WHERE p.status='active' ORDER BY p.created_at DESC LIMIT 200"); res.json(r.rows); }
   catch(e){console.error(e.message);res.status(503).json({error:'Не удалось загрузить товары.'});}
 });
 app.use('/api',auth);
@@ -302,7 +306,7 @@ app.get('/api/my/activity',async(req,res)=>{
   try{
     const [purchases,sales,transfers]=await Promise.all([
       pool.query(`SELECT o.id,o.amount,o.status,o.created_at,p.title,COALESCE(s.display_name,s.username,'Продавец') AS store_name FROM orders o JOIN products p ON p.id=o.product_id JOIN users s ON s.telegram_id=o.seller_id WHERE o.buyer_id=$1 ORDER BY o.created_at DESC LIMIT 100`,[req.user.telegram_id]),
-      pool.query('SELECT o.id,o.amount,o.status,o.created_at,p.title FROM orders o JOIN products p ON p.id=o.product_id WHERE o.seller_id=$1 ORDER BY o.created_at DESC LIMIT 100',[req.user.telegram_id]),
+      pool.query('SELECT o.id,o.amount,o.status,o.created_at,o.buyer_details,p.title,p.product_type FROM orders o JOIN products p ON p.id=o.product_id WHERE o.seller_id=$1 ORDER BY o.created_at DESC LIMIT 100',[req.user.telegram_id]),
       pool.query('SELECT id,amount,status,created_at,recipient_id,sender_id,CASE WHEN sender_id=$1 THEN \'sent\' ELSE \'received\' END direction FROM balance_transfer_codes WHERE sender_id=$1 OR recipient_id=$1 ORDER BY created_at DESC LIMIT 100',[req.user.telegram_id])
     ]);
     res.json({purchases:purchases.rows,sales:sales.rows,transfers:transfers.rows});
@@ -378,13 +382,16 @@ app.get('/api/transfers/history',async(req,res)=>{
 });
 
 app.post('/api/products/add',roles('seller','admin','owner'),async(req,res)=>{
-  const b=req.body||{}, price=money(b.price), max= b.price_from ? money(b.max_price):null;
+  const b=req.body||{}, price=money(b.price), max=b.price_from?money(b.max_price):null;
+  const productType=String(b.product_type||'standard');
+  const allowedTypes=['standard','channel_customization','telegram_stars','subscription','loyalty_points'];
   if(typeof b.title!=='string'||!b.title.trim()||b.title.length>160||typeof b.category!=='string'||!b.category||b.category.length>80||
      typeof (b.subcategory||'')!=='string'||(b.subcategory||'').length>100||typeof (b.description||'')!=='string'||(b.description||'').length>5000||
-     !price||(b.price_from&&(!max||max<price))) return res.status(400).json({error:'Проверьте название, категорию и цену товара.'});
+     !price||!allowedTypes.includes(productType)||(b.price_from&&(!max||max<price))||
+     (productType==='telegram_stars'&&b.price_from)) return res.status(400).json({error:'Проверьте название, тип услуги, категорию и цену. Для Stars указывается фиксированная цена за одну звезду.'});
   try {
-    const r=await pool.query("INSERT INTO products (title,description,price,price_from,max_price,category,subcategory,seller_id,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending') RETURNING id",
-      [b.title.trim(),b.description||'',price,Boolean(b.price_from),max,b.category,b.subcategory||'',req.user.telegram_id]);
+    const r=await pool.query("INSERT INTO products (title,description,price,price_from,max_price,category,subcategory,seller_id,status,product_type) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending',$9) RETURNING id",
+      [b.title.trim(),b.description||'',price,Boolean(b.price_from),max,b.category,b.subcategory||'',req.user.telegram_id,productType]);
     const m=await pool.query("INSERT INTO moderation_requests(kind,requested_by,product_id,reason) VALUES ('product',$1,$2,'Проверка нового товара') RETURNING id",[req.user.telegram_id,r.rows[0].id]);
     await notifyModerators('Новый товар ожидает проверки. Заявка #'+m.rows[0].id+', товар #'+r.rows[0].id+'. Откройте панель управления.');
     res.json({success:true,pending:true,product_id:r.rows[0].id,request_id:m.rows[0].id});
@@ -527,20 +534,48 @@ app.post('/api/buy',async(req,res)=>{
   const c=await pool.connect();
   try{
     await c.query('BEGIN');
-    const p=await c.query("SELECT id,seller_id,price FROM products WHERE id=$1 AND status='active' FOR UPDATE",[id]);
+    const p=await c.query("SELECT id,seller_id,price,product_type,title FROM products WHERE id=$1 AND status='active' FOR UPDATE",[id]);
     if(!p.rowCount){await c.query('ROLLBACK');return res.status(404).json({error:'Товар не найден.'});}
     const product=p.rows[0];if(String(product.seller_id)===String(req.user.telegram_id)){await c.query('ROLLBACK');return res.status(400).json({error:'Нельзя купить собственный товар.'});}
-    const amount=Number(product.price), fee=Math.round(amount*3)/100, sellerAmount=Math.round((amount-fee)*100)/100;
+    const type=product.product_type||'standard';
+    const quantity=type==='telegram_stars'?Number(req.body?.quantity):1;
+    if(type==='telegram_stars'&&(!Number.isInteger(quantity)||quantity<50||quantity>1000)){await c.query('ROLLBACK');return res.status(400).json({error:'Количество Telegram Stars должно быть от 50 до 1 000.'});}
+    const details=req.body?.details&&typeof req.body.details==='object'&&!Array.isArray(req.body.details)?req.body.details:{};
+    const clean={};
+    if(type==='channel_customization'){
+      const owner=String(details.owner_username||'').trim().replace(/^@/,'');
+      const channel=String(details.channel_url||'').trim();
+      if(!/^[A-Za-z0-9_]{5,32}$/.test(owner)||!/^https:\/\/(t\.me|telegram\.me)\//i.test(channel)||channel.length>300){
+        await c.query('ROLLBACK');return res.status(400).json({error:'Укажите корректный Telegram username владельца и ссылку на канал.'});
+      }
+      clean.owner_username='@'+owner;clean.channel_url=channel;
+    } else if(type==='telegram_stars'){
+      const recipient=String(details.recipient_username||'').trim().replace(/^@/,'');
+      if(!/^[A-Za-z0-9_]{5,32}$/.test(recipient)){await c.query('ROLLBACK');return res.status(400).json({error:'Укажите Telegram username получателя звёзд.'});}
+      clean.recipient_username='@'+recipient;clean.quantity=quantity;
+    } else if(type==='subscription'||type==='loyalty_points'){
+      const account=String(details.account||'').trim().slice(0,120);
+      if(account.length<3){await c.query('ROLLBACK');return res.status(400).json({error:'Укажите аккаунт, номер телефона или идентификатор для зачисления.'});}
+      clean.account=account;
+    }
+    const amount=Math.round(Number(product.price)*quantity*100)/100;
+    if(!Number.isFinite(amount)||amount<=0||amount>1e7){await c.query('ROLLBACK');return res.status(400).json({error:'Итоговая стоимость заказа превышает допустимое значение.'});}
+    const fee=Math.round(amount*3)/100,sellerAmount=Math.round((amount-fee)*100)/100;
     const debit=await c.query('UPDATE users SET balance=balance-$1,updated_at=NOW() WHERE telegram_id=$2 AND balance >= $1 RETURNING telegram_id',[amount,req.user.telegram_id]);
     if(!debit.rowCount){await c.query('ROLLBACK');return res.status(400).json({error:'Недостаточно средств на балансе.'});}
     await c.query('UPDATE users SET seller_balance=seller_balance+$1,updated_at=NOW() WHERE telegram_id=$2',[sellerAmount,product.seller_id]);
     await c.query('UPDATE shop_wallet SET balance=balance+$1,updated_at=NOW() WHERE id=1',[fee]);
-    const order=await c.query("INSERT INTO orders (buyer_id,seller_id,product_id,amount,commission,status) VALUES ($1,$2,$3,$4,$5,'paid') RETURNING id",[req.user.telegram_id,product.seller_id,id,amount,fee]);
+    const order=await c.query("INSERT INTO orders (buyer_id,seller_id,product_id,amount,commission,status,buyer_details) VALUES ($1,$2,$3,$4,$5,'paid',$6) RETURNING id",
+      [req.user.telegram_id,product.seller_id,id,amount,fee,clean]);
     await c.query('INSERT INTO shop_ledger(amount,kind,reference,description) VALUES($1,\'commission\',$2,$3)',[fee,'order_'+order.rows[0].id+'_fee','Комиссия 3% по заказу #'+order.rows[0].id]);
     const ref='order_'+order.rows[0].id;
     await c.query("INSERT INTO transactions (telegram_id,amount,type,reference,description) VALUES ($1,$2,'purchase',$3,$4),($5,$6,'sale',$7,$8)",
       [req.user.telegram_id,-amount,ref,'Покупка товара #'+order.rows[0].id,product.seller_id,sellerAmount,ref+'_seller','Продажа товара #'+order.rows[0].id]);
-    await c.query('COMMIT');res.json({success:true,message:'Покупка успешно совершена!',order_id:order.rows[0].id});
+    await c.query('COMMIT');
+    const info=Object.entries(clean).map(([k,v])=>k+': '+v).join('\n');
+    const sellerMessage='🛒 Новый оплаченный заказ #'+order.rows[0].id+'\nТовар: '+product.title+'\nСумма: '+amount.toFixed(2)+' ₽\nПокупатель: '+(req.user.username?'@'+req.user.username:'без username')+(info?'\nДанные для выполнения:\n'+info:'');
+    telegramRequest('sendMessage',{chat_id:String(product.seller_id),text:sellerMessage.slice(0,3500)}).catch(e=>console.error('Seller order notification:',e.message));
+    res.json({success:true,message:'Покупка успешно совершена!',order_id:order.rows[0].id,total:amount,quantity});
   }catch(e){await c.query('ROLLBACK');console.error('Purchase:',e.message);res.status(500).json({error:'Не удалось оформить покупку.'});}
   finally{c.release();}
 });
