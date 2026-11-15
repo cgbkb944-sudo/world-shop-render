@@ -889,7 +889,7 @@ async function handleTelegramBotMessage(message) {
   if(!chatId||!from?.id||message.chat?.type!=='private')return;
   const text=String(message.text||message.caption||'').trim(),command=(text.split(/\s+/)[0]||'').split('@')[0].toLowerCase();
   const id=String(from.id),isOwner=id===OWNER_TELEGRAM_ID;
-  if(isOwner&&command==='/setwelcome'&&message.sticker?.file_id){
+  if(isOwner&&message.sticker?.file_id){
     await setBotSetting('welcome_sticker_file_id',message.sticker.file_id);
     await sendBotText(chatId,'✅ Приветственный стикер сохранён. Теперь он будет показываться при /start.');return;
   }
@@ -928,6 +928,9 @@ async function registerTelegramWebhook() {
   if(!appOrigin||!process.env.TELEGRAM_WEBHOOK_SECRET){console.warn('Telegram webhook not registered: APP_ORIGIN or TELEGRAM_WEBHOOK_SECRET is missing');return;}
   const url=new URL('/webhooks/telegram',appOrigin).toString();
   await telegramRequest('setWebhook',{url,secret_token:process.env.TELEGRAM_WEBHOOK_SECRET,allowed_updates:['message','pre_checkout_query','callback_query'],drop_pending_updates:false});
+  await telegramRequest('setMyName',{name:'WORLD TG SHOP',language_code:'ru'});
+  await telegramRequest('setMyDescription',{description:'WORLD TG SHOP — магазин цифровых товаров. Покупки, баланс, заказы и поддержка в одном Telegram-приложении.',language_code:'ru'});
+  await telegramRequest('setMyShortDescription',{short_description:'🛍 Магазин цифровых товаров • Покупки • Баланс • Заказы',language_code:'ru'});
   await telegramRequest('setMyCommands',{commands:[
     {command:'start',description:'Главное меню WORLD TG SHOP'},
     {command:'shop',description:'Открыть магазин'},
