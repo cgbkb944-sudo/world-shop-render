@@ -368,7 +368,10 @@ function normalizeCatalogCategory(value) {
         'геншин': 'genshin impact',
         'вконтакте': 'vk',
         'в контакте': 'vk',
-        'vpn и прокси': 'vpn'
+        'vpn и прокси': 'vpn',
+        'tik tok': 'tiktok',
+        'тик ток': 'tiktok',
+        'тикток': 'tiktok'
     };
     return aliases[normalized] || normalized;
 }
