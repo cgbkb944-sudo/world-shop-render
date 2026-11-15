@@ -29,6 +29,7 @@ let selectedPaymentMethod = 'cryptobot';
 let paymentReadiness = {};
 let activeDirectPaymentId = null;
 let activeDirectPaymentUri = null;
+let activeDirectWalletLinks = null;
 let directPaymentPoll = null;
 let currentRole='user';
 function rub(value){return Number(value||0).toLocaleString('ru-RU',{maximumFractionDigits:2})+' ₽';}
@@ -419,6 +420,7 @@ function makePayment() {
             if(!data.transferUri || !data.comment) { alert('Сервер не вернул реквизиты с комментарием. Платёж не запущен.'); return; }
             activeDirectPaymentId = data.paymentId;
             activeDirectPaymentUri = data.transferUri;
+            activeDirectWalletLinks = data.walletLinks || {};
             document.getElementById('transferAssetTitle').innerText = data.asset === 'TON' ? 'TON' : 'USDT (TON)';
             document.getElementById('transferAmountText').innerText = data.cryptoAmount + ' ' + data.asset;
             document.getElementById('walletAddressText').innerText = data.walletAddress;
@@ -427,13 +429,9 @@ function makePayment() {
             document.getElementById('transferExpiryText').innerText = new Date(data.expiresAt).toLocaleTimeString('ru-RU');
             document.getElementById('transferStatusText').innerText = 'Ожидаем перевод';
             const qrImage = document.getElementById('transferQrImg');
-            if(window.QRCode && typeof window.QRCode.toDataURL === 'function') {
-                window.QRCode.toDataURL(data.transferUri,{width:220,margin:1,errorCorrectionLevel:'M'})
-                    .then(url => { qrImage.src = url; })
-                    .catch(() => { qrImage.alt = 'Не удалось сформировать QR-код'; });
-            } else {
-                qrImage.alt = 'QR-код временно недоступен';
-            }
+            qrImage.src = data.qrCodeDataUrl || '';
+            qrImage.alt = data.qrCodeDataUrl ? 'QR-код оплаты через TON-кошелёк' : 'QR-код временно недоступен';
+            qrImage.style.display = data.qrCodeDataUrl ? 'block' : 'none';
             document.getElementById('transferModal').classList.remove('hidden');
             document.getElementById('transferModal').setAttribute('aria-hidden','false');
             if(directPaymentPoll) clearInterval(directPaymentPoll);
@@ -479,12 +477,27 @@ function copyWalletComment() {
     else alert(value);
 }
 
-function openWalletApp() {
-    if(activeDirectPaymentUri) window.location.href = activeDirectPaymentUri;
+function openWalletApp(wallet='tonkeeper') {
+    const link=activeDirectWalletLinks?.[wallet] || activeDirectWalletLinks?.tonkeeper || activeDirectPaymentUri;
+    if(!link)return;
+    if(tg?.openLink && /^https:\/\//i.test(link)) {
+        tg.openLink(link);
+        return;
+    }
+    window.location.assign(link);
+}
+
+function copyWalletPaymentLink() {
+    const value=activeDirectWalletLinks?.tonkeeper || activeDirectPaymentUri || '';
+    if(!value)return;
+    if(navigator.clipboard?.writeText) navigator.clipboard.writeText(value).then(()=>alert('Ссылка на оплату скопирована')).catch(()=>alert(value));
+    else alert(value);
 }
 
 function closeTransferModal() {
     if(directPaymentPoll) clearInterval(directPaymentPoll);
+    activeDirectWalletLinks=null;
+    activeDirectPaymentUri=null;
     directPaymentPoll=null;
     document.getElementById('transferModal').classList.add('hidden');
     document.getElementById('transferModal').setAttribute('aria-hidden','true');
