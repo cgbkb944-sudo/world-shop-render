@@ -288,8 +288,13 @@ function renderCatalogCategories() {
     const menu = document.getElementById('catalog-menu');
     if (!menu) return;
     const counts = new Map();
+    const canonicalCategory = value => {
+        const raw = String(value || 'Без категории').trim() || 'Без категории';
+        const known = Object.keys(subsByCat || {}).find(item => normalizeCatalogCategory(item) === normalizeCatalogCategory(raw));
+        return known || raw;
+    };
     allProducts.forEach(product => {
-        const category = String(product.category || 'Без категории').trim() || 'Без категории';
+        const category = canonicalCategory(product.category);
         const subcategory = String(product.subcategory || 'Общее').trim() || 'Общее';
         counts.set(category, (counts.get(category) || 0) + 1);
         const key = category + '::' + subcategory;
@@ -297,7 +302,7 @@ function renderCatalogCategories() {
     });
 
     const knownCategories = Object.keys(subsByCat || {});
-    const extraCategories = Array.from(new Set(allProducts.map(p => String(p.category || 'Без категории').trim() || 'Без категории')))
+    const extraCategories = Array.from(new Set(allProducts.map(p => canonicalCategory(p.category))))
         .filter(category => !knownCategories.includes(category));
     const categories = ['Все товары', ...knownCategories, ...extraCategories];
     const categoryButtons = categories.map(category => {
@@ -357,8 +362,14 @@ function normalizeCatalogValue(value) {
 }
 
 function normalizeCatalogCategory(value) {
-    const normalized = normalizeCatalogValue(value);
-    const aliases = { 'genshin': 'genshin impact', 'геншин': 'genshin impact' };
+    const normalized = normalizeCatalogValue(value).replace(/ё/g, 'е');
+    const aliases = {
+        'genshin': 'genshin impact',
+        'геншин': 'genshin impact',
+        'вконтакте': 'vk',
+        'в контакте': 'vk',
+        'vpn и прокси': 'vpn'
+    };
     return aliases[normalized] || normalized;
 }
 
@@ -370,7 +381,9 @@ function filterProducts() {
         const category = normalizeCatalogCategory(p.category || 'Без категории');
         const subcategory = normalizeCatalogValue(p.subcategory || 'Общее');
         const matchesCategory = selectedCatalogCategory === 'Все товары' || category === selectedCategory;
-        const matchesSubcategory = selectedCatalogSubcategory === 'Все подкатегории' || subcategory === selectedSubcategory;
+        const matchesSubcategory = selectedCatalogCategory !== 'Все товары' &&
+            (selectedCatalogSubcategory === 'Все подкатегории' || subcategory === selectedSubcategory) ||
+            selectedCatalogCategory === 'Все товары' && selectedCatalogSubcategory === 'Все подкатегории';
         const searchable = [p.title, p.category, p.subcategory, p.seller_name].map(normalizeCatalogValue).join(' ');
         return matchesCategory && matchesSubcategory && searchable.includes(query);
     });
