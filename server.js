@@ -306,7 +306,7 @@ app.get('/api/my/activity',async(req,res)=>{
   try{
     const [purchases,sales,transfers]=await Promise.all([
       pool.query(`SELECT o.id,o.amount,o.status,o.created_at,p.title,COALESCE(s.display_name,s.username,'Продавец') AS store_name FROM orders o JOIN products p ON p.id=o.product_id JOIN users s ON s.telegram_id=o.seller_id WHERE o.buyer_id=$1 ORDER BY o.created_at DESC LIMIT 100`,[req.user.telegram_id]),
-      pool.query('SELECT o.id,o.amount,o.status,o.created_at,p.title FROM orders o JOIN products p ON p.id=o.product_id WHERE o.seller_id=$1 ORDER BY o.created_at DESC LIMIT 100',[req.user.telegram_id]),
+      pool.query('SELECT o.id,o.amount,o.status,o.created_at,o.buyer_details,p.title,p.product_type FROM orders o JOIN products p ON p.id=o.product_id WHERE o.seller_id=$1 ORDER BY o.created_at DESC LIMIT 100',[req.user.telegram_id]),
       pool.query('SELECT id,amount,status,created_at,recipient_id,sender_id,CASE WHEN sender_id=$1 THEN \'sent\' ELSE \'received\' END direction FROM balance_transfer_codes WHERE sender_id=$1 OR recipient_id=$1 ORDER BY created_at DESC LIMIT 100',[req.user.telegram_id])
     ]);
     res.json({purchases:purchases.rows,sales:sales.rows,transfers:transfers.rows});
