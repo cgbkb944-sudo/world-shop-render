@@ -177,6 +177,10 @@ async function migrateDatabase() {
     setting_value TEXT NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS seller_discount_broadcasts (
+    seller_id BIGINT PRIMARY KEY REFERENCES users(telegram_id),
+    last_sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
 }
 
 app.disable('x-powered-by');
@@ -779,9 +783,17 @@ async function notifyModerators(text) {
   } catch(e) { console.error('Moderator notification failed:',e.message); }
 }
 async function notifySalesGroup(text) {
-  if(!SALES_NOTIFICATION_GROUP_ID) return;
-  await telegramRequest('sendMessage',{chat_id:SALES_NOTIFICATION_GROUP_ID,text:String(text).slice(0,3900)});
+  const target=await getBotSetting('sales_report_group_id').catch(()=>null) || SALES_NOTIFICATION_GROUP_ID;
+  if(!target) return;
+  await telegramRequest('sendMessage',{chat_id:target,text:String(text).slice(0,3900)});
 }
+async function broadcastToUsers(message,excludeId=null){
+  const q=await pool.query("SELECT telegram_id FROM users WHERE is_banned=FALSE AND ($1::bigint IS NULL OR telegram_id<>$1)",[excludeId]);
+  let sent=0,failed=0;
+  for(const u of q.rows){try{await telegramRequest('sendMessage',{chat_id:String(u.telegram_id),text:String(message).slice(0,3900)});sent++;}catch(e){failed++;}}
+  return {total:q.rowCount,sent,failed};
+}
+async function userRole(id){const q=await pool.query('SELECT role FROM users WHERE telegram_id=$1',[String(id)]);return q.rows[0]?.role||'user';}
 function salesReportClock(now=new Date()) {
   const parts=new Intl.DateTimeFormat('en-CA',{timeZone:SALES_REPORT_TIMEZONE,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(now);
   return Object.fromEntries(parts.filter(p=>p.type!=='literal').map(p=>[p.type,p.value]));
@@ -973,8 +985,25 @@ async function botScreen(action,id) {
 }
 async function handleTelegramBotCallback(query) {
   const chatId=query.message?.chat?.id,messageId=query.message?.message_id,userId=query.from?.id;
-  if(!chatId||!userId||query.message?.chat?.type!=='private'){await telegramRequest('answerCallbackQuery',{callback_query_id:query.id});return;}
+  if(!chatId||!userId){await telegramRequest('answerCallbackQuery',{callback_query_id:query.id});return;}
   const action=String(query.data||'').replace(/^bot:/,'');
+  if(query.message?.chat?.type==='private' && ['broadcast_confirm','broadcast_cancel'].includes(action)){
+    await telegramRequest('answerCallbackQuery',{callback_query_id:query.id});
+    const role=String(userId)===OWNER_TELEGRAM_ID?'owner':await userRole(userId);
+    const allowed=action==='broadcast_confirm'?['owner','admin','support'].includes(role):['owner','admin','support','seller'].includes(role);
+    if(!allowed){await sendBotText(chatId,'Недостаточно прав.');return;}
+    const key='broadcast_draft:'+String(userId),draft=await getBotSetting(key);
+    if(!draft){await sendBotText(chatId,'Черновик рассылки не найден. Начните заново командой /broadcast или /discount.');return;}
+    if(action==='broadcast_cancel'){await pool.query('DELETE FROM bot_settings WHERE setting_key=$1',[key]);await sendBotText(chatId,'Рассылка отменена.');return;}
+    if(role==='seller'){
+      const claim=await pool.query(`INSERT INTO seller_discount_broadcasts(seller_id,last_sent_at) VALUES($1,NOW()) ON CONFLICT(seller_id) DO UPDATE SET last_sent_at=NOW() WHERE seller_discount_broadcasts.last_sent_at<=NOW()-INTERVAL '24 hours' RETURNING seller_id`,[String(userId)]);
+      if(!claim.rowCount){await sendBotText(chatId,'⏳ Рассылку скидок можно отправлять только один раз в 24 часа.');return;}
+    }
+    await pool.query('DELETE FROM bot_settings WHERE setting_key=$1',[key]);
+    const result=await broadcastToUsers(draft,String(userId));
+    await sendBotText(chatId,'✅ Рассылка завершена.\nДоставлено: '+result.sent+' из '+result.total+'\nНе доставлено: '+result.failed+(role==='seller'?'\nСледующая рассылка будет доступна через 24 часа.':''));return;
+  }
+  if(query.message?.chat?.type!=='private'){await telegramRequest('answerCallbackQuery',{callback_query_id:query.id});return;}
   if(action==='check_subscription'){
     await telegramRequest('answerCallbackQuery',{callback_query_id:query.id});
     if(!subscriptionGateEnabled()){await sendBotText(chatId,'Проверка подписки пока не настроена владельцем магазина.');return;}
@@ -1001,9 +1030,30 @@ async function handleTelegramBotCallback(query) {
 }
 async function handleTelegramBotMessage(message) {
   const chatId=message.chat?.id,from=message.from;
-  if(!chatId||!from?.id||message.chat?.type!=='private')return;
+  if(!chatId||!from?.id)return;
   const text=String(message.text||message.caption||'').trim(),command=(text.split(/\s+/)[0]||'').split('@')[0].toLowerCase();
   const id=String(from.id),isOwner=id===OWNER_TELEGRAM_ID;
+  if(message.chat?.type!=='private'){
+    if(isOwner&&command==='/setreportgroup'){
+      await setBotSetting('sales_report_group_id',String(chatId));
+      await sendBotText(chatId,'✅ Эта группа назначена для ежедневных отчётов о продажах.');
+    }
+    return;
+  }
+  const known=await pool.query('SELECT role FROM users WHERE telegram_id=$1',[id]);
+  const currentRole=isOwner?'owner':(known.rows[0]?.role||'user');
+  if(command==='/broadcast'||command==='/discount'){
+    const canGeneral=['owner','admin','support'].includes(currentRole),canSeller=currentRole==='seller'&&command==='/discount';
+    if(!canGeneral&&!canSeller){await sendBotText(chatId,'Эта команда недоступна для вашей роли.');return;}
+    await setBotSetting('broadcast_mode:'+id,canSeller?'seller':'staff');
+    await sendBotText(chatId,canSeller?'✍️ Отправьте одним сообщением текст предложения о скидке. После подтверждения оно будет разослано покупателям. Лимит — раз в 24 часа.':'✍️ Отправьте одним сообщением текст рассылки. Перед отправкой вы сможете подтвердить или отменить её.');return;
+  }
+  const mode=await getBotSetting('broadcast_mode:'+id);
+  if(mode&&text&&!command.startsWith('/')){
+    await pool.query('DELETE FROM bot_settings WHERE setting_key=$1',['broadcast_mode:'+id]);
+    await setBotSetting('broadcast_draft:'+id,text.slice(0,3900));
+    await sendBotText(chatId,'Предпросмотр рассылки:\n\n'+text.slice(0,3000)+'\n\nОтправить всем пользователям?',{inline_keyboard:[[{text:'✅ Отправить',callback_data:'bot:broadcast_confirm'},{text:'✖️ Отменить',callback_data:'bot:broadcast_cancel'}]]});return;
+  }
   if(isOwner&&message.sticker?.file_id){
     await setBotSetting('welcome_sticker_file_id',message.sticker.file_id);
     await sendBotText(chatId,'✅ Приветственный стикер сохранён. Теперь он будет показываться при /start.');return;
