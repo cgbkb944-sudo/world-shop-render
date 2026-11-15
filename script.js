@@ -267,6 +267,7 @@ function updateProductTypeHelp() {
     if(help) help.textContent=type==='telegram_stars'?'Укажите цену за одну звезду в рублях. Покупатель выберет от 50 до 1 000 звёзд.':type==='channel_customization'?'После покупки покупатель укажет username владельца и ссылку на канал.':type==='subscription'?'Покупатель укажет аккаунт или данные для оформления подписки.':type==='loyalty_points'?'Покупатель укажет номер телефона или идентификатор карты лояльности.':'Обычный товар или услуга.';
     if(priceLabel) priceLabel.textContent=type==='telegram_stars'?'Цена за одну звезду (₽):':'Цена (₽):';
     document.getElementById('newPriceFrom')?.closest('div')?.classList.toggle('hidden',type==='telegram_stars');
+    if(type==='telegram_stars'){const range=document.getElementById('newPriceFrom');if(range)range.checked=false;document.getElementById('maxPriceContainer')?.classList.add('hidden');}
 }
 
 function addNewProduct() {
@@ -580,7 +581,7 @@ async function loadMyActivity(){
  const box=document.getElementById('my-activity');if(!box)return;
  try{
   const d=await apiFetch('/api/my/activity').then(r=>r.json());if(d.error)throw new Error(d.error);
-  const render=(arr,kind)=>arr.map(x=>'<div class="data-row"><div><b>'+escapeHtml(x.title||('Перевод #'+x.id))+'</b><small>'+escapeHtml(x.status)+' · '+new Date(x.created_at).toLocaleString('ru-RU')+'</small></div><strong>'+rub(x.amount)+'</strong>'+(kind==='purchase'&&x.status!=='refunded'&&['owner','support'].includes(currentRole)?'<button onclick="refundOrder('+x.id+')">Возврат</button>':'')+'</div>').join('');
+  const render=(arr,kind)=>arr.map(x=>{const details=kind==='sale'&&x.buyer_details&&Object.keys(x.buyer_details).length?Object.entries(x.buyer_details).map(([k,v])=>k+': '+v).join(' · '):'';return '<div class="data-row"><div><b>'+escapeHtml(x.title||('Перевод #'+x.id))+'</b><small>'+escapeHtml(x.status)+' · '+new Date(x.created_at).toLocaleString('ru-RU')+(details?' · '+escapeHtml(details):'')+'</small></div><strong>'+rub(x.amount)+'</strong>'+(kind==='purchase'&&x.status!=='refunded'&&['owner','support'].includes(currentRole)?'<button onclick="refundOrder('+x.id+')">Возврат</button>':'')+'</div>';}).join('');
   box.innerHTML='<h4>Покупки</h4>'+(d.purchases.length?d.purchases.map(x=>'<div class="data-row"><div><b>'+escapeHtml(x.title)+'</b><small>'+escapeHtml(x.store_name||'Магазин')+' · '+escapeHtml(x.status)+' · '+new Date(x.created_at).toLocaleString('ru-RU')+'</small></div><strong>'+rub(x.amount)+'</strong>'+(kindRefundAllowed()&&x.status!=='refunded'?'<button onclick="refundOrder('+x.id+')">Возврат</button>':'')+'</div>').join(''):'<p>Покупок пока нет</p>')+'<h4>Продажи</h4>'+(d.sales.length?render(d.sales,'sale'):'<p>Продаж пока нет</p>')+'<h4>Переводы</h4>'+(d.transfers.length?d.transfers.map(x=>'<div class="data-row"><div><b>'+(x.direction==='sent'?'Отправлено':'Получено')+'</b><small>'+escapeHtml(x.status)+' · '+new Date(x.created_at).toLocaleString('ru-RU')+'</small></div><strong>'+rub(x.amount)+'</strong></div>').join(''):'<p>Переводов пока нет</p>');
  }catch(e){box.textContent=e.message;}
 }
