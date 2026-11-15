@@ -287,7 +287,7 @@ app.get('/health/payments',async(req,res)=>{
   const missing={
     cryptobot:['CRYPTO_PAY_API_TOKEN'].filter(k=>!has(k)),
     owner_transfer:ownerTransfer?[]:['OWNER_TELEGRAM_USERNAME (или username владельца в профиле Telegram)'],
-    direct_transfer:[...(has('CRYPTO_PAY_API_TOKEN')?[]:['CRYPTO_PAY_API_TOKEN']),...((tonAddress&&normalizeTonAddress(tonAddress))?[]:['TON_WALLET_ADDRESS'])],
+    direct_transfer:[...(has('CRYPTO_PAY_API_TOKEN')?[]:['CRYPTO_PAY_API_TOKEN']),...((tonAddress&&normalizeTonAddress(tonAddress))?[]:['TON_WALLET_ADDRESS']),...(!has('TONCENTER_API_KEY')?['TONCENTER_API_KEY']:[])],
     telegram_stars:[...(!has('BOT_TOKEN')?['BOT_TOKEN']:[]),...(!has('TELEGRAM_WEBHOOK_SECRET')?['TELEGRAM_WEBHOOK_SECRET']:[]),...(!appOrigin?['APP_ORIGIN']:[])]
   };
   res.json({
@@ -1087,8 +1087,11 @@ async function paymentStatus(req,res) {
   } catch(e) { console.error('Payment status:',e.message); res.status(503).json({error:'Не удалось проверить статус платежа.'}); }
 }
 let tonPollBusy=false;
+let tonPollBackoffUntil=0;
+let tonPollFailures=0;
 async function pollTonPayments() {
-  if(tonPollBusy||!tonAddress||!process.env.CRYPTO_PAY_API_TOKEN)return;
+  if(tonPollBusy||!tonAddress||!process.env.CRYPTO_PAY_API_TOKEN||!process.env.TONCENTER_API_KEY)return;
+  if(Date.now()<tonPollBackoffUntil)return;
   tonPollBusy=true;
   try {
     await pool.query("UPDATE payments SET status='expired' WHERE provider='ton_usdt' AND status='pending' AND expires_at<NOW()-INTERVAL '5 minutes'");
@@ -1130,7 +1133,13 @@ async function pollTonPayments() {
         if(match)await finalizePayment(p.id,'ton_usdt',match.hash);
       }
     }
-  }catch(e){console.error('TON monitor:',e.message);}
+  }catch(e){
+    if(/429|rate.?limit/i.test(String(e.message||''))){
+      tonPollFailures=Math.min(tonPollFailures+1,5);
+      tonPollBackoffUntil=Date.now()+Math.min(300000,15000*(2**(tonPollFailures-1)));
+      console.warn('TON monitor rate limited; retry delayed by '+Math.round((tonPollBackoffUntil-Date.now())/1000)+' seconds');
+    }else console.error('TON monitor:',e.message);
+  }
   finally{tonPollBusy=false;}
 }
 app.post('/api/payment/manual-transfer',async(req,res)=>{
@@ -1344,7 +1353,7 @@ app.post('/api/owner/role',roles('owner'),async(req,res)=>{
 });
 
 app.use((err,req,res,next)=>{console.error('Request error:',err.message);res.status(400).json({error:'Некорректный запрос.'});});
-const tonMonitor=setInterval(()=>{pollTonPayments().catch(e=>console.error('TON poll failed:',e.message));},5000);
+const tonMonitor=setInterval(()=>{pollTonPayments().catch(e=>console.error('TON poll failed:',e.message));},15000);
 const transferExpiryMonitor=setInterval(()=>{expireTransferCodes().catch(e=>console.error('Transfer expiry failed:',e.message));},60000);
 setTimeout(()=>pollTonPayments().catch(e=>console.error('TON poll failed:',e.message)),1500).unref();
 let server;
