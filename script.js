@@ -165,6 +165,7 @@ apiFetch('/api/user', {
         document.getElementById('seller-product-card').classList.remove('hidden');
     }
 
+    document.getElementById('manage-products-card')?.classList.toggle('hidden',!['owner','support'].includes(data.role));
     loadProducts();
     loadPaymentReadiness();
     resumePendingPayment();
