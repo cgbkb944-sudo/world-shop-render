@@ -243,6 +243,19 @@ function loadProducts() {
 }
 
 let selectedCatalogCategory = 'Все товары';
+let selectedCatalogSubcategory = 'Все подкатегории';
+
+const catalogCategoryLabels = {
+    VK: 'ВКонтакте',
+    VPN: 'VPN и прокси',
+    Подписки: 'Подписки и премиум',
+    'Баллы магазинов': 'Баллы магазинов и программы лояльности',
+    Аккаунты: 'Аккаунты и профили',
+    Пополнение: 'Пополнение баланса и донат',
+    'Программное обеспечение': 'Программы и ПО',
+    Дизайн: 'Дизайн и оформление',
+    Услуги: 'Услуги и другое'
+};
 
 function toggleCatalogMenu(force) {
     const menu = document.getElementById('catalog-menu');
@@ -255,8 +268,15 @@ function toggleCatalogMenu(force) {
 
 function selectCatalogCategory(category) {
     selectedCatalogCategory = category;
+    selectedCatalogSubcategory = 'Все подкатегории';
     const button = document.getElementById('catalog-toggle');
-    if (button) button.textContent = category === 'Все товары' ? '☷ Каталог' : '☷ ' + category;
+    if (button) button.textContent = category === 'Все товары' ? '☷ Каталог' : '☷ ' + (catalogCategoryLabels[category] || category);
+    renderCatalogCategories();
+    filterProducts();
+}
+
+function selectCatalogSubcategory(subcategory) {
+    selectedCatalogSubcategory = subcategory;
     renderCatalogCategories();
     filterProducts();
     toggleCatalogMenu(false);
@@ -268,13 +288,37 @@ function renderCatalogCategories() {
     const counts = new Map();
     allProducts.forEach(product => {
         const category = String(product.category || 'Без категории').trim() || 'Без категории';
+        const subcategory = String(product.subcategory || 'Общее').trim() || 'Общее';
         counts.set(category, (counts.get(category) || 0) + 1);
+        const key = category + '::' + subcategory;
+        counts.set(key, (counts.get(key) || 0) + 1);
     });
-    const categories = ['Все товары', ...Array.from(counts.keys()).sort((a,b) => a.localeCompare(b, 'ru'))];
-    menu.innerHTML = categories.map(category => {
-        const count = category === 'Все товары' ? allProducts.length : counts.get(category);
-        return `<button type="button" class="catalog-category ${selectedCatalogCategory === category ? 'active' : ''}" onclick="selectCatalogCategory(${JSON.stringify(category).replace(/</g,'\\u003c')})"><span>${escapeHtml(category)}</span><small>${count}</small></button>`;
+
+    const knownCategories = Object.keys(subsByCat || {});
+    const extraCategories = Array.from(new Set(allProducts.map(p => String(p.category || 'Без категории').trim() || 'Без категории')))
+        .filter(category => !knownCategories.includes(category));
+    const categories = ['Все товары', ...knownCategories, ...extraCategories];
+    const categoryButtons = categories.map(category => {
+        const count = category === 'Все товары' ? allProducts.length : (counts.get(category) || 0);
+        const label = category === 'Все товары' ? category : (catalogCategoryLabels[category] || category);
+        return `<button type="button" class="catalog-category ${selectedCatalogCategory === category ? 'active' : ''}" onclick="selectCatalogCategory(${JSON.stringify(category).replace(/</g,'\\u003c')})"><span>${escapeHtml(label)}</span><small>${count}</small></button>`;
     }).join('');
+
+    let subcategorySection = '';
+    if (selectedCatalogCategory !== 'Все товары') {
+        const subcategories = subsByCat[selectedCatalogCategory] || [];
+        const allSubCount = counts.get(selectedCatalogCategory) || 0;
+        const options = ['Все подкатегории', ...subcategories];
+        subcategorySection = `
+            <div class="catalog-subheading">Подкатегории · ${escapeHtml(catalogCategoryLabels[selectedCatalogCategory] || selectedCatalogCategory)}</div>
+            <div class="catalog-subcategories">
+                ${options.map(sub => {
+                    const count = sub === 'Все подкатегории' ? allSubCount : (counts.get(selectedCatalogCategory + '::' + sub) || 0);
+                    return `<button type="button" class="catalog-subcategory ${selectedCatalogSubcategory === sub ? 'active' : ''}" onclick="selectCatalogSubcategory(${JSON.stringify(sub).replace(/</g,'\\u003c')})"><span>${escapeHtml(sub)}</span><small>${count}</small></button>`;
+                }).join('')}
+            </div>`;
+    }
+    menu.innerHTML = `<div class="catalog-category-grid">${categoryButtons}</div>${subcategorySection}`;
 }
 
 function renderProducts(products) {
@@ -310,12 +354,15 @@ function filterProducts() {
     const query = (document.getElementById('searchInput')?.value || '').trim().toLocaleLowerCase('ru');
     const filtered = allProducts.filter(p => {
         const category = String(p.category || 'Без категории').trim() || 'Без категории';
+        const subcategory = String(p.subcategory || 'Общее').trim() || 'Общее';
         const matchesCategory = selectedCatalogCategory === 'Все товары' || category === selectedCatalogCategory;
+        const matchesSubcategory = selectedCatalogSubcategory === 'Все подкатегории' || subcategory === selectedCatalogSubcategory;
         const searchable = [p.title, p.category, p.subcategory, p.seller_name].map(value => String(value || '').toLocaleLowerCase('ru')).join(' ');
-        return matchesCategory && searchable.includes(query);
+        return matchesCategory && matchesSubcategory && searchable.includes(query);
     });
     renderProducts(filtered);
 }
+
 
 const subsByCat = {
  'Telegram':['Дизайн ТГК','Аренда NFT','Разработка ботов','Stars','Подписчики','Просмотры и реакции'],
