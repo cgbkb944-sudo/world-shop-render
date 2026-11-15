@@ -74,7 +74,7 @@ function jsonPost(url,body){return apiFetch(url,{method:'POST',headers:{'Content
 async function loadPromoCodes(){
  const box=document.getElementById('promo-codes-list');if(!box)return;box.textContent='Загружаем промокоды…';
  try{const r=await apiFetch('/api/promos'),rows=await r.json();if(!r.ok)throw new Error(rows.error||'Ошибка');
- box.innerHTML=rows.length?rows.map(p=>{const expiry=p.expires_at?'до '+new Date(p.expires_at).toLocaleString('ru-RU'):'без срока';const state=p.is_active?'активен':'отключён';return '<div class="data-row"><div><b>'+escapeHtml(p.code)+'</b><small>'+escapeHtml(p.promo_type)+' · '+escapeHtml(p.value)+' · '+p.uses_count+'/'+p.max_uses+' активаций · '+expiry+' · '+state+'</small></div>'+(p.is_active?'<button class="danger-button" onclick="disablePromo(\\''+escapeHtml(p.code)+'\\')">Отключить</button>':'')+'</div>';}).join(''):'<p>Промокодов пока нет.</p>';
+ box.innerHTML=rows.length?rows.map(p=>{const expiry=p.expires_at?'до '+new Date(p.expires_at).toLocaleString('ru-RU'):'без срока';const state=p.is_active?'активен':'отключён';return `<div class="data-row"><div><b>${escapeHtml(p.code)}</b><small>${escapeHtml(p.promo_type)} · ${escapeHtml(p.value)} · ${p.uses_count}/${p.max_uses} активаций · ${expiry} · ${state}</small></div>${p.is_active?`<button class="danger-button" onclick="disablePromo('${escapeHtml(p.code)}')">Отключить</button>`:''}</div>`;}).join(''):'<p>Промокодов пока нет.</p>';
  }catch(e){box.textContent=e.message;}
 }
 async function createPromoFromPanel(){
