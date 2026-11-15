@@ -721,7 +721,10 @@ app.post('/api/buy',async(req,res)=>{
       clean.account=account;
     }
     const originalAmount=Math.round(Number(product.price)*quantity*100)/100;
-    let amount=originalAmount,promoId=null;const promoCode=String(req.body?.promo_code||'').trim().toUpperCase();
+    let amount=originalAmount,promoId=null;
+    const pendingPromoKey='pending_promo:'+req.user.telegram_id;
+    const pendingPromo=await c.query('SELECT setting_value FROM bot_settings WHERE setting_key=$1 FOR UPDATE',[pendingPromoKey]);
+    const promoCode=String(req.body?.promo_code||pendingPromo.rows[0]?.setting_value||'').trim().toUpperCase();
     if(promoCode){const pr=await c.query('SELECT * FROM promo_codes WHERE code=$1 AND is_active=TRUE FOR UPDATE',[promoCode]);if(!pr.rowCount){await c.query('ROLLBACK');return res.status(400).json({error:'Промокод не найден или отключён.'});}const promo=pr.rows[0];if(promo.promo_type==='topup'){await c.query('ROLLBACK');return res.status(400).json({error:'Этот промокод пополняет баланс — активируйте его отдельно.'});}if(promo.expires_at&&new Date(promo.expires_at)<=new Date()){await c.query('ROLLBACK');return res.status(400).json({error:'Срок действия промокода истёк.'});}if(Number(promo.uses_count)>=Number(promo.max_uses)){await c.query('ROLLBACK');return res.status(400).json({error:'Лимит активаций исчерпан.'});}const used=await c.query('SELECT 1 FROM promo_redemptions WHERE promo_id=$1 AND user_id=$2',[promo.id,req.user.telegram_id]);if(used.rowCount){await c.query('ROLLBACK');return res.status(400).json({error:'Вы уже использовали этот промокод.'});}const discount=promo.promo_type==='discount_percent'?originalAmount*Number(promo.value)/100:Number(promo.value);amount=Math.max(0,Math.round((originalAmount-Math.min(originalAmount,discount))*100)/100);if(amount<=0){await c.query('ROLLBACK');return res.status(400).json({error:'Скидка не может сделать покупку бесплатной.'});}promoId=promo.id;}
     if(!Number.isFinite(amount)||amount<=0||amount>1e7){await c.query('ROLLBACK');return res.status(400).json({error:'Итоговая стоимость заказа превышает допустимое значение.'});}
     const fee=Math.round(amount*3)/100,sellerAmount=Math.round((amount-fee)*100)/100;
@@ -735,7 +738,7 @@ app.post('/api/buy',async(req,res)=>{
     const ref='order_'+order.rows[0].id;
     await c.query("INSERT INTO transactions (telegram_id,amount,type,reference,description) VALUES ($1,$2,'purchase',$3,$4),($5,$6,'sale',$7,$8)",
       [req.user.telegram_id,-amount,ref,'Покупка товара #'+order.rows[0].id,product.seller_id,sellerAmount,ref+'_seller','Продажа товара #'+order.rows[0].id]);
-    if(promoId){await c.query('INSERT INTO promo_redemptions(promo_id,user_id,order_id,reward_amount) VALUES($1,$2,$3,$4)',[promoId,req.user.telegram_id,order.rows[0].id,originalAmount-amount]);await c.query('UPDATE promo_codes SET uses_count=uses_count+1 WHERE id=$1',[promoId]);}
+    if(promoId){await c.query('INSERT INTO promo_redemptions(promo_id,user_id,order_id,reward_amount) VALUES($1,$2,$3,$4)',[promoId,req.user.telegram_id,order.rows[0].id,originalAmount-amount]);await c.query('UPDATE promo_codes SET uses_count=uses_count+1 WHERE id=$1',[promoId]);await c.query('DELETE FROM bot_settings WHERE setting_key=$1',[pendingPromoKey]);}
     if(type==='roblox_account')await c.query("UPDATE products SET status='sold' WHERE id=$1",[id]);
     await c.query('COMMIT');
     const info=Object.entries(clean).map(([k,v])=>k+': '+v).join('\n');
@@ -1132,8 +1135,37 @@ async function handleTelegramBotMessage(message) {
     return;
   }
   if(command==='/promo'){
-    const code=String(text.split(/\\s+/)[1]||'').trim().toUpperCase();if(!code){await sendBotText(chatId,'Использование: /promo WTS-XXXXXXXXXX');return;}
-    const db=await pool.connect();try{await db.query('BEGIN');const p=await db.query('SELECT * FROM promo_codes WHERE code=$1 AND is_active=TRUE FOR UPDATE',[code]);if(!p.rowCount)throw new Error('Промокод не найден или отключён.');const promo=p.rows[0];if(promo.promo_type!=='topup')throw new Error('Этот код даёт скидку при покупке. Введите его в поле промокода при оформлении заказа в приложении.');if(promo.expires_at&&new Date(promo.expires_at)<=new Date())throw new Error('Срок действия промокода истёк.');if(Number(promo.uses_count)>=Number(promo.max_uses))throw new Error('Лимит активаций исчерпан.');const used=await db.query('SELECT 1 FROM promo_redemptions WHERE promo_id=$1 AND user_id=$2',[promo.id,id]);if(used.rowCount)throw new Error('Вы уже использовали этот промокод.');const amount=Number(promo.value);await db.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2',[amount,id]);await db.query("INSERT INTO transactions(telegram_id,amount,type,reference,description) VALUES($1,$2,'topup',$3,$4)",[id,amount,'promo_'+promo.id+'_'+id,'Пополнение по промокоду '+code]);await db.query('INSERT INTO promo_redemptions(promo_id,user_id,reward_amount) VALUES($1,$2,$3)',[promo.id,id,amount]);await db.query('UPDATE promo_codes SET uses_count=uses_count+1 WHERE id=$1',[promo.id]);await db.query('COMMIT');await sendBotText(chatId,'🎁 Промокод активирован! На баланс начислено '+amount.toFixed(2)+' ₽.');}catch(e){await db.query('ROLLBACK');await sendBotText(chatId,'❌ '+e.message);}finally{db.release();}return;
+    const code=String(text.split(/\s+/)[1]||'').trim().toUpperCase();
+    if(!code){await sendBotText(chatId,'🎟 Чтобы активировать промокод, отправьте команду отдельным сообщением:\n/promo ВАШ_ПРОМОКОД\n\nПромокод на пополнение сразу зачислит деньги на баланс. Промокод на скидку сохранится в боте и автоматически применится к вашей следующей покупке в магазине.');return;}
+    const db=await pool.connect();
+    try{
+      await db.query('BEGIN');
+      const p=await db.query('SELECT * FROM promo_codes WHERE code=$1 AND is_active=TRUE FOR UPDATE',[code]);
+      if(!p.rowCount)throw new Error('Промокод не найден или отключён.');
+      const promo=p.rows[0];
+      if(promo.expires_at&&new Date(promo.expires_at)<=new Date())throw new Error('Срок действия промокода истёк.');
+      if(Number(promo.uses_count)>=Number(promo.max_uses))throw new Error('Лимит активаций исчерпан.');
+      const used=await db.query('SELECT 1 FROM promo_redemptions WHERE promo_id=$1 AND user_id=$2',[promo.id,id]);
+      if(used.rowCount)throw new Error('Вы уже использовали этот промокод.');
+      if(promo.promo_type==='topup'){
+        const amount=Number(promo.value);
+        await db.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2',[amount,id]);
+        await db.query("INSERT INTO transactions(telegram_id,amount,type,reference,description) VALUES($1,$2,'topup',$3,$4)",[id,amount,'promo_'+promo.id+'_'+id,'Пополнение по промокоду '+code]);
+        await db.query('INSERT INTO promo_redemptions(promo_id,user_id,reward_amount) VALUES($1,$2,$3)',[promo.id,id,amount]);
+        await db.query('UPDATE promo_codes SET uses_count=uses_count+1 WHERE id=$1',[promo.id]);
+        await db.query('COMMIT');
+        await sendBotText(chatId,'🎁 Промокод активирован! На баланс начислено '+amount.toFixed(2)+' ₽.');
+      }else{
+        const pendingKey='pending_promo:'+id;
+        const pending=await db.query('SELECT setting_value FROM bot_settings WHERE setting_key=$1 FOR UPDATE',[pendingKey]);
+        if(pending.rowCount)throw new Error('У вас уже сохранён промокод '+pending.rows[0].setting_value+'. Сначала совершите покупку с ним.');
+        await db.query('INSERT INTO bot_settings(setting_key,setting_value) VALUES($1,$2) ON CONFLICT(setting_key) DO UPDATE SET setting_value=EXCLUDED.setting_value,updated_at=NOW()',[pendingKey,code]);
+        await db.query('COMMIT');
+        await sendBotText(chatId,'🎉 Промокод принят в боте! Скидка '+(promo.promo_type==='discount_percent'?Number(promo.value)+'%':Number(promo.value).toFixed(2)+' ₽')+' автоматически применится к вашей следующей покупке в WORLD TG SHOP.');
+      }
+    }catch(e){await db.query('ROLLBACK');await sendBotText(chatId,'❌ '+e.message);}
+    finally{db.release();}
+    return;
   }
   if(command==='/broadcast'||command==='/discount'){
     const canGeneral=['owner','admin','support'].includes(currentRole),canSeller=currentRole==='seller'&&command==='/discount';
