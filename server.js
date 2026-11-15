@@ -260,26 +260,25 @@ const hashKey = v => crypto.createHash('sha256').update(String(v).trim().toUpper
 
 app.get('/',(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
 app.get('/health',async(req,res)=>{try{await pool.query('SELECT 1');res.json({ok:true,database:'connected'});}catch{res.status(503).json({ok:false,database:'unavailable'});}});
-app.get('/health/payments',(req,res)=>{
+app.get('/health/payments',async(req,res)=>{
   const has=k=>Boolean(String(process.env[k]||'').trim());
+  let ownerTransfer=false;
+  try{const owner=await pool.query('SELECT username FROM users WHERE telegram_id=$1 LIMIT 1',[OWNER_TELEGRAM_ID]);ownerTransfer=/^[A-Za-z0-9_]{5,32}$/.test(String(process.env.OWNER_TELEGRAM_USERNAME||owner.rows[0]?.username||''));}catch(e){console.warn('Owner transfer readiness:',e.message);}
   const missing={
     cryptobot:['CRYPTO_PAY_API_TOKEN'].filter(k=>!has(k)),
-    sbp:['ROLLYPAY_API_KEY'].filter(k=>!has(k)),
-    card:['ROLLYPAY_API_KEY'].filter(k=>!has(k)),
+    owner_transfer:ownerTransfer?[]:['OWNER_TELEGRAM_USERNAME (или username владельца в профиле Telegram)'],
     direct_transfer:[...(has('CRYPTO_PAY_API_TOKEN')?[]:['CRYPTO_PAY_API_TOKEN']),...((tonAddress&&normalizeTonAddress(tonAddress))?[]:['TON_WALLET_ADDRESS'])],
     telegram_stars:[...(!has('BOT_TOKEN')?['BOT_TOKEN']:[]),...(!has('TELEGRAM_WEBHOOK_SECRET')?['TELEGRAM_WEBHOOK_SECRET']:[]),...(!appOrigin?['APP_ORIGIN']:[])]
   };
   res.json({
     cryptobot:missing.cryptobot.length===0,
-    sbp:missing.sbp.length===0,
-    card:missing.card.length===0,
+    owner_transfer:ownerTransfer,
     direct_transfer:missing.direct_transfer.length===0,
     telegram_stars:missing.telegram_stars.length===0,
     missing,
     webhookWarnings:{
       cryptobot:has('CRYPTO_PAY_WEBHOOK_SECRET')?[]:['CRYPTO_PAY_WEBHOOK_SECRET (резервный опрос статуса будет работать без webhook)'],
-      sbp:has('ROLLYPAY_WEBHOOK_SECRET')?[]:['ROLLYPAY_WEBHOOK_SECRET (резервный опрос статуса будет работать без webhook)'],
-      card:has('ROLLYPAY_WEBHOOK_SECRET')?[]:['ROLLYPAY_WEBHOOK_SECRET (резервный опрос статуса будет работать без webhook)']
+      owner_transfer:[]
     }
   });
 });
@@ -314,13 +313,16 @@ app.get('/api/my/activity',async(req,res)=>{
     res.json({purchases:purchases.rows,sales:sales.rows,transfers:transfers.rows});
   }catch(e){res.status(503).json({error:'Не удалось загрузить активность.'});}
 });
-app.get('/api/payment/methods',(req,res)=>res.json({
+app.get('/api/payment/methods',async(req,res)=>{
+  let ownerTransfer=false;
+  try{const owner=await pool.query('SELECT username FROM users WHERE telegram_id=$1 LIMIT 1',[OWNER_TELEGRAM_ID]);ownerTransfer=/^[A-Za-z0-9_]{5,32}$/.test(String(process.env.OWNER_TELEGRAM_USERNAME||owner.rows[0]?.username||''));}catch{}
+  res.json({
   cryptobot:!!process.env.CRYPTO_PAY_API_TOKEN,
-  sbp:!!process.env.ROLLYPAY_API_KEY,
-  card:!!process.env.ROLLYPAY_API_KEY,
+  owner_transfer:ownerTransfer,
   direct_transfer:!!(tonAddress&&normalizeTonAddress(tonAddress)&&process.env.CRYPTO_PAY_API_TOKEN),
   telegram_stars:!!(process.env.TELEGRAM_WEBHOOK_SECRET&&appOrigin)
-}));
+  });
+});
 
 async function expireTransferCodes(){
   const db=await pool.connect();
@@ -812,7 +814,7 @@ async function createPayment(req,res) {
   let pendingPaymentId=null;
   const amount=money(req.body?.amount),method=String(req.body?.method||'');
   if(!amount||amount<10)return res.status(400).json({error:'Минимальная сумма пополнения — 10 ₽.'});
-  if(!['cryptobot','sbp','card','direct_transfer','telegram_stars'].includes(method))return res.status(400).json({error:'Неизвестный способ оплаты.'});
+  if(!['cryptobot','direct_transfer','telegram_stars'].includes(method))return res.status(400).json({error:'Этот способ оплаты отключён или неизвестен.'});
   try {
     if(method==='telegram_stars'){
       if(!Number.isInteger(amount))return res.status(400).json({error:'Для оплаты Stars укажите целую сумму в рублях.'});
@@ -985,6 +987,18 @@ async function pollTonPayments() {
   }catch(e){console.error('TON monitor:',e.message);}
   finally{tonPollBusy=false;}
 }
+app.post('/api/payment/manual-transfer',async(req,res)=>{
+  const amount=money(req.body?.amount);
+  if(!amount||amount<10)return res.status(400).json({error:'Минимальная сумма пополнения — 10 ₽.'});
+  try{
+    const owner=await pool.query('SELECT username FROM users WHERE telegram_id=$1 LIMIT 1',[OWNER_TELEGRAM_ID]);
+    const username=String(process.env.OWNER_TELEGRAM_USERNAME||owner.rows[0]?.username||'').replace(/^@/,'');
+    if(!/^[A-Za-z0-9_]{5,32}$/.test(username))return res.status(503).json({error:'Не настроен Telegram username владельца.'});
+    const message='Здравствуйте! Хочу пополнить баланс WORLD TG SHOP переводом на карту. Сумма: '+amount.toFixed(2)+' ₽.';
+    const url='https://t.me/'+username+'?text='+encodeURIComponent(message);
+    res.json({url,username:'@'+username,message});
+  }catch(e){console.error('Manual transfer link:',e.message);res.status(503).json({error:'Не удалось открыть чат владельца. Попробуйте позже.'});}
+});
 app.post('/api/payment/create',createPayment);
 app.get('/api/payment/status/:id',paymentStatus);
 
