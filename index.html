@@ -479,9 +479,17 @@
                 <option value="channel_customization">Кастомизация Telegram-канала</option>
                 <option value="telegram_stars">Telegram Stars</option>
                 <option value="subscription">Подписки на сервисы и магазины</option>
-                <option value="loyalty_points">Баллы магазинов / программы лояльности</option>
+                <option value="loyalty_points">Баллы магазинов / программы лояльности</option><option value="robux">Robux — продажа валюты</option><option value="roblox_account">Аккаунт Roblox</option>
             </select>
             <p id="newProductTypeHelp" style="font-size:12px;color:var(--text-muted);">Обычный товар или услуга.</p>
+            <div id="newRobloxPrivateFields" class="hidden" style="padding:12px;border:1px solid var(--border-color);border-radius:12px;margin:10px 0;">
+                <b>Данные аккаунта Roblox (покупатель увидит их после оплаты)</b>
+                <label>Username аккаунта Roblox</label><input id="robloxAccountUsername" maxlength="20" placeholder="Roblox username">
+                <label>Почта аккаунта</label><input id="robloxAccountEmail" type="email" placeholder="mail@example.com">
+                <label>Пароль от аккаунта Roblox</label><input id="robloxAccountPassword" type="password" autocomplete="new-password" placeholder="Пароль аккаунта">
+                <label>Пароль от почты</label><input id="robloxEmailPassword" type="password" autocomplete="new-password" placeholder="Пароль от почты">
+                <small>Данные шифруются перед сохранением и не видны в каталоге.</small>
+            </div>
             
             <label>Категория:</label>
             <select id="newCategory" onchange="updateSubcategoryOptions()">

@@ -204,7 +204,7 @@ function renderProducts(products) {
                     <br><small style="color:var(--text-muted);">${escapeHtml(p.category)} / ${escapeHtml(p.subcategory || 'Общее')} · ${escapeHtml(p.seller_name||'Магазин')}</small>
                 </div>
                 <div style="text-align: right;">
-                    <b style="display:block; margin-bottom:6px; color:#818cf8;">${p.product_type === 'telegram_stars' ? `${Number(p.price).toFixed(2)} ₽ / ⭐` : priceText}</b>
+                    <b style="display:block; margin-bottom:6px; color:#818cf8;">${p.product_type === 'telegram_stars' ? `${Number(p.price).toFixed(2)} ₽ / ⭐` : p.product_type === 'robux' ? `${Number(p.price).toFixed(2)} ₽ / Robux` : priceText}</b>
                     <button style="width:auto; padding:6px 14px; margin:0; font-size:13px;" onclick="buyProduct(${p.id})">Купить</button>
                 </div>
             </div>
@@ -263,51 +263,37 @@ function toggleMaxPriceField() {
 }
 
 function updateProductTypeHelp() {
-    const type=document.getElementById('newProductType')?.value||'standard';
-    const help=document.getElementById('newProductTypeHelp');
-    const priceLabel=document.getElementById('newPriceLabel');
-    if(help) help.textContent=type==='telegram_stars'?'Укажите цену за одну звезду в рублях. Покупатель выберет от 50 до 1 000 звёзд.':type==='channel_customization'?'После покупки покупатель укажет username владельца и ссылку на канал.':type==='subscription'?'Покупатель укажет аккаунт или данные для оформления подписки.':type==='loyalty_points'?'Покупатель укажет номер телефона или идентификатор карты лояльности.':'Обычный товар или услуга.';
-    if(priceLabel) priceLabel.textContent=type==='telegram_stars'?'Цена за одну звезду (₽):':'Цена (₽):';
-    document.getElementById('newPriceFrom')?.closest('div')?.classList.toggle('hidden',type==='telegram_stars');
-    if(type==='telegram_stars'){const range=document.getElementById('newPriceFrom');if(range)range.checked=false;document.getElementById('maxPriceContainer')?.classList.add('hidden');}
+    const type=document.getElementById('newProductType')?.value||'standard',help=document.getElementById('newProductTypeHelp'),priceLabel=document.getElementById('newPriceLabel');
+    const special=['telegram_stars','robux','roblox_account'].includes(type);
+    if(help)help.textContent=type==='telegram_stars'?'Укажите цену за одну звезду. Покупатель выберет от 50 до 1 000.':
+      type==='robux'?'Укажите цену за 1 Robux. Покупатель сможет заказать от 10 до 100 000 Robux.':
+      type==='roblox_account'?'Добавьте username Roblox, почту, пароль аккаунта и пароль от почты. Покупатель получит эти данные после оплаты.':
+      type==='channel_customization'?'После покупки покупатель укажет username владельца и ссылку на канал.':
+      type==='subscription'?'Покупатель укажет аккаунт или данные для оформления подписки.':
+      type==='loyalty_points'?'Покупатель укажет номер телефона или идентификатор карты лояльности.':'Обычный товар или услуга.';
+    if(priceLabel)priceLabel.textContent=type==='telegram_stars'?'Цена за одну звезду (₽):':type==='robux'?'Цена за 1 Robux (₽):':'Цена (₽):';
+    document.getElementById('newPriceFrom')?.closest('div')?.classList.toggle('hidden',special);
+    document.getElementById('newRobloxPrivateFields')?.classList.toggle('hidden',type!=='roblox_account');
+    if(special){const range=document.getElementById('newPriceFrom');if(range)range.checked=false;document.getElementById('maxPriceContainer')?.classList.add('hidden');}
 }
 
 function addNewProduct() {
-    const title = document.getElementById('newTitle').value;
-    const product_type = document.getElementById('newProductType')?.value||'standard';
-    const category = document.getElementById('newCategory').value;
-    const subcategory = document.getElementById('newSubcategory').value;
-    const price = document.getElementById('newPrice').value;
-    const price_from = document.getElementById('newPriceFrom').checked;
-    const max_price = document.getElementById('newMaxPrice').value;
-
-    if(!title || !price) {
-        alert('Заполните название и цену!');
-        return;
-    }
-
-    apiFetch('/api/products/add', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            title, product_type, category, subcategory, price, price_from: product_type==='telegram_stars'?false:price_from, max_price,
-            seller_id: String(user.id)
-        })
-    })
-    .then(async res => {
-        const data = await res.json();
-        if(res.ok && data.success) {
-            alert('Заявка отправлена владельцу и поддержке. Товар появится в каталоге после одобрения.');
-            location.reload();
-        } else {
-            alert(data.error || 'Ошибка публикации товара');
-        }
-    })
-    .catch(err => {
-        alert('Ошибка соединения с сервером');
-    });
+    const title=document.getElementById('newTitle').value,product_type=document.getElementById('newProductType')?.value||'standard';
+    const category=document.getElementById('newCategory').value,subcategory=document.getElementById('newSubcategory').value;
+    const price=document.getElementById('newPrice').value,price_from=document.getElementById('newPriceFrom').checked,max_price=document.getElementById('newMaxPrice').value;
+    const private_data=product_type==='roblox_account'?{
+      roblox_username:document.getElementById('robloxAccountUsername').value.trim(),
+      account_email:document.getElementById('robloxAccountEmail').value.trim(),
+      account_password:document.getElementById('robloxAccountPassword').value,
+      email_password:document.getElementById('robloxEmailPassword').value
+    }:{};
+    if(!title||!price){alert('Заполните название и цену!');return;}
+    if(product_type==='roblox_account'&&(!private_data.roblox_username||!private_data.account_email||!private_data.account_password||!private_data.email_password)){alert('Заполните username Roblox, почту и оба пароля.');return;}
+    apiFetch('/api/products/add',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({title,product_type,category,subcategory,price,price_from:['telegram_stars','robux','roblox_account'].includes(product_type)?false:price_from,max_price,private_data})})
+    .then(async res=>{const data=await res.json();if(res.ok&&data.success){alert('Заявка отправлена на модерацию. Товар появится в каталоге после одобрения.');location.reload();}else alert(data.error||'Ошибка публикации товара');})
+    .catch(()=>alert('Ошибка соединения с сервером'));
 }
-
 async function activateKey() {
     const field=document.getElementById('keyCode'), result=document.getElementById('key-activation-result');
     const code=String(field?.value||'').trim();
@@ -686,24 +672,33 @@ async function buyProduct(productId) {
     const type=product.product_type||'standard';let quantity=1,details={};
     if(type==='telegram_stars'){
       const raw=prompt('Сколько Telegram Stars нужно купить? Введите от 50 до 1 000.','50');
-      if(raw===null)return;quantity=Number(raw);
-      if(!Number.isInteger(quantity)||quantity<50||quantity>1000){alert('Можно купить от 50 до 1 000 звёзд.');return;}
-      const recipient=prompt('Укажите Telegram username аккаунта, куда прислать звёзды (например, @username):');
-      if(recipient===null)return;details.recipient_username=recipient.trim();
+      if(raw===null)return;quantity=Number(raw);if(!Number.isInteger(quantity)||quantity<50||quantity>1000){alert('Можно купить от 50 до 1 000 звёзд.');return;}
+      const recipient=prompt('Укажите Telegram username аккаунта, куда прислать звёзды:');if(recipient===null)return;details.recipient_username=recipient.trim();
+    }else if(type==='robux'){
+      const raw=prompt('Сколько Robux хотите купить? От 10 до 100 000.','100');
+      if(raw===null)return;quantity=Number(raw);if(!Number.isInteger(quantity)||quantity<10||quantity>100000){alert('Можно купить от 10 до 100 000 Robux.');return;}
+      const roblox=prompt('Введите username своего аккаунта Roblox:');if(roblox===null)return;details.roblox_username=roblox.trim();
+      const telegram=prompt('Введите свой Telegram username (например, @username):');if(telegram===null)return;details.telegram_username=telegram.trim();
+    }else if(type==='roblox_account'){
+      const telegram=prompt('Введите свой Telegram username для связи с продавцом:');if(telegram===null)return;details.telegram_username=telegram.trim();
     }else if(type==='channel_customization'){
-      const owner=prompt('Укажите Telegram username владельца канала, который нужно кастомизировать:');
-      if(owner===null)return;details.owner_username=owner.trim();
-      const link=prompt('Вставьте ссылку на Telegram-канал (https://t.me/...):');
-      if(link===null)return;details.channel_url=link.trim();
+      const owner=prompt('Укажите Telegram username владельца канала:');if(owner===null)return;details.owner_username=owner.trim();
+      const link=prompt('Вставьте ссылку на Telegram-канал (https://t.me/...):');if(link===null)return;details.channel_url=link.trim();
     }else if(type==='subscription'||type==='loyalty_points'){
-      const account=prompt(type==='subscription'?'Укажите аккаунт или данные для оформления подписки:':'Укажите номер телефона или номер карты лояльности для начисления баллов:');
-      if(account===null)return;details.account=account.trim();
+      const account=prompt(type==='subscription'?'Укажите аккаунт или данные для оформления подписки:':'Укажите номер телефона или номер карты лояльности:');if(account===null)return;details.account=account.trim();
     }
     const total=Math.round(Number(product.price)*quantity*100)/100;
-    if(!confirm(`Подтвердить покупку «${product.title}»?\n${type==='telegram_stars'?quantity+' ⭐ × '+Number(product.price).toFixed(2)+' ₽ = ':''}${total.toFixed(2)} ₽`))return;
+    const label=type==='robux'?quantity+' Robux × '+Number(product.price).toFixed(2)+' ₽ = ':type==='telegram_stars'?quantity+' ⭐ × '+Number(product.price).toFixed(2)+' ₽ = ':'';
+    if(!confirm('Подтвердить покупку «'+product.title+'»?\\n'+label+total.toFixed(2)+' ₽'))return;
     try{
       const res=await apiFetch('/api/buy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product_id:productId,quantity,details})});
       const data=await res.json();if(!res.ok||data.error)throw new Error(data.error||'Не удалось оформить заказ.');
-      alert('Оплата прошла успешно! Номер заказа #'+data.order_id+'. Данные для выполнения заказа отправлены продавцу.');location.reload();
+      if(type==='roblox_account'){
+        const dr=await apiFetch('/api/orders/'+data.order_id+'/delivery'),delivery=await dr.json();
+        if(!dr.ok||!delivery.success)throw new Error(delivery.error||'Покупка прошла, но данные аккаунта пока не удалось загрузить. Заказ #'+data.order_id);
+        const d=delivery.delivery||{};
+        alert('Покупка прошла успешно! Данные аккаунта Roblox\\n\\nUsername: '+d.roblox_username+'\\nПочта: '+d.account_email+'\\nПароль аккаунта: '+d.account_password+'\\nПароль от почты: '+d.email_password+'\\n\\nСохраните данные. Заказ #'+data.order_id);
+      }else alert('Оплата прошла успешно! Номер заказа #'+data.order_id+'. Данные для выполнения заказа отправлены продавцу.');
+      location.reload();
     }catch(e){alert(e.message||'Ошибка соединения с сервером.');}
 }
