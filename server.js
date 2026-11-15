@@ -160,7 +160,7 @@ async function migrateDatabase() {
 }
 
 app.disable('x-powered-by');
-app.post('/webhooks/cryptobot/:secret', express.raw({ type: 'application/json', limit: '64kb' }), async (req,res) => {
+app.post('/webhooks/cryptobot', express.raw({ type: 'application/json', limit: '64kb' }), async (req,res) => {
   try { await handleCryptoPayWebhook(req,res); }
   catch (e) { console.error('Crypto Pay webhook:', e.message); res.sendStatus(500); }
 });
@@ -293,7 +293,7 @@ app.get('/health/payments',async(req,res)=>{
     telegram_stars:missing.telegram_stars.length===0,
     missing,
     webhookWarnings:{
-      cryptobot:has('CRYPTO_PAY_WEBHOOK_SECRET')?[]:['CRYPTO_PAY_WEBHOOK_SECRET (резервный опрос статуса будет работать без webhook)'],
+      cryptobot:[],
       owner_transfer:[]
     }
   });
@@ -814,26 +814,46 @@ async function finalizePayment(paymentId,provider,txHash=null) {
   finally{c.release();}
 }
 async function handleCryptoPayWebhook(req,res) {
-  const secret=process.env.CRYPTO_PAY_WEBHOOK_SECRET,token=process.env.CRYPTO_PAY_API_TOKEN;
-  if(!secret||!token||!safeEqual(req.params.secret,secret))return res.sendStatus(404);
-  if(!Buffer.isBuffer(req.body))return res.sendStatus(400);
+  const token=String(process.env.CRYPTO_PAY_API_TOKEN||'').trim();
+  if(!token)return res.status(503).json({error:'Crypto Pay API token is not configured'});
+  if(!Buffer.isBuffer(req.body)||req.body.length===0)return res.sendStatus(400);
   const signature=req.get('crypto-pay-api-signature')||'';
+  if(!/^[a-f0-9]{64}$/i.test(signature))return res.sendStatus(401);
   const key=crypto.createHash('sha256').update(token).digest();
   const expected=crypto.createHmac('sha256',key).update(req.body).digest('hex');
-  if(!safeEqual(signature,expected))return res.sendStatus(403);
-  const update=JSON.parse(req.body.toString('utf8'));
+  if(!safeEqual(signature.toLowerCase(),expected))return res.sendStatus(401);
+
+  let update;
+  try { update=JSON.parse(req.body.toString('utf8')); }
+  catch { return res.sendStatus(400); }
+  if(!update||typeof update!=='object'||!update.update_type)return res.sendStatus(400);
   if(update.update_type!=='invoice_paid')return res.sendStatus(200);
-  const invoice=update.payload||{},payload=JSON.parse(invoice.payload||'{}'),paymentId=Number(payload.payment_id);
-  if(!Number.isSafeInteger(paymentId)||paymentId<1||!invoice.invoice_id)return res.sendStatus(400);
+
+  const invoice=update.payload;
+  if(!invoice||typeof invoice!=='object'||!invoice.invoice_id)return res.sendStatus(400);
+  let payload;
+  try { payload=JSON.parse(String(invoice.payload||'{}')); }
+  catch { return res.sendStatus(400); }
+  const paymentId=Number(payload.payment_id);
+  if(!Number.isSafeInteger(paymentId)||paymentId<1||!payload.user_id)return res.sendStatus(400);
+
   const local=await pool.query("SELECT * FROM payments WHERE id=$1 AND provider='cryptobot'",[paymentId]);
   if(!local.rowCount)return res.sendStatus(404);
   const p=local.rows[0];
-  if(String(p.provider_payment_id)!==String(invoice.invoice_id)||String(payload.user_id)!==String(p.telegram_id)||invoice.status!=='paid'||
-    invoice.currency_type!=='fiat'||invoice.fiat!=='RUB'||!['TON','USDT'].includes(invoice.paid_asset)||cents(invoice.amount)!==cents(p.amount))return res.sendStatus(409);
-  const verified=await cryptoPay('getInvoices',{invoice_ids:String(invoice.invoice_id)});
-  const remote=Array.isArray(verified)?verified.find(x=>String(x.invoice_id)===String(invoice.invoice_id)):null;
-  if(!remote||remote.status!=='paid'||remote.currency_type!=='fiat'||remote.fiat!=='RUB'||!['TON','USDT'].includes(remote.paid_asset)||cents(remote.amount)!==cents(p.amount))return res.sendStatus(409);
-  await finalizePayment(paymentId,'cryptobot');res.sendStatus(200);
+  if(String(p.provider_payment_id)!==String(invoice.invoice_id)||
+    String(payload.user_id)!==String(p.telegram_id)||invoice.status!=='paid'||
+    invoice.currency_type!=='fiat'||invoice.fiat!=='RUB'||
+    !['TON','USDT'].includes(String(invoice.paid_asset||'').toUpperCase())||
+    cents(invoice.amount)!==cents(p.amount))return res.sendStatus(409);
+
+  // Verify the invoice against Crypto Pay itself; never credit a balance from a webhook body alone.
+  const invoices=await cryptoPay('getInvoices',{invoice_ids:String(invoice.invoice_id)});
+  const remote=Array.isArray(invoices)?invoices.find(x=>String(x.invoice_id)===String(invoice.invoice_id)):null;
+  if(!remote||remote.status!=='paid'||remote.currency_type!=='fiat'||remote.fiat!=='RUB'||
+    !['TON','USDT'].includes(String(remote.paid_asset||'').toUpperCase())||
+    cents(remote.amount)!==cents(p.amount))return res.sendStatus(409);
+  await finalizePayment(paymentId,'cryptobot');
+  return res.sendStatus(200);
 }
 async function handleRollyPayWebhook(req,res) {
   const secret=process.env.ROLLYPAY_WEBHOOK_SECRET;
