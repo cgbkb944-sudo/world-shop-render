@@ -1050,6 +1050,18 @@ async function handleTelegramBotMessage(message) {
   }
   const known=await pool.query('SELECT role FROM users WHERE telegram_id=$1',[id]);
   const currentRole=isOwner?'owner':(known.rows[0]?.role||'user');
+  if(command==='/promocreate'){
+    if(!['owner','admin','support'].includes(currentRole)){await sendBotText(chatId,'Недостаточно прав для создания промокодов.');return;}
+    const parts=text.split(/\\s+/),type=String(parts[1]||''),value=Number(parts[2]),maxUses=Number(parts[3]||1),days=Number(parts[4]||0);
+    if(!['topup','discount_percent','discount_fixed'].includes(type)||!Number.isFinite(value)||value<=0||value>(type==='discount_percent'?100:1000000)||!Number.isInteger(maxUses)||maxUses<1||!Number.isInteger(days)||days<0||days>3650){await sendBotText(chatId,'Формат:\\n/promocreate topup 100 50 7\\n/promocreate discount_percent 15 100 7\\n/promocreate discount_fixed 50 20 3\\n\\nПараметры: тип, сумма/процент, лимит активаций, срок в днях (0 — без срока).');return;}
+    const code='WTS-'+crypto.randomBytes(5).toString('hex').toUpperCase();
+    const q=await pool.query('INSERT INTO promo_codes(code,promo_type,value,max_uses,expires_at,created_by) VALUES($1,$2,$3,$4,$5,$6) RETURNING code',[code,type,value,maxUses,days?new Date(Date.now()+days*86400000):null,id]);
+    await sendBotText(chatId,'✅ Промокод создан\\nКод: '+q.rows[0].code+'\\nТип: '+type+'\\nЗначение: '+value+(type==='discount_percent'?'%':' ₽')+'\\nЛимит: '+maxUses+' активаций\\nСрок: '+(days?days+' дн.':'без ограничения')+'\\n\\nОтправьте код пользователям.');return;
+  }
+  if(command==='/promo'){
+    const code=String(text.split(/\\s+/)[1]||'').trim().toUpperCase();if(!code){await sendBotText(chatId,'Использование: /promo WTS-XXXXXXXXXX');return;}
+    const db=await pool.connect();try{await db.query('BEGIN');const p=await db.query('SELECT * FROM promo_codes WHERE code=$1 AND is_active=TRUE FOR UPDATE',[code]);if(!p.rowCount)throw new Error('Промокод не найден или отключён.');const promo=p.rows[0];if(promo.promo_type!=='topup')throw new Error('Этот код даёт скидку при покупке. Введите его в поле промокода при оформлении заказа в приложении.');if(promo.expires_at&&new Date(promo.expires_at)<=new Date())throw new Error('Срок действия промокода истёк.');if(Number(promo.uses_count)>=Number(promo.max_uses))throw new Error('Лимит активаций исчерпан.');const used=await db.query('SELECT 1 FROM promo_redemptions WHERE promo_id=$1 AND user_id=$2',[promo.id,id]);if(used.rowCount)throw new Error('Вы уже использовали этот промокод.');const amount=Number(promo.value);await db.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2',[amount,id]);await db.query("INSERT INTO transactions(telegram_id,amount,type,reference,description) VALUES($1,$2,'topup',$3,$4)",[id,amount,'promo_'+promo.id+'_'+id,'Пополнение по промокоду '+code]);await db.query('INSERT INTO promo_redemptions(promo_id,user_id,reward_amount) VALUES($1,$2,$3)',[promo.id,id,amount]);await db.query('UPDATE promo_codes SET uses_count=uses_count+1 WHERE id=$1',[promo.id]);await db.query('COMMIT');await sendBotText(chatId,'🎁 Промокод активирован! На баланс начислено '+amount.toFixed(2)+' ₽.');}catch(e){await db.query('ROLLBACK');await sendBotText(chatId,'❌ '+e.message);}finally{db.release();}return;
+  }
   if(command==='/broadcast'||command==='/discount'){
     const canGeneral=['owner','admin','support'].includes(currentRole),canSeller=currentRole==='seller'&&command==='/discount';
     if(!canGeneral&&!canSeller){await sendBotText(chatId,'Эта команда недоступна для вашей роли.');return;}
