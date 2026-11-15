@@ -235,16 +235,52 @@ function loadProducts() {
     .then(products => {
         allProducts = Array.isArray(products) ? products : [];
         document.getElementById('catalog-count').textContent = allProducts.length + ' предложений';
-        renderProducts(allProducts);
+        renderCatalogCategories();
+        filterProducts();
     }).catch(() => {
         document.getElementById('products-list').innerHTML = '<div class="no-products">Не удалось загрузить каталог. Попробуйте обновить страницу.</div>';
     });
 }
 
+let selectedCatalogCategory = 'Все товары';
+
+function toggleCatalogMenu(force) {
+    const menu = document.getElementById('catalog-menu');
+    const button = document.getElementById('catalog-toggle');
+    if (!menu || !button) return;
+    const shouldOpen = typeof force === 'boolean' ? force : menu.classList.contains('hidden');
+    menu.classList.toggle('hidden', !shouldOpen);
+    button.setAttribute('aria-expanded', String(shouldOpen));
+}
+
+function selectCatalogCategory(category) {
+    selectedCatalogCategory = category;
+    const button = document.getElementById('catalog-toggle');
+    if (button) button.textContent = category === 'Все товары' ? '☷ Каталог' : '☷ ' + category;
+    renderCatalogCategories();
+    filterProducts();
+    toggleCatalogMenu(false);
+}
+
+function renderCatalogCategories() {
+    const menu = document.getElementById('catalog-menu');
+    if (!menu) return;
+    const counts = new Map();
+    allProducts.forEach(product => {
+        const category = String(product.category || 'Без категории').trim() || 'Без категории';
+        counts.set(category, (counts.get(category) || 0) + 1);
+    });
+    const categories = ['Все товары', ...Array.from(counts.keys()).sort((a,b) => a.localeCompare(b, 'ru'))];
+    menu.innerHTML = categories.map(category => {
+        const count = category === 'Все товары' ? allProducts.length : counts.get(category);
+        return `<button type="button" class="catalog-category ${selectedCatalogCategory === category ? 'active' : ''}" onclick="selectCatalogCategory(${JSON.stringify(category).replace(/</g,'\\u003c')})"><span>${escapeHtml(category)}</span><small>${count}</small></button>`;
+    }).join('');
+}
+
 function renderProducts(products) {
     const list = document.getElementById('products-list');
     if(products.length === 0) {
-        list.innerHTML = '<div class="no-products">Товары пока не добавлены</div>';
+        list.innerHTML = '<div class="no-products">По выбранным условиям товары не найдены</div>';
         return;
     }
     list.innerHTML = products.map(p => {
@@ -271,8 +307,13 @@ function renderProducts(products) {
 }
 
 function filterProducts() {
-    const query = document.getElementById('searchInput').value.toLowerCase();
-    let filtered = allProducts.filter(p => p.title.toLowerCase().includes(query));
+    const query = (document.getElementById('searchInput')?.value || '').trim().toLocaleLowerCase('ru');
+    const filtered = allProducts.filter(p => {
+        const category = String(p.category || 'Без категории').trim() || 'Без категории';
+        const matchesCategory = selectedCatalogCategory === 'Все товары' || category === selectedCatalogCategory;
+        const searchable = [p.title, p.category, p.subcategory, p.seller_name].map(value => String(value || '').toLocaleLowerCase('ru')).join(' ');
+        return matchesCategory && searchable.includes(query);
+    });
     renderProducts(filtered);
 }
 
