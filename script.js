@@ -273,6 +273,8 @@ function selectCatalogCategory(category) {
     if (button) button.textContent = category === 'Все товары' ? '☷ Каталог' : '☷ ' + (catalogCategoryLabels[category] || category);
     renderCatalogCategories();
     filterProducts();
+
+    toggleCatalogMenu(false);
 }
 
 function selectCatalogSubcategory(subcategory) {
@@ -350,14 +352,26 @@ function renderProducts(products) {
     }).join('');
 }
 
+function normalizeCatalogValue(value) {
+    return String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('ru');
+}
+
+function normalizeCatalogCategory(value) {
+    const normalized = normalizeCatalogValue(value);
+    const aliases = { 'genshin': 'genshin impact', 'геншин': 'genshin impact' };
+    return aliases[normalized] || normalized;
+}
+
 function filterProducts() {
-    const query = (document.getElementById('searchInput')?.value || '').trim().toLocaleLowerCase('ru');
+    const query = normalizeCatalogValue(document.getElementById('searchInput')?.value || '');
+    const selectedCategory = normalizeCatalogCategory(selectedCatalogCategory);
+    const selectedSubcategory = normalizeCatalogValue(selectedCatalogSubcategory);
     const filtered = allProducts.filter(p => {
-        const category = String(p.category || 'Без категории').trim() || 'Без категории';
-        const subcategory = String(p.subcategory || 'Общее').trim() || 'Общее';
-        const matchesCategory = selectedCatalogCategory === 'Все товары' || category === selectedCatalogCategory;
-        const matchesSubcategory = selectedCatalogSubcategory === 'Все подкатегории' || subcategory === selectedCatalogSubcategory;
-        const searchable = [p.title, p.category, p.subcategory, p.seller_name].map(value => String(value || '').toLocaleLowerCase('ru')).join(' ');
+        const category = normalizeCatalogCategory(p.category || 'Без категории');
+        const subcategory = normalizeCatalogValue(p.subcategory || 'Общее');
+        const matchesCategory = selectedCatalogCategory === 'Все товары' || category === selectedCategory;
+        const matchesSubcategory = selectedCatalogSubcategory === 'Все подкатегории' || subcategory === selectedSubcategory;
+        const searchable = [p.title, p.category, p.subcategory, p.seller_name].map(normalizeCatalogValue).join(' ');
         return matchesCategory && matchesSubcategory && searchable.includes(query);
     });
     renderProducts(filtered);
