@@ -472,13 +472,22 @@
             <h3>📦 Выставить товар на продажу</h3>
             <label>Название товара:</label>
             <input type="text" id="newTitle" placeholder="Например: Буст в Roblox">
+            <label>Тип объявления:</label>
+            <select id="newProductType" onchange="updateProductTypeHelp()">
+                <option value="standard">Обычный товар / услуга</option>
+                <option value="channel_customization">Кастомизация Telegram-канала</option>
+                <option value="telegram_stars">Telegram Stars</option>
+                <option value="subscription">Подписки на сервисы и магазины</option>
+                <option value="loyalty_points">Баллы магазинов / программы лояльности</option>
+            </select>
+            <p id="newProductTypeHelp" style="font-size:12px;color:var(--text-muted);">Обычный товар или услуга.</p>
             
             <label>Категория:</label>
             <select id="newCategory" onchange="updateSubcategoryOptions()">
                 <option value="Telegram">Telegram</option>
                 <option value="Instagram">Instagram</option><option value="TikTok">TikTok</option><option value="YouTube">YouTube</option><option value="Discord">Discord</option><option value="VK">ВКонтакте</option>
                 <option value="Roblox">Roblox</option><option value="Minecraft">Minecraft</option><option value="Genshin Impact">Genshin Impact</option><option value="PUBG Mobile">PUBG Mobile</option><option value="Free Fire">Free Fire</option><option value="Mobile Legends">Mobile Legends</option><option value="Brawl Stars">Brawl Stars</option><option value="Fortnite">Fortnite</option><option value="Valorant">Valorant</option><option value="CS2">CS2</option><option value="Dota 2">Dota 2</option><option value="Steam">Steam</option><option value="PlayStation">PlayStation</option><option value="Xbox">Xbox</option><option value="Nintendo">Nintendo</option>
-                <option value="VPN">VPN и прокси</option><option value="Подписки">Подписки и премиум</option><option value="Аккаунты">Аккаунты и профили</option><option value="Пополнение">Пополнение баланса и донат</option><option value="Программное обеспечение">Программы и ПО</option><option value="Дизайн">Дизайн и оформление</option><option value="Услуги">Услуги и другое</option>
+                <option value="VPN">VPN и прокси</option><option value="Подписки">Подписки и премиум</option><option value="Баллы магазинов">Баллы магазинов и программы лояльности</option><option value="Аккаунты">Аккаунты и профили</option><option value="Пополнение">Пополнение баланса и донат</option><option value="Программное обеспечение">Программы и ПО</option><option value="Дизайн">Дизайн и оформление</option><option value="Услуги">Услуги и другое</option>
             </select>
 
             <label>Услуга / Подкатегория:</label>
@@ -491,8 +500,8 @@
                 <option value="Напарник на час">Напарник на час</option>
             </select>
 
-            <label>Цена (₽):</label>
-            <input type="number" id="newPrice" placeholder="500">
+            <label id="newPriceLabel">Цена (₽):</label>
+            <input type="number" id="newPrice" min="0.01" step="0.01" placeholder="500">
 
             <div style="margin: 8px 0; display:flex; align-items:center; gap:8px;">
                 <input type="checkbox" id="newPriceFrom" onchange="toggleMaxPriceField()" style="width:auto; margin:0;"> Цена «от» (диапазон)
