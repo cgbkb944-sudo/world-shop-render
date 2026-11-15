@@ -268,11 +268,29 @@
         .nav{background:rgba(8,13,28,.92);border-color:#27324c;padding:12px 0 calc(12px + env(safe-area-inset-bottom))}
         .nav-item.active{color:#a99cff}
         @media(min-width:520px){.owner-stats-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-
+        .subscription-gate{position:fixed;inset:0;z-index:9999;background:rgba(5,8,20,.97);display:flex;align-items:center;justify-content:center;padding:22px;box-sizing:border-box}
+        .subscription-gate.hidden{display:none!important}
+        .subscription-gate-card{width:100%;max-width:420px;background:#151d35;border:1px solid #3c4670;border-radius:24px;padding:26px 22px;text-align:center;box-shadow:0 24px 80px #0009}
+        .subscription-gate-card h2{font-size:23px;margin:0 0 12px}
+        .subscription-gate-card p{color:#b6bfd8;line-height:1.55;font-size:14px}
+        .subscription-gate-card a,.subscription-gate-card button{display:block;width:100%;box-sizing:border-box;padding:14px 16px;margin-top:12px;border:0;border-radius:13px;text-decoration:none;font-weight:700;font-size:14px}
+        .subscription-gate-card a{background:linear-gradient(135deg,#7567ef,#a15be8);color:white}
+        .subscription-gate-card button{background:#273452;color:#fff}
+        #subscription-status{min-height:20px;margin-top:14px;font-size:12px;color:#b7c5e8}
     </style>
 </head>
 <body>
 
+<div id="subscription-gate" class="subscription-gate hidden">
+    <div class="subscription-gate-card">
+        <div style="font-size:38px;margin-bottom:12px">🔒</div>
+        <h2>Подпишитесь на канал</h2>
+        <p>Чтобы пользоваться WORLD TG SHOP, подпишитесь на наш Telegram-канал. После проверки откроется полный доступ, а на баланс один раз начислится бонус 10 ₽.</p>
+        <a id="subscription-channel-link" href="#" target="_blank" rel="noopener">📢 Подписаться на канал</a>
+        <button id="subscription-check-button" onclick="checkSubscription()">✅ Проверить подписку</button>
+        <div id="subscription-status">После подписки нажмите кнопку проверки.</div>
+    </div>
+</div>
 <div id="app" class="container">
     <!-- Главная вкладка -->
     <div id="tab-main" class="tab-content">
