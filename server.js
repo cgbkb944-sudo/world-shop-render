@@ -751,7 +751,7 @@ async function handleTelegramBotMessage(message) {
   const chatId=message.chat?.id, from=message.from;
   if(!chatId||!from?.id||message.chat?.type!=='private')return;
   const text=String(message.text||'').trim();
-  const command=(text.split(/\\s+/)[0]||'').split('@')[0].toLowerCase();
+  const command=(text.split(/\s+/)[0]||'').split('@')[0].toLowerCase();
   if(!['/start','/shop','/help','/balance','/profile','/support'].includes(command))return;
   const id=String(from.id);
   const username=String(from.username||'').slice(0,64);
@@ -770,7 +770,7 @@ async function handleTelegramBotMessage(message) {
     await telegramRequest('sendMessage',{
       chat_id:chatId,
       text:'Привет'+greeting+'! Это официальный бот WORLD TG SHOP. Здесь можно открыть магазин, покупать товары, пополнять баланс и следить за заказами.'+
-        (appOrigin?'\\n\\nНажмите кнопку ниже или используйте кнопку меню «Открыть магазин».':'\\n\\nМагазин временно недоступен: адрес Mini App ещё не настроен.'),
+        (appOrigin?'\n\nНажмите кнопку ниже или используйте кнопку меню «Открыть магазин».':'\n\nМагазин временно недоступен: адрес Mini App ещё не настроен.'),
       ...(reply?{reply_markup:reply}:{})
     });
     return;
@@ -781,10 +781,10 @@ async function handleTelegramBotMessage(message) {
     const displayRole={owner:'Владелец',admin:'Администратор',support:'Поддержка',seller:'Продавец',user:'Покупатель'}[u.role]||'Пользователь';
     await telegramRequest('sendMessage',{
       chat_id:chatId,
-      text:'👤 Профиль WORLD TG SHOP\\n'+
-        'Telegram: '+(u.username?'@'+u.username:'не указан')+'\\n'+
-        'Роль: '+displayRole+'\\n'+
-        'Баланс покупателя: '+Number(u.balance||0).toFixed(2)+' ₽\\n'+
+      text:'👤 Профиль WORLD TG SHOP\n'+
+        'Telegram: '+(u.username?'@'+u.username:'не указан')+'\n'+
+        'Роль: '+displayRole+'\n'+
+        'Баланс покупателя: '+Number(u.balance||0).toFixed(2)+' ₽\n'+
         'Баланс продавца: '+Number(u.seller_balance||0).toFixed(2)+' ₽',
       ...(appOrigin?{reply_markup:{inline_keyboard:[[{text:'Открыть магазин',web_app:{url:appOrigin}}]]}}:{})
     });
@@ -792,7 +792,7 @@ async function handleTelegramBotMessage(message) {
   }
   if(command==='/help'){
     await telegramRequest('sendMessage',{chat_id:chatId,text:
-      'Команды WORLD TG SHOP:\\n/start — главное меню\\n/shop — открыть магазин\\n/profile — профиль и оба баланса\\n/balance — проверить баланс\\n/support — как обратиться в поддержку'});
+      'Команды WORLD TG SHOP:\n/start — главное меню\n/shop — открыть магазин\n/profile — профиль и оба баланса\n/balance — проверить баланс\n/support — как обратиться в поддержку'});
     return;
   }
   if(command==='/support'){
