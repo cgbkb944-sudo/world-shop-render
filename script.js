@@ -71,6 +71,23 @@ let directPaymentPoll = null;
 let currentRole='user';
 function rub(value){return Number(value||0).toLocaleString('ru-RU',{maximumFractionDigits:2})+' ₽';}
 function jsonPost(url,body){return apiFetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});}
+async function loadPromoCodes(){
+ const box=document.getElementById('promo-codes-list');if(!box)return;box.textContent='Загружаем промокоды…';
+ try{const r=await apiFetch('/api/promos'),rows=await r.json();if(!r.ok)throw new Error(rows.error||'Ошибка');
+ box.innerHTML=rows.length?rows.map(p=>{const expiry=p.expires_at?'до '+new Date(p.expires_at).toLocaleString('ru-RU'):'без срока';const state=p.is_active?'активен':'отключён';return '<div class="data-row"><div><b>'+escapeHtml(p.code)+'</b><small>'+escapeHtml(p.promo_type)+' · '+escapeHtml(p.value)+' · '+p.uses_count+'/'+p.max_uses+' активаций · '+expiry+' · '+state+'</small></div>'+(p.is_active?'<button class="danger-button" onclick="disablePromo(\\''+escapeHtml(p.code)+'\\')">Отключить</button>':'')+'</div>';}).join(''):'<p>Промокодов пока нет.</p>';
+ }catch(e){box.textContent=e.message;}
+}
+async function createPromoFromPanel(){
+ const type=document.getElementById('promo-type').value,value=Number(document.getElementById('promo-value').value),max_uses=Number(document.getElementById('promo-max-uses').value),expires_hours=Number(document.getElementById('promo-expires-hours').value),result=document.getElementById('promo-create-result');
+ result.textContent='Создаём промокод…';
+ try{const r=await jsonPost('/api/promos/create',{type,value,max_uses,expires_hours}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка создания');
+ result.textContent='Создан код '+d.promo.code+' · действует '+(expires_hours?expires_hours+' ч.':'без ограничения')+'.';if(navigator.clipboard?.writeText)navigator.clipboard.writeText(d.promo.code).catch(()=>{});loadPromoCodes();
+ }catch(e){result.textContent=e.message;}
+}
+async function disablePromo(code){
+ if(!confirm('Отключить промокод '+code+'?'))return;
+ try{const r=await jsonPost('/api/promos/'+encodeURIComponent(code)+'/disable',{}),d=await r.json();if(!r.ok)throw new Error(d.error||'Ошибка');loadPromoCodes();}catch(e){alert(e.message);}
+}
 function loadOwnerStats(){
   apiFetch('/api/owner/overview').then(r=>r.json()).then(d=>{
     if(d.error)throw new Error(d.error);
@@ -175,6 +192,7 @@ apiFetch('/api/user', {
     if (data.subscription_required) return;
     if (data.error) throw new Error(data.error);
     currentRole = data.role;
+    const promoCard=document.getElementById('promo-management-card');if(promoCard){promoCard.style.display=['owner','admin','support'].includes(data.role)?'block':'none';if(['owner','admin','support'].includes(data.role))loadPromoCodes();}
     document.getElementById('userrole-badge').innerText = data.role.toUpperCase();
     document.getElementById('user-balance').innerText = rub(data.balance);
     document.getElementById('profileName').value = data.display_name || '';
@@ -550,6 +568,7 @@ function switchTab(tabName, element) {
 
     if(tabName === 'manage') {
       if(currentRole==='owner'){loadOwnerStats();loadOwnerSellers();loadKeyHistory();loadOwnerWithdrawals();}
+      if(['owner','admin','support'].includes(currentRole))loadPromoCodes();
       if(['owner','support'].includes(currentRole)) { loadModeration(); loadManageProducts(); }
     }
     if(tabName === 'history') loadHistory();
