@@ -541,7 +541,7 @@
     <div class="card" style="width:90%;max-width:380px;text-align:center;margin:auto;max-height:85vh;overflow:auto;">
         <h3 style="margin-bottom:8px;color:#818cf8;">Перевод <span id="transferAssetTitle">TON</span></h3>
         <p style="font-size:13px;margin-bottom:12px;">Отправьте точную сумму. Обязательно укажите комментарий — он нужен для автоматического распознавания платежа.</p>
-        <img id="transferQrImg" alt="QR-код для оплаты TON" width="220" height="220" style="display:block;width:220px;height:220px;max-width:100%;object-fit:contain;margin:0 auto 14px;background:#fff;border-radius:12px;padding:8px;box-sizing:border-box;">
+        <img id="transferQrImg" alt="QR-код для оплаты TON" width="320" height="320" style="display:block;width:280px;height:280px;max-width:100%;object-fit:contain;margin:0 auto 14px;background:#fff;border-radius:12px;padding:10px;box-sizing:border-box;image-rendering:pixelated;">
         <div style="text-align:left;background:rgba(15,23,42,0.6);padding:12px;border-radius:10px;font-size:13px;margin-bottom:12px;word-break:break-all;">
             <b>Адрес кошелька:</b><br><span id="walletAddressText" style="color:#38bdf8;">—</span><br><br>
             <b>Точная сумма:</b><br><span id="transferAmountText" style="color:#10b981;font-weight:bold;">—</span><br><br>
@@ -552,7 +552,9 @@
         </div>
         <button onclick="copyWalletAddress()">Скопировать адрес</button>
         <button class="secondary-button" onclick="copyWalletComment()">Скопировать комментарий</button>
-        <button class="secondary-button" onclick="openWalletApp()">Открыть в TON-кошельке</button>
+        <button class="secondary-button" onclick="openWalletApp('tonkeeper')">Открыть в Tonkeeper</button>
+        <button class="secondary-button" onclick="openWalletApp('mytonwallet')">Открыть в MyTonWallet</button>
+        <button class="secondary-button" onclick="copyWalletPaymentLink()">Скопировать ссылку на оплату</button>
         <button class="danger-button" onclick="closeTransferModal()">Закрыть</button>
     </div>
 </div>
