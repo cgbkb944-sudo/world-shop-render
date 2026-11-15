@@ -334,6 +334,7 @@ app.post('/api/subscription/check',async(req,res)=>{
   try{
     await pool.query("INSERT INTO users (telegram_id,username,role) VALUES ($1,$2,$3) ON CONFLICT (telegram_id) DO UPDATE SET username=EXCLUDED.username,updated_at=NOW()",
       [u.id,u.username,u.id===OWNER_TELEGRAM_ID?'owner':'user']);
+    channelMembershipCache.delete(u.id);
     const member=await checkRequiredChannelMembership(u.id);
     if(!member)return res.status(403).json(subscriptionRequiredPayload());
     const reward=await grantChannelSubscriptionReward(u.id);
@@ -977,6 +978,7 @@ async function handleTelegramBotCallback(query) {
   if(action==='check_subscription'){
     await telegramRequest('answerCallbackQuery',{callback_query_id:query.id});
     if(!subscriptionGateEnabled()){await sendBotText(chatId,'Проверка подписки пока не настроена владельцем магазина.');return;}
+    channelMembershipCache.delete(String(userId));
     if(!await checkRequiredChannelMembership(String(userId))){await sendBotText(chatId,'❌ Подписка пока не обнаружена. Подпишитесь на канал и нажмите «Проверить подписку».',subscriptionGateMarkup());return;}
     const rewarded=await grantChannelSubscriptionReward(String(userId));
     const screen={text:'✅ Подписка подтверждена! Полный доступ открыт.'+(rewarded?'\n\n🎁 Вам начислено 10 ₽ на баланс!':'\n\nБонус 10 ₽ ранее уже был получен.')+'\n\nВыберите раздел:',markup:await botHomeMarkup()};
