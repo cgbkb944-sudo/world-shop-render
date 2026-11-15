@@ -259,7 +259,7 @@ const roles = (...allowed) => (req,res,next) => allowed.includes(req.user.role) 
 const money = v => { const n=Number(v); return Number.isFinite(n)&&n>0&&n<=1e7&&Math.round(n*100)/100===n?n:null; };
 const hashKey = v => crypto.createHash('sha256').update(String(v).trim().toUpperCase()).digest('hex');
 function privateDataKey() {
-  return crypto.createHash('sha256').update(String(process.env.ACCOUNT_DATA_ENCRYPTION_KEY || BOT_TOKEN) + '\\0world-shop-private-delivery-v1').digest();
+  return crypto.createHash('sha256').update(String(process.env.ACCOUNT_DATA_ENCRYPTION_KEY || BOT_TOKEN) + '|world-shop-private-delivery-v1').digest();
 }
 function encryptPrivateData(value) {
   const iv=crypto.randomBytes(12),cipher=crypto.createCipheriv('aes-256-gcm',privateDataKey(),iv);
@@ -457,7 +457,7 @@ app.post('/api/products/add',roles('seller','admin','owner'),async(req,res)=>{
     const d=b.private_data&&typeof b.private_data==='object'?b.private_data:{};
     const username=String(d.roblox_username||'').trim(),email=String(d.account_email||'').trim();
     const password=String(d.account_password||''),emailPassword=String(d.email_password||'');
-    if(!/^[A-Za-z0-9_]{3,20}$/.test(username)||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)||!password||password.length>256||!emailPassword||emailPassword.length>256)
+    if(!/^[A-Za-z0-9_]{3,20}$/.test(username)||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||!password||password.length>256||!emailPassword||emailPassword.length>256)
       return res.status(400).json({error:'Для аккаунта Roblox укажите корректный username, почту, пароль аккаунта и пароль от почты.'});
     privateData={roblox_username:username,account_email:email,account_password:password,email_password:emailPassword};
   }
@@ -660,8 +660,8 @@ app.post('/api/buy',async(req,res)=>{
       [req.user.telegram_id,-amount,ref,'Покупка товара #'+order.rows[0].id,product.seller_id,sellerAmount,ref+'_seller','Продажа товара #'+order.rows[0].id]);
     if(type==='roblox_account')await c.query("UPDATE products SET status='sold' WHERE id=$1",[id]);
     await c.query('COMMIT');
-    const info=Object.entries(clean).map(([k,v])=>k+': '+v).join('\\n');
-    const sellerMessage='🛒 Новый оплаченный заказ #'+order.rows[0].id+'\\nТовар: '+product.title+'\\nСумма: '+amount.toFixed(2)+' ₽\\nПокупатель: '+(req.user.username?'@'+req.user.username:'без username')+(info?'\\nДанные покупателя:\\n'+info:'');
+    const info=Object.entries(clean).map(([k,v])=>k+': '+v).join('\n');
+    const sellerMessage='🛒 Новый оплаченный заказ #'+order.rows[0].id+'\nТовар: '+product.title+'\nСумма: '+amount.toFixed(2)+' ₽\nПокупатель: '+(req.user.username?'@'+req.user.username:'без username')+(info?'\nДанные покупателя:\n'+info:'');
     telegramRequest('sendMessage',{chat_id:String(product.seller_id),text:sellerMessage.slice(0,3500)}).catch(e=>console.error('Seller order notification:',e.message));
     res.json({success:true,message:'Покупка успешно совершена!',order_id:order.rows[0].id,total:amount,quantity});
   }catch(e){await c.query('ROLLBACK');console.error('Purchase:',e.message);res.status(503).json({error:'Не удалось оформить заказ.'});}
