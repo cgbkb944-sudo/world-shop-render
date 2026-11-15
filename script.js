@@ -10,10 +10,47 @@ if (!tg || !user || !initData) {
     document.querySelectorAll('[onclick]').forEach(el => { el.style.pointerEvents = 'none'; el.setAttribute('aria-disabled','true'); });
     throw new Error('Telegram WebApp initData is required');
 }
+function showSubscriptionGate(data = {}) {
+    const gate = document.getElementById('subscription-gate');
+    if (!gate) return;
+    const link = document.getElementById('subscription-channel-link');
+    if (link && data.channel_url) link.href = data.channel_url;
+    gate.classList.remove('hidden');
+}
+async function checkSubscription() {
+    const button = document.getElementById('subscription-check-button');
+    const status = document.getElementById('subscription-status');
+    if (button) button.disabled = true;
+    if (status) status.textContent = 'Проверяем подписку…';
+    try {
+        const response = await fetch('/api/subscription/check', {
+            method: 'POST',
+            headers: { 'X-Telegram-Init-Data': initData, 'Content-Type': 'application/json' },
+            body: '{}'
+        });
+        const data = await response.json();
+        if (response.ok && data.success) {
+            if (status) status.textContent = data.rewarded ? 'Подписка подтверждена! Начислено 10 ₽.' : 'Подписка подтверждена! Бонус ранее уже был получен.';
+            location.reload();
+            return;
+        }
+        if (status) status.textContent = data.error || 'Подписка пока не найдена. Подпишитесь на канал и попробуйте снова.';
+        if (data.channel_url) document.getElementById('subscription-channel-link').href = data.channel_url;
+    } catch {
+        if (status) status.textContent = 'Не удалось связаться с сервером. Попробуйте ещё раз.';
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
 function apiFetch(url, options = {}) {
     const headers = new Headers(options.headers || {});
     headers.set('X-Telegram-Init-Data', initData);
-    return fetch(url, { ...options, headers });
+    return fetch(url, { ...options, headers }).then(async response => {
+        if (response.status === 403) {
+            try { const data = await response.clone().json(); if (data.subscription_required) showSubscriptionGate(data); } catch {}
+        }
+        return response;
+    });
 }
 document.getElementById('userid').innerText = user.id;
 document.getElementById('username').innerText = user.username || 'user';
@@ -135,6 +172,8 @@ apiFetch('/api/user', {
 })
 .then(res => res.json())
 .then(data => {
+    if (data.subscription_required) return;
+    if (data.error) throw new Error(data.error);
     currentRole = data.role;
     document.getElementById('userrole-badge').innerText = data.role.toUpperCase();
     document.getElementById('user-balance').innerText = rub(data.balance);
