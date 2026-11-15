@@ -4,6 +4,7 @@ const { Pool } = require('pg');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const QRCode = require('qrcode');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -193,6 +194,9 @@ app.post('/webhooks/telegram', express.json({ limit: '64kb' }), async (req,res) 
         ok: valid,
         ...(valid ? {} : { error_message: 'Счёт недействителен или истёк. Создайте новый платёж.' })
       });
+    }
+    if (update.message && !update.message.successful_payment) {
+      await handleTelegramBotMessage(update.message);
     }
     const payment = update.message?.successful_payment;
     if (payment) {
@@ -743,6 +747,61 @@ async function telegramRequest(method, params={}) {
   if (!r.ok || !data.ok) throw new Error('Telegram Bot API ' + method + ' failed: ' + (data.description || r.status));
   return data.result;
 }
+async function handleTelegramBotMessage(message) {
+  const chatId=message.chat?.id, from=message.from;
+  if(!chatId||!from?.id||message.chat?.type!=='private')return;
+  const text=String(message.text||'').trim();
+  const command=(text.split(/\\s+/)[0]||'').split('@')[0].toLowerCase();
+  if(!['/start','/shop','/help','/balance','/profile','/support'].includes(command))return;
+  const id=String(from.id);
+  const username=String(from.username||'').slice(0,64);
+  const role=id===OWNER_TELEGRAM_ID?'owner':'user';
+  await pool.query(
+    "INSERT INTO users (telegram_id,username,role) VALUES ($1,$2,$3) " +
+    "ON CONFLICT (telegram_id) DO UPDATE SET username=EXCLUDED.username, " +
+    "role=CASE WHEN users.telegram_id=$4 THEN 'owner' ELSE users.role END,updated_at=NOW()",
+    [id,username,role,OWNER_TELEGRAM_ID]
+  );
+  if(command==='/start'||command==='/shop'){
+    const greeting=from.first_name?' '+String(from.first_name).slice(0,60):'';
+    const reply=appOrigin
+      ? {inline_keyboard:[[{text:'🛍 Открыть WORLD TG SHOP',web_app:{url:appOrigin}}]]}
+      : undefined;
+    await telegramRequest('sendMessage',{
+      chat_id:chatId,
+      text:'Привет'+greeting+'! Это официальный бот WORLD TG SHOP. Здесь можно открыть магазин, покупать товары, пополнять баланс и следить за заказами.'+
+        (appOrigin?'\\n\\nНажмите кнопку ниже или используйте кнопку меню «Открыть магазин».':'\\n\\nМагазин временно недоступен: адрес Mini App ещё не настроен.'),
+      ...(reply?{reply_markup:reply}:{})
+    });
+    return;
+  }
+  if(command==='/balance'||command==='/profile'){
+    const q=await pool.query('SELECT username,role,balance,seller_balance FROM users WHERE telegram_id=$1',[id]);
+    const u=q.rows[0];
+    const displayRole={owner:'Владелец',admin:'Администратор',support:'Поддержка',seller:'Продавец',user:'Покупатель'}[u.role]||'Пользователь';
+    await telegramRequest('sendMessage',{
+      chat_id:chatId,
+      text:'👤 Профиль WORLD TG SHOP\\n'+
+        'Telegram: '+(u.username?'@'+u.username:'не указан')+'\\n'+
+        'Роль: '+displayRole+'\\n'+
+        'Баланс покупателя: '+Number(u.balance||0).toFixed(2)+' ₽\\n'+
+        'Баланс продавца: '+Number(u.seller_balance||0).toFixed(2)+' ₽',
+      ...(appOrigin?{reply_markup:{inline_keyboard:[[{text:'Открыть магазин',web_app:{url:appOrigin}}]]}}:{})
+    });
+    return;
+  }
+  if(command==='/help'){
+    await telegramRequest('sendMessage',{chat_id:chatId,text:
+      'Команды WORLD TG SHOP:\\n/start — главное меню\\n/shop — открыть магазин\\n/profile — профиль и оба баланса\\n/balance — проверить баланс\\n/support — как обратиться в поддержку'});
+    return;
+  }
+  if(command==='/support'){
+    await telegramRequest('sendMessage',{chat_id:chatId,text:
+      'Чтобы обратиться в поддержку, откройте WORLD TG SHOP и перейдите в раздел поддержки. Приложите номер заказа или платежа и кратко опишите проблему.',
+      ...(appOrigin?{reply_markup:{inline_keyboard:[[{text:'Открыть магазин',web_app:{url:appOrigin}}]]}}:{})
+    });
+  }
+}
 async function registerTelegramWebhook() {
   if (!appOrigin || !process.env.TELEGRAM_WEBHOOK_SECRET) {
     console.warn('Telegram webhook not registered: APP_ORIGIN or TELEGRAM_WEBHOOK_SECRET is missing');
@@ -753,10 +812,18 @@ async function registerTelegramWebhook() {
     url, secret_token: process.env.TELEGRAM_WEBHOOK_SECRET,
     allowed_updates: ['message', 'pre_checkout_query'], drop_pending_updates: false
   });
+  await telegramRequest('setMyCommands', {commands:[
+    {command:'start',description:'Главное меню WORLD TG SHOP'},
+    {command:'shop',description:'Открыть магазин'},
+    {command:'profile',description:'Профиль и баланс'},
+    {command:'balance',description:'Проверить баланс'},
+    {command:'help',description:'Помощь и список команд'},
+    {command:'support',description:'Как связаться с поддержкой'}
+  ]});
   await telegramRequest('setChatMenuButton', {
     menu_button: { type: 'web_app', text: 'Открыть магазин', web_app: { url: appOrigin } }
   });
-  console.log('Telegram Mini App menu and payment webhook configured');
+  console.log('Telegram bot commands, Mini App menu and payment webhook configured');
 }
 async function cryptoPay(method, params={}) {
   if (!process.env.CRYPTO_PAY_API_TOKEN) throw new Error('Crypto Pay API token is not configured');
@@ -955,14 +1022,26 @@ async function createPayment(req,res) {
       await pool.query("UPDATE payments SET status='failed' WHERE id=$1",[row.rows[0].id]);
       throw new Error('Could not reserve a unique crypto amount for this invoice');
     }
-    const transferParams=new URLSearchParams({
-      amount:decimalToUnits(cryptoAmount,decimals).toString(),
-      text:paymentComment
-    });
+    const rawCryptoAmount=decimalToUnits(cryptoAmount,decimals).toString();
+    const transferParams=new URLSearchParams({amount:rawCryptoAmount,text:paymentComment});
     if(asset==='USDT')transferParams.set('jetton',USDT_TON_MASTER);
     const transferUri='ton://transfer/'+encodeURIComponent(tonAddress)+'?'+transferParams.toString();
+    const walletParams=new URLSearchParams({amount:rawCryptoAmount,text:paymentComment});
+    if(asset==='USDT')walletParams.set('jetton',USDT_TON_MASTER);
+    const walletPath='/transfer/'+encodeURIComponent(tonAddress);
+    const walletLinks={
+      tonkeeper:'https://app.tonkeeper.com'+walletPath+'?'+walletParams.toString(),
+      mytonwallet:'https://my.tt'+walletPath+'?'+walletParams.toString()
+    };
+    // Generate the payment QR on the server so it does not depend on a third-party CDN in the Telegram WebView.
+    const qrCodeDataUrl=await QRCode.toDataURL(walletLinks.tonkeeper,{
+      width:320,margin:3,errorCorrectionLevel:'H',
+      color:{dark:'#000000',light:'#FFFFFF'}
+    });
+    await pool.query('UPDATE payments SET provider_payload=$1 WHERE id=$2',
+      [JSON.stringify({rate,decimals,comment:paymentComment,transferUri,walletLinks}),row.rows[0].id]);
     return res.json({directTransfer:true,paymentId:row.rows[0].id,asset,cryptoAmount,walletAddress:tonAddress,
-      comment:paymentComment,transferUri,jettonMaster:USDT_TON_MASTER,
+      comment:paymentComment,transferUri,walletLinks,qrCodeDataUrl,jettonMaster:USDT_TON_MASTER,
       expiresAt:new Date(Date.now()+20*60*1000).toISOString(),rate});
   } catch(e){
     if(pendingPaymentId)await pool.query("UPDATE payments SET status='failed' WHERE id=$1 AND status='pending'",[pendingPaymentId]).catch(()=>{});
