@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS products (
   category VARCHAR(80) NOT NULL,
   subcategory VARCHAR(100) NOT NULL DEFAULT '',
   seller_id BIGINT NOT NULL REFERENCES users(telegram_id),
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','active','rejected','paused')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','active','rejected','paused','frozen','deleted')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CHECK (max_price IS NULL OR max_price >= price)
 );
