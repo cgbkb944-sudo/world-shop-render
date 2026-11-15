@@ -167,6 +167,11 @@ async function migrateDatabase() {
     sent_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS bot_settings (
+    setting_key TEXT PRIMARY KEY,
+    setting_value TEXT NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  `)
 }
 
 app.disable('x-powered-by');
@@ -207,6 +212,7 @@ app.post('/webhooks/telegram', express.json({ limit: '64kb' }), async (req,res) 
     if (update.message && !update.message.successful_payment) {
       await handleTelegramBotMessage(update.message);
     }
+    if (update.callback_query) await handleTelegramBotCallback(update.callback_query);
     const payment = update.message?.successful_payment;
     if (payment) {
       const match = /^wts_stars_(\d+)_([a-f0-9]+)$/.exec(String(payment.invoice_payload || ''));
@@ -806,82 +812,132 @@ async function telegramRequest(method, params={}) {
   if (!r.ok || !data.ok) throw new Error('Telegram Bot API ' + method + ' failed: ' + (data.description || r.status));
   return data.result;
 }
+async function getBotSetting(key) {
+  const q=await pool.query('SELECT setting_value FROM bot_settings WHERE setting_key=$1',[key]);
+  return q.rows[0]?.setting_value || null;
+}
+async function setBotSetting(key,value) {
+  await pool.query('INSERT INTO bot_settings(setting_key,setting_value) VALUES($1,$2) ON CONFLICT(setting_key) DO UPDATE SET setting_value=EXCLUDED.setting_value,updated_at=NOW()',[key,String(value)]);
+}
+async function sendBotText(chatId,text,replyMarkup) {
+  let entities=[];
+  try {
+    const raw=await getBotSetting('premium_emoji_map'), map=raw?JSON.parse(raw):{};
+    for(const [emoji,id] of Object.entries(map)) {
+      if(!emoji||!id)continue;
+      let offset=0;
+      while((offset=text.indexOf(emoji,offset))!==-1) {
+        entities.push({type:'custom_emoji',offset,length:emoji.length,custom_emoji_id:String(id)});
+        offset+=emoji.length;
+      }
+    }
+  } catch(e) { console.warn('Premium emoji configuration ignored:',e.message); }
+  const params={chat_id:chatId,text,...(replyMarkup?{reply_markup:replyMarkup}:{})};
+  if(entities.length) {
+    try { return await telegramRequest('sendMessage',{...params,entities}); }
+    catch(e) { console.warn('Premium emoji send failed; using standard emoji:',e.message); }
+  }
+  return telegramRequest('sendMessage',params);
+}
+async function botHomeMarkup() {
+  const rows=[];
+  if(appOrigin)rows.push([{text:'🛍 Каталог и покупки',web_app:{url:appOrigin}}]);
+  rows.push([{text:'👤 Профиль',callback_data:'bot:profile'},{text:'💳 Баланс',callback_data:'bot:balance'}]);
+  if(appOrigin)rows.push([{text:'📦 Мои заказы',web_app:{url:appOrigin}}]);
+  rows.push([{text:'🆘 Поддержка',callback_data:'bot:support'},{text:'ℹ️ Помощь',callback_data:'bot:help'}]);
+  return {inline_keyboard:rows};
+}
+async function botProfileText(id) {
+  const q=await pool.query('SELECT username,role,balance,seller_balance FROM users WHERE telegram_id=$1',[id]),u=q.rows[0]||{};
+  const role={owner:'Владелец',admin:'Администратор',support:'Поддержка',seller:'Продавец',user:'Покупатель'}[u.role]||'Пользователь';
+  return '👤 ВАШ ПРОФИЛЬ\n\nTelegram: '+(u.username?'@'+u.username:'не указан')+
+    '\nСтатус: '+role+'\n\n💳 Баланс покупателя: '+Number(u.balance||0).toFixed(2)+' ₽'+
+    '\n🏪 Баланс продавца: '+Number(u.seller_balance||0).toFixed(2)+' ₽\n\nВсе действия с балансом доступны в приложении WORLD TG SHOP.';
+}
+async function botScreen(action,id) {
+  if(action==='profile'||action==='balance')return {text:await botProfileText(id),markup:{inline_keyboard:[
+    ...(appOrigin?[[{text:action==='balance'?'Пополнить баланс':'Открыть приложение',web_app:{url:appOrigin}}]]:[]),
+    [{text:'⬅️ Главное меню',callback_data:'bot:home'}]
+  ]}};
+  if(action==='help')return {text:'ℹ️ ПОМОЩЬ WORLD TG SHOP\n\n🛍 Каталог — выбор и покупка товаров.\n💳 Баланс — пополнение и история операций.\n📦 Заказы — статусы и детали покупок.\n👤 Профиль — ваши данные и балансы.\n🆘 Поддержка — помощь по оплате и заказам.\n\nИспользуйте кнопки ниже, чтобы перейти в нужный раздел.',markup:{inline_keyboard:[
+    ...(appOrigin?[[{text:'🛍 Открыть магазин',web_app:{url:appOrigin}}]]:[]),
+    [{text:'⬅️ Главное меню',callback_data:'bot:home'}]
+  ]}};
+  if(action==='support')return {text:'🆘 ПОДДЕРЖКА\n\nЕсли возникла проблема с оплатой или заказом, откройте приложение и перейдите в раздел поддержки.\n\nЧтобы мы быстрее помогли, приложите номер заказа или платежа и кратко опишите проблему.',markup:{inline_keyboard:[
+    ...(appOrigin?[[{text:'Написать в поддержку',web_app:{url:appOrigin}}]]:[]),
+    [{text:'⬅️ Главное меню',callback_data:'bot:home'}]
+  ]}};
+  return {text:'📦 Ваши заказы и история покупок доступны в приложении WORLD TG SHOP.',markup:{inline_keyboard:[
+    ...(appOrigin?[[{text:'Открыть мои заказы',web_app:{url:appOrigin}}]]:[]),
+    [{text:'⬅️ Главное меню',callback_data:'bot:home'}]
+  ]}};
+}
+async function handleTelegramBotCallback(query) {
+  const chatId=query.message?.chat?.id,messageId=query.message?.message_id,userId=query.from?.id;
+  if(!chatId||!userId||query.message?.chat?.type!=='private'){await telegramRequest('answerCallbackQuery',{callback_query_id:query.id});return;}
+  const action=String(query.data||'').replace(/^bot:/,'');
+  if(!['home','profile','balance','help','support','orders'].includes(action)){
+    await telegramRequest('answerCallbackQuery',{callback_query_id:query.id,text:'Неизвестный раздел.'});return;
+  }
+  await telegramRequest('answerCallbackQuery',{callback_query_id:query.id});
+  const screen=action==='home'?{text:'✨ WORLD TG SHOP\n\nДобро пожаловать! Выберите нужный раздел:',markup:await botHomeMarkup()}:await botScreen(action,String(userId));
+  try{await telegramRequest('editMessageText',{chat_id:chatId,message_id:messageId,text:screen.text,reply_markup:screen.markup});}
+  catch(e){if(!/message is not modified/i.test(e.message))await sendBotText(chatId,screen.text,screen.markup);}
+}
 async function handleTelegramBotMessage(message) {
-  const chatId=message.chat?.id, from=message.from;
+  const chatId=message.chat?.id,from=message.from;
   if(!chatId||!from?.id||message.chat?.type!=='private')return;
-  const text=String(message.text||'').trim();
-  const command=(text.split(/\s+/)[0]||'').split('@')[0].toLowerCase();
-  if(!['/start','/shop','/help','/balance','/profile','/support'].includes(command))return;
-  const id=String(from.id);
-  const username=String(from.username||'').slice(0,64);
-  const role=id===OWNER_TELEGRAM_ID?'owner':'user';
-  await pool.query(
-    "INSERT INTO users (telegram_id,username,role) VALUES ($1,$2,$3) " +
-    "ON CONFLICT (telegram_id) DO UPDATE SET username=EXCLUDED.username, " +
-    "role=CASE WHEN users.telegram_id=$4 THEN 'owner' ELSE users.role END,updated_at=NOW()",
-    [id,username,role,OWNER_TELEGRAM_ID]
-  );
+  const text=String(message.text||message.caption||'').trim(),command=(text.split(/\s+/)[0]||'').split('@')[0].toLowerCase();
+  const id=String(from.id),isOwner=id===OWNER_TELEGRAM_ID;
+  if(isOwner&&command==='/setwelcome'&&message.sticker?.file_id){
+    await setBotSetting('welcome_sticker_file_id',message.sticker.file_id);
+    await sendBotText(chatId,'✅ Приветственный стикер сохранён. Теперь он будет показываться при /start.');return;
+  }
+  if(isOwner&&command==='/clearwelcome'){
+    await pool.query("DELETE FROM bot_settings WHERE setting_key='welcome_sticker_file_id'");
+    await sendBotText(chatId,'Приветственный стикер удалён.');return;
+  }
+  if(isOwner&&command==='/setemojis'){
+    const source=String(message.text||message.caption||''),entities=message.entities||message.caption_entities||[],map={};
+    for(const entity of entities)if(entity.type==='custom_emoji'&&entity.custom_emoji_id){
+      const glyph=source.slice(entity.offset,entity.offset+entity.length);if(glyph)map[glyph]=String(entity.custom_emoji_id);
+    }
+    if(!Object.keys(map).length)await sendBotText(chatId,'Не нашёл Premium Emoji. Отправьте сообщение с Premium Emoji и добавьте подпись /setemojis.');
+    else{await setBotSetting('premium_emoji_map',JSON.stringify(map));await sendBotText(chatId,'✅ Premium Emoji сохранены. Для их отображения у владельца бота должна быть активна Telegram Premium.');}
+    return;
+  }
+  if(isOwner&&command==='/clearemojis'){
+    await pool.query("DELETE FROM bot_settings WHERE setting_key='premium_emoji_map'");
+    await sendBotText(chatId,'Настройки Premium Emoji очищены.');return;
+  }
+  if(!['/start','/shop','/help','/balance','/profile','/support','/orders'].includes(command))return;
+  const username=String(from.username||'').slice(0,64),role=isOwner?'owner':'user';
+  await pool.query("INSERT INTO users (telegram_id,username,role) VALUES ($1,$2,$3) ON CONFLICT (telegram_id) DO UPDATE SET username=EXCLUDED.username,role=CASE WHEN users.telegram_id=$4 THEN 'owner' ELSE users.role END,updated_at=NOW()",[id,username,role,OWNER_TELEGRAM_ID]);
   if(command==='/start'||command==='/shop'){
-    const greeting=from.first_name?' '+String(from.first_name).slice(0,60):'';
-    const reply=appOrigin
-      ? {inline_keyboard:[[{text:'🛍 Открыть WORLD TG SHOP',web_app:{url:appOrigin}}]]}
-      : undefined;
-    await telegramRequest('sendMessage',{
-      chat_id:chatId,
-      text:'Привет'+greeting+'! Это официальный бот WORLD TG SHOP. Здесь можно открыть магазин, покупать товары, пополнять баланс и следить за заказами.'+
-        (appOrigin?'\n\nНажмите кнопку ниже или используйте кнопку меню «Открыть магазин».':'\n\nМагазин временно недоступен: адрес Mini App ещё не настроен.'),
-      ...(reply?{reply_markup:reply}:{})
-    });
-    return;
+    const first=String(from.first_name||'').slice(0,60);
+    const greeting='✨ WORLD TG SHOP\n\n'+(first?'Привет, '+first+'! ':'Добро пожаловать! ')+
+      'Здесь можно покупать товары, пополнять баланс, следить за заказами и управлять магазином.\n\nВыберите нужный раздел:';
+    const sticker=await getBotSetting('welcome_sticker_file_id').catch(()=>null);
+    if(sticker)try{await telegramRequest('sendSticker',{chat_id:chatId,sticker});}catch(e){console.warn('Welcome sticker send failed:',e.message);}
+    await sendBotText(chatId,greeting,await botHomeMarkup());return;
   }
-  if(command==='/balance'||command==='/profile'){
-    const q=await pool.query('SELECT username,role,balance,seller_balance FROM users WHERE telegram_id=$1',[id]);
-    const u=q.rows[0];
-    const displayRole={owner:'Владелец',admin:'Администратор',support:'Поддержка',seller:'Продавец',user:'Покупатель'}[u.role]||'Пользователь';
-    await telegramRequest('sendMessage',{
-      chat_id:chatId,
-      text:'👤 Профиль WORLD TG SHOP\n'+
-        'Telegram: '+(u.username?'@'+u.username:'не указан')+'\n'+
-        'Роль: '+displayRole+'\n'+
-        'Баланс покупателя: '+Number(u.balance||0).toFixed(2)+' ₽\n'+
-        'Баланс продавца: '+Number(u.seller_balance||0).toFixed(2)+' ₽',
-      ...(appOrigin?{reply_markup:{inline_keyboard:[[{text:'Открыть магазин',web_app:{url:appOrigin}}]]}}:{})
-    });
-    return;
-  }
-  if(command==='/help'){
-    await telegramRequest('sendMessage',{chat_id:chatId,text:
-      'Команды WORLD TG SHOP:\n/start — главное меню\n/shop — открыть магазин\n/profile — профиль и оба баланса\n/balance — проверить баланс\n/support — как обратиться в поддержку'});
-    return;
-  }
-  if(command==='/support'){
-    await telegramRequest('sendMessage',{chat_id:chatId,text:
-      'Чтобы обратиться в поддержку, откройте WORLD TG SHOP и перейдите в раздел поддержки. Приложите номер заказа или платежа и кратко опишите проблему.',
-      ...(appOrigin?{reply_markup:{inline_keyboard:[[{text:'Открыть магазин',web_app:{url:appOrigin}}]]}}:{})
-    });
-  }
+  const action=command==='/balance'?'balance':command==='/profile'?'profile':command==='/help'?'help':command==='/support'?'support':'orders';
+  const screen=await botScreen(action,id);await sendBotText(chatId,screen.text,screen.markup);
 }
 async function registerTelegramWebhook() {
-  if (!appOrigin || !process.env.TELEGRAM_WEBHOOK_SECRET) {
-    console.warn('Telegram webhook not registered: APP_ORIGIN or TELEGRAM_WEBHOOK_SECRET is missing');
-    return;
-  }
-  const url = new URL('/webhooks/telegram', appOrigin).toString();
-  await telegramRequest('setWebhook', {
-    url, secret_token: process.env.TELEGRAM_WEBHOOK_SECRET,
-    allowed_updates: ['message', 'pre_checkout_query'], drop_pending_updates: false
-  });
-  await telegramRequest('setMyCommands', {commands:[
+  if(!appOrigin||!process.env.TELEGRAM_WEBHOOK_SECRET){console.warn('Telegram webhook not registered: APP_ORIGIN or TELEGRAM_WEBHOOK_SECRET is missing');return;}
+  const url=new URL('/webhooks/telegram',appOrigin).toString();
+  await telegramRequest('setWebhook',{url,secret_token:process.env.TELEGRAM_WEBHOOK_SECRET,allowed_updates:['message','pre_checkout_query','callback_query'],drop_pending_updates:false});
+  await telegramRequest('setMyCommands',{commands:[
     {command:'start',description:'Главное меню WORLD TG SHOP'},
     {command:'shop',description:'Открыть магазин'},
-    {command:'profile',description:'Профиль и баланс'},
+    {command:'profile',description:'Профиль и оба баланса'},
     {command:'balance',description:'Проверить баланс'},
+    {command:'orders',description:'Мои заказы'},
     {command:'help',description:'Помощь и список команд'},
-    {command:'support',description:'Как связаться с поддержкой'}
+    {command:'support',description:'Поддержка'}
   ]});
-  await telegramRequest('setChatMenuButton', {
-    menu_button: { type: 'web_app', text: 'Открыть магазин', web_app: { url: appOrigin } }
-  });
+  await telegramRequest('setChatMenuButton',{menu_button:{type:'web_app',text:'Открыть магазин',web_app:{url:appOrigin}}});
   console.log('Telegram bot commands, Mini App menu and payment webhook configured');
 }
 async function cryptoPay(method, params={}) {
