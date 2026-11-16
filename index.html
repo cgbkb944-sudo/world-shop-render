@@ -528,7 +528,7 @@
                 <option value="channel_customization">Кастомизация Telegram-канала</option>
                 <option value="telegram_stars">Telegram Stars</option>
                 <option value="subscription">Подписки на сервисы и магазины</option>
-                <option value="loyalty_points">Баллы магазинов / программы лояльности</option><option value="robux">Robux — продажа валюты</option><option value="roblox_account">Аккаунт Roblox</option>
+                <option value="loyalty_points">Баллы магазинов / программы лояльности</option><option value="robux">Robux — продажа валюты</option><option value="roblox_account">Аккаунт Roblox</option><option value="telegram_account">Telegram-аккаунт</option>
             </select>
             <p id="newProductTypeHelp" style="font-size:12px;color:var(--text-muted);">Обычный товар или услуга.</p>
             <div id="newRobloxPrivateFields" class="hidden" style="padding:12px;border:1px solid var(--border-color);border-radius:12px;margin:10px 0;">
@@ -538,6 +538,13 @@
                 <label>Пароль от аккаунта Roblox</label><input id="robloxAccountPassword" type="password" autocomplete="new-password" placeholder="Пароль аккаунта">
                 <label>Пароль от почты</label><input id="robloxEmailPassword" type="password" autocomplete="new-password" placeholder="Пароль от почты">
                 <small>Данные шифруются перед сохранением и не видны в каталоге.</small>
+            </div>
+            <div id="newTelegramAccountFields" class="hidden" style="padding:12px;border:1px solid var(--border-color);border-radius:12px;margin:10px 0;">
+              <b>Telegram-аккаунт</b>
+              <label>Telegram Premium</label><select id="telegramPremium"><option value="no">Без Premium</option><option value="yes">С Premium</option></select>
+              <label>Способ передачи</label><select id="telegramDeliveryMethod" onchange="toggleTelegramDeliveryFields()"><option value="file">Файлом</option><option value="phone">По номеру телефона</option></select>
+              <div id="telegramFileFields"><label>Файл (до 5 МБ)</label><input id="telegramAccountFile" type="file"><small>Файл будет доступен покупателю после оплаты.</small></div>
+              <div id="telegramPhoneFields" class="hidden"><label>Номер телефона</label><input id="telegramAccountPhone" type="tel" placeholder="+79990000000"><small>Коды входа и облачные пароли не собираются и не пересылаются.</small></div>
             </div>
             
             <label>Категория:</label>
