@@ -757,6 +757,7 @@ app.post('/api/buy',async(req,res)=>{
     await c.query('COMMIT');
     const info=Object.entries(clean).map(([k,v])=>k+': '+v).join('\n');
     const sellerMessage='🛒 Новый оплаченный заказ #'+order.rows[0].id+'\nТовар: '+product.title+'\nСумма: '+amount.toFixed(2)+' ₽\nПокупатель: '+(req.user.username?'@'+req.user.username:'без username')+(info?'\nДанные покупателя:\n'+info:'');
+    telegramRequest('sendMessage',{chat_id:String(req.user.telegram_id),text:'✅ Покупка оформлена! Заказ #'+order.rows[0].id+'. Откройте приложение WORLD TG SHOP, чтобы получить данные выдачи.'}).catch(e=>console.error('Buyer order notification:',e.message));
     telegramRequest('sendMessage',{chat_id:String(product.seller_id),text:sellerMessage.slice(0,3500)}).catch(e=>console.error('Seller order notification:',e.message));
     notifySalesGroup('🛒 НОВАЯ ПОКУПКА\nЗаказ: #'+order.rows[0].id+'\nТовар: '+product.title+'\nСумма: '+amount.toFixed(2)+' ₽\nПродавец: '+(product.seller_name||('ID '+product.seller_id))+'\nПокупатель: '+(req.user.username?'@'+req.user.username:('ID '+req.user.telegram_id))+'\nКомиссия магазина (3%): '+fee.toFixed(2)+' ₽\nПродавцу начислено: '+sellerAmount.toFixed(2)+' ₽').catch(e=>console.error('Sales group purchase notification:',e.message));
     res.json({success:true,message:'Покупка успешно совершена!',order_id:order.rows[0].id,total:amount,original_total:originalAmount,discount:originalAmount-amount,quantity});
