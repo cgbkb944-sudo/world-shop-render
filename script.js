@@ -900,7 +900,20 @@ async function buyProduct(productId) {
     try{
       const res=await apiFetch('/api/buy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product_id:productId,quantity,details,promo_code:promoCode})});
       const data=await res.json();if(!res.ok||data.error)throw new Error(data.error||'Не удалось оформить заказ.');
-      if(type==='roblox_account'){
+      if(type==='telegram_account'){
+        const dr=await apiFetch('/api/orders/'+data.order_id+'/delivery'),delivery=await dr.json();
+        if(!dr.ok||!delivery.success)throw new Error(delivery.error||'Покупка прошла, но выдача пока недоступна. Заказ #'+data.order_id);
+        const d=delivery.delivery||{};
+        if(d.type==='file'){
+          const bytes=Uint8Array.from(atob(d.file_data),c=>c.charCodeAt(0));
+          const blob=new Blob([bytes],{type:d.mime||'application/octet-stream'});
+          const url=URL.createObjectURL(blob),link=document.createElement('a');
+          link.href=url;link.download=d.file_name||'telegram-account-file';document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);
+          alert('Покупка успешна! Файл аккаунта загружен. Заказ #'+data.order_id+'.');
+        }else{
+          alert('Покупка успешна! Номер телефона: '+d.phone+'\\nPremium: '+(d.premium==='yes'?'есть':'нет')+'\\n\\n'+d.notice+'\\nЗаказ #'+data.order_id);
+        }
+      }else if(type==='roblox_account'){
         const dr=await apiFetch('/api/orders/'+data.order_id+'/delivery'),delivery=await dr.json();
         if(!dr.ok||!delivery.success)throw new Error(delivery.error||'Покупка прошла, но данные аккаунта пока не удалось загрузить. Заказ #'+data.order_id);
         const d=delivery.delivery||{};
