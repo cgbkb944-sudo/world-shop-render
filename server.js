@@ -540,7 +540,7 @@ app.post('/api/products/add',roles('seller','admin','owner'),async(req,res)=>{
     if(!['file','phone'].includes(delivery)||!['yes','no'].includes(premium))return res.status(400).json({error:'Выберите Premium и способ передачи.'});
     if(delivery==='phone'){
       const phone=String(d.phone||'').trim();
-      if(!/^\\+?[0-9 ()-]{7,24}$/.test(phone))return res.status(400).json({error:'Укажите корректный номер телефона.'});
+      if(!/^\+?[0-9 ()-]{7,24}$/.test(phone))return res.status(400).json({error:'Укажите корректный номер телефона.'});
       privateData={delivery_method:'phone',premium,phone};
     }else{
       const f=d.file&&typeof d.file==='object'?d.file:{},name=String(f.name||'').trim(),data=String(f.data||'');
