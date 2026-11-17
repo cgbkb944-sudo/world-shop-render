@@ -1818,6 +1818,7 @@ async function start() {
     await migrateDatabase();
     server = app.listen(PORT,'0.0.0.0',()=>{
       console.log('WORLD TG SHOP listening on '+PORT);
+      console.log('RollyPay configuration:',{apiKeyConfigured:Boolean(process.env.ROLLYPAY_API_KEY),webhookSecretConfigured:Boolean(process.env.ROLLYPAY_WEBHOOK_SECRET),terminalIdConfigured:Boolean(process.env.ROLLYPAY_TERMINAL_ID),appOriginConfigured:Boolean(appOrigin)});
       registerTelegramWebhook().catch(e=>console.error('Telegram webhook setup:',e.message));
       configureRollyPayWebhook().catch(e=>console.error('RollyPay webhook setup:',e.message));
     });
