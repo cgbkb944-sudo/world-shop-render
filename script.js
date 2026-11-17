@@ -730,7 +730,7 @@ async function loadPaymentReadiness(){
  try{
   const status=await fetch('/health/payments').then(r=>r.json());
   paymentReadiness=status;
-  const names={cryptobot:'CryptoBot',owner_transfer:'Перевод на карту владельцу',direct_transfer:'TON / USDT',telegram_stars:'Telegram Stars'};
+  const names={cryptobot:'CryptoBot',owner_transfer:'Перевод на карту владельцу',direct_transfer:'TON / USDT',telegram_stars:'Telegram Stars',sbp:'СБП (RollyPay)',crypto:'Криптовалюта (RollyPay)'};
   const ready=Object.keys(names).filter(k=>status[k]);
   Object.keys(names).forEach(k=>{
    const el=document.getElementById('method-'+k);if(!el)return;
