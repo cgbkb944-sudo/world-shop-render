@@ -134,6 +134,11 @@
             border-color: var(--accent);
         }
         .pay-method-item span { margin-left: 12px; font-weight: 500; }
+        .payment-group-title{font-size:11px;font-weight:800;letter-spacing:1.2px;color:#a99cff;padding:13px 4px 3px}
+        .payment-group-title:first-child{padding-top:2px}
+        .pay-method-item span{display:flex;flex-direction:column;gap:4px}
+        .pay-method-item span strong{font-size:14px;color:#f4f5ff}
+        .pay-method-description{font-size:11px;font-weight:400;color:#9da9c8;line-height:1.35}
 
         .nav {
             position: fixed;
@@ -442,29 +447,28 @@
             <p style="margin-top: 14px;">Способ оплаты</p>
             <p id="payment-readiness" style="font-size:12px;color:var(--text-muted)">Проверяем доступность способов оплаты…</p>
             <div class="pay-methods">
+                <div class="payment-group-title">₿ КРИПТОВАЛЮТА</div>
                 <div class="pay-method-item selected" onclick="selectMethod('cryptobot', this)" id="method-cryptobot">
                     <span style="font-size: 20px;">🤖</span>
-                    <span>CryptoBot — оплата в TON / USDT по курсу Crypto Pay</span>
-                </div>
-                <div class="pay-method-item" onclick="selectMethod('sbp', this)" id="method-sbp">
-                    <span style="font-size: 20px;">🏦</span>
-                    <span>СБП — через RollyPay</span>
+                    <span><strong>CryptoBot</strong><small class="pay-method-description">TON / USDT · оплата через Crypto Pay</small></span>
                 </div>
                 <div class="pay-method-item" onclick="selectMethod('crypto', this)" id="method-crypto">
                     <span style="font-size: 20px;">💠</span>
-                    <span>Криптовалюта — через RollyPay</span>
-                </div>
-                <div class="pay-method-item" onclick="selectMethod('owner_transfer', this)" id="method-owner_transfer">
-                    <span style="font-size: 20px;">💳</span>
-                    <span>Перевод на карту владельцу</span>
+                    <span><strong>Криптовалюта RollyPay</strong><small class="pay-method-description">Оплата криптовалютой через RollyPay</small></span>
                 </div>
                 <div class="pay-method-item" onclick="selectMethod('direct_transfer', this)" id="method-direct_transfer">
                     <span style="font-size: 20px;">💎</span>
-                    <span>Прямой перевод TON / USDT</span>
+                    <span><strong>TON / USDT</strong><small class="pay-method-description">Прямой перевод на криптокошелёк</small></span>
                 </div>
+                <div class="payment-group-title">💳 БАНКОВСКАЯ ОПЛАТА</div>
+                <div class="pay-method-item" onclick="selectMethod('sbp', this)" id="method-sbp">
+                    <span style="font-size: 20px;">🏦</span>
+                    <span><strong>СБП через RollyPay</strong><small class="pay-method-description">Оплата через банковское приложение</small></span>
+                </div>
+                <div class="payment-group-title">⭐ TELEGRAM STARS</div>
                 <div class="pay-method-item" onclick="selectMethod('telegram_stars', this)" id="method-telegram_stars">
                     <span style="font-size: 20px;">⭐</span>
-                    <span>Telegram Stars — 1 ⭐ = 1 ₽</span>
+                    <span><strong>Telegram Stars</strong><small class="pay-method-description">1 ⭐ = 1 ₽</small></span>
                 </div>
             </div>
             <div id="directAssetWrap" class="hidden" style="margin-top:8px;">
