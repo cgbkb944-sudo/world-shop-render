@@ -1806,12 +1806,20 @@ const salesReportMonitor=setInterval(()=>{sendDailySalesReportIfDue().catch(e=>c
 setTimeout(()=>pollTonPayments().catch(e=>console.error('TON poll failed:',e.message)),1500).unref();
 setTimeout(()=>sendDailySalesReportIfDue().catch(e=>console.error('Daily sales report failed:',e.message)),5000).unref();
 let server;
+async function configureRollyPayWebhook() {
+  const terminalId=String(process.env.ROLLYPAY_TERMINAL_ID||'').trim();
+  if(!terminalId||!process.env.ROLLYPAY_API_KEY||!process.env.ROLLYPAY_WEBHOOK_SECRET||!appOrigin)return;
+  const callbackUrl=new URL('/webhooks/rollypay',appOrigin).toString();
+  await rollyRequest('PUT','/terminals/'+encodeURIComponent(terminalId),{callback_url:callbackUrl});
+  console.log('RollyPay callback URL configured');
+}
 async function start() {
   try {
     await migrateDatabase();
     server = app.listen(PORT,'0.0.0.0',()=>{
       console.log('WORLD TG SHOP listening on '+PORT);
       registerTelegramWebhook().catch(e=>console.error('Telegram webhook setup:',e.message));
+      configureRollyPayWebhook().catch(e=>console.error('RollyPay webhook setup:',e.message));
     });
   } catch (error) {
     console.error('Startup migration failed:', error.message);
