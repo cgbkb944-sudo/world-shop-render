@@ -1286,8 +1286,11 @@ async function rollyRequest(method,path,body) {
   const headers={'X-API-Key':process.env.ROLLYPAY_API_KEY,'X-Nonce':crypto.randomUUID()};
   const options={method,headers,signal:AbortSignal.timeout(12000)};
   if(body){headers['Content-Type']='application/json';options.body=JSON.stringify(body);}
-  const r=await fetch('https://rollypay.io/api/v1'+path,options),data=await r.json();
-  if(!r.ok) throw new Error('RollyPay API request failed: '+(data.error||r.status));
+  const r=await fetch('https://rollypay.io/api/v1'+path,options);
+  const responseText=await r.text();
+  let data={};
+  if(responseText) { try { data=JSON.parse(responseText); } catch { data={message:responseText.slice(0,300)}; } }
+  if(!r.ok) throw new Error('RollyPay API request failed: '+(data.error||data.message||r.status));
   return data;
 }
 async function tonApi(path,params={}) {
@@ -1369,14 +1372,22 @@ async function handleCryptoPayWebhook(req,res) {
   return res.sendStatus(200);
 }
 async function handleRollyPayWebhook(req,res) {
-  const secret=process.env.ROLLYPAY_WEBHOOK_SECRET;
-  if(!secret||!Buffer.isBuffer(req.body))return res.sendStatus(404);
+  if(!Buffer.isBuffer(req.body)||req.body.length===0)return res.sendStatus(400);
+  let event;
+  try { event=JSON.parse(req.body.toString('utf8')); }
+  catch { return res.sendStatus(400); }
+  // The dashboard's test event is non-financial and can be acknowledged safely.
+  if(req.get('x-test-mode')==='true'&&event.event_type==='webhook.test') {
+    console.log('RollyPay test webhook received');
+    return res.sendStatus(200);
+  }
+  const secret=String(process.env.ROLLYPAY_WEBHOOK_SECRET||'').trim();
+  if(!secret)return res.sendStatus(503);
   const signature=req.get('x-signature')||'',timestamp=req.get('x-timestamp')||'',ts=Number(timestamp);
   if(!/^\d{10}$/.test(timestamp)||!Number.isFinite(ts))return res.sendStatus(403);
   if(Math.abs(Date.now()/1000-ts)>300)return res.sendStatus(403);
   const expected=crypto.createHmac('sha256',secret).update(timestamp+'.').update(req.body).digest('hex');
   if(!safeEqual(signature,expected))return res.sendStatus(403);
-  const event=JSON.parse(req.body.toString('utf8'));
   if(event.event_type!=='payment.paid'||event.status!=='paid')return res.sendStatus(200);
   const match=/^wts_(\d+)$/.exec(String(event.order_id||''));
   if(!match||!event.payment_id)return res.sendStatus(400);
@@ -1808,7 +1819,10 @@ setTimeout(()=>sendDailySalesReportIfDue().catch(e=>console.error('Daily sales r
 let server;
 async function configureRollyPayWebhook() {
   const terminalId=String(process.env.ROLLYPAY_TERMINAL_ID||'').trim();
-  if(!terminalId||!process.env.ROLLYPAY_API_KEY||!process.env.ROLLYPAY_WEBHOOK_SECRET||!appOrigin)return;
+  if(!terminalId||!process.env.ROLLYPAY_API_KEY||!appOrigin) {
+    console.warn('RollyPay callback URL not configured: terminal ID, API key or APP_ORIGIN is missing');
+    return;
+  }
   const callbackUrl=new URL('/webhooks/rollypay',appOrigin).toString();
   await rollyRequest('PUT','/terminals/'+encodeURIComponent(terminalId),{callback_url:callbackUrl});
   console.log('RollyPay callback URL configured');
