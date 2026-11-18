@@ -1,0 +1,16 @@
+name: Website syntax check
+on:
+  push:
+    branches: [website-development]
+  pull_request:
+    branches: [website-development]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node --check website-server.js
+      - run: node --check website/app.js
