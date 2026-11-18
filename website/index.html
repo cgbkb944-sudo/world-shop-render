@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#090d18">
+  <meta name="description" content="WORLD TG SHOP — маркетплейс товаров и цифровых услуг.">
+  <title>WORLD TG SHOP — маркетплейс</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <script async src="https://telegram.org/js/telegram-widget.js?22"></script>
+</head>
+<body>
+  <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
+  <header class="topbar">
+    <a class="brand" href="/"><span class="brand-mark">W</span><span>WORLD <b>TG SHOP</b><small>MARKETPLACE</small></span></a>
+    <nav class="desktop-nav"><a href="#catalog">Каталог</a><a href="#how">Как это работает</a><a href="#account">Личный кабинет</a></nav>
+    <button class="btn btn-outline" id="loginTop">Войти <span>↗</span></button>
+  </header>
+  <main>
+    <section class="hero">
+      <div class="hero-copy">
+        <div class="eyebrow"><i></i> ЕДИНЫЙ МАРКЕТПЛЕЙС WORLD TG SHOP</div>
+        <h1>Покупки,<br><em>которые проще.</em></h1>
+        <p class="hero-lead">Находи нужные товары, управляй покупками и пользуйся аккаунтом WORLD TG SHOP — на сайте и в Telegram.</p>
+        <div class="hero-actions"><a class="btn btn-primary" href="#catalog">Открыть каталог <span>→</span></a><a class="btn btn-quiet" href="#how">Как это работает</a></div>
+        <div class="hero-proof"><span class="proof-icon">✦</span><span>Один аккаунт</span><b></b><span>Общие товары и ключи</span><b></b><span>Сайт + Telegram</span></div>
+      </div>
+      <div class="hero-art" aria-label="Иллюстрация магазина">
+        <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+        <div class="glass-card card-back"><span class="tiny-label">WORLD / MARKET</span><div class="card-lines"></div><div class="card-dot"></div></div>
+        <div class="phone">
+          <div class="phone-top"><span>WORLD TG SHOP</span><span class="signal">● ● ●</span></div>
+          <div class="phone-greeting">Твой магазин<br><strong>в одном месте.</strong></div>
+          <div class="phone-search">⌕　Найти товар</div>
+          <div class="phone-products"><div class="mini-product mini-blue">✦<small>Цифровые товары</small></div><div class="mini-product mini-violet">◇<small>Подписки</small></div><div class="mini-product mini-cyan">⌘<small>Услуги</small></div></div>
+          <div class="phone-bottom"><i></i><i></i><i></i><i></i></div>
+        </div>
+        <div class="float-chip chip-top"><span>✦</span> Единый аккаунт</div><div class="float-chip chip-bottom"><span class="online-dot"></span> Магазин онлайн</div>
+      </div>
+    </section>
+    <section class="stats-strip"><div><strong>01</strong><span>Один профиль<br>для двух платформ</span></div><div><strong>02</strong><span>Единый баланс<br>и история операций</span></div><div><strong>03</strong><span>Общие ключи<br>активации</span></div><div><strong>04</strong><span>Товары из общей<br>базы магазина</span></div></section>
+    <section class="section" id="catalog">
+      <div class="section-heading"><div><div class="eyebrow">ВЫБИРАЙ СВОЁ</div><h2>Каталог магазина</h2><p>Товары, опубликованные продавцами WORLD TG SHOP.</p></div><button class="btn btn-outline" id="refreshCatalog">Обновить ↻</button></div>
+      <div class="catalog-tools"><div class="searchbox"><span>⌕</span><input id="searchProducts" type="search" placeholder="Поиск по товарам..."></div><div class="filter-pills"><button class="filter active" data-filter="all">Все товары</button><button class="filter" data-filter="digital">Цифровые</button><button class="filter" data-filter="services">Услуги</button></div></div>
+      <div class="product-grid" id="productGrid"><div class="loading-card">Загружаем каталог<span class="loader"></span></div></div>
+      <div class="catalog-note" id="catalogNote">Каталог синхронизируется с общей базой WORLD TG SHOP.</div>
+    </section>
+    <section class="feature-band" id="how"><div class="feature-symbol">∞</div><div><div class="eyebrow">ОДИН МАГАЗИН — ДВЕ ПЛАТФОРМЫ</div><h2>Начни здесь.<br><em>Продолжи в Telegram.</em></h2><p>Профиль, баланс, товары и активационные ключи будут общими. Неважно, где ты вошёл — данные остаются с тобой.</p></div><a class="btn btn-primary" href="https://t.me/World_tg_shop_bot" target="_blank" rel="noreferrer">Открыть Telegram-бота ↗</a></section>
+    <section class="section account-section" id="account">
+      <div class="section-heading"><div><div class="eyebrow">ТВОЁ ПРОСТРАНСТВО</div><h2>Личный кабинет</h2><p>Войди через Telegram, чтобы открыть общий профиль магазина.</p></div></div>
+      <div class="account-layout">
+        <div class="account-card account-login" id="loginPanel"><div class="account-icon">◎</div><h3>Войти в WORLD TG SHOP</h3><p>Используй Telegram-аккаунт, который уже привязан к твоему магазину.</p><div id="telegramLogin"><div class="login-placeholder">Кнопка входа Telegram появится после настройки домена бота.</div></div><small>Мы не просим пароль от Telegram. Авторизация подтверждается самим Telegram.</small></div>
+        <div class="account-card account-profile hidden" id="profilePanel"><div class="profile-head"><div class="avatar" id="avatar">W</div><div><div class="eyebrow">ТВОЙ ПРОФИЛЬ</div><h3 id="profileName">Пользователь</h3><p id="profileHandle"></p></div><button class="text-button" id="logoutBtn">Выйти</button></div><div class="balance-panel"><span>Доступный баланс</span><strong id="profileBalance">— ₽</strong><small>Единый баланс сайта и Mini App</small></div><div class="profile-grid"><div><span>Роль</span><b id="profileRole">Пользователь</b></div><div><span>Telegram ID</span><b id="profileId">—</b></div></div><div class="key-box"><h4>Активация ключа</h4><p>Ключ, созданный на сайте или в Mini App, действует на обеих платформах.</p><div class="key-row"><input id="activationKey" placeholder="WTS-..." autocomplete="off"><button class="btn btn-primary" id="activateKey">Активировать</button></div><div class="status-message" id="keyStatus"></div></div><div class="owner-tools hidden" id="ownerTools"><h4>Ключи доступа</h4><div class="key-row"><select id="newKeyRole"><option value="seller">Продавец</option><option value="support">Поддержка</option><option value="admin">Администратор</option></select><button class="btn btn-primary" id="generateKey">Создать ключ</button></div><div class="generated-key hidden" id="generatedKey"></div></div></div>
+        <div class="account-card account-side"><div class="side-icon">⌘</div><h3>Всё связано</h3><ul><li><span>✓</span> Общий аккаунт сайта и Mini App</li><li><span>✓</span> Единый баланс и история</li><li><span>✓</span> Общие товары и заказы</li><li><span>✓</span> Ключи работают в обе стороны</li></ul><a href="https://t.me/world_tg_shop" target="_blank" rel="noreferrer">Telegram-канал магазина ↗</a></div>
+      </div>
+    </section>
+  </main>
+  <footer><a class="brand" href="/"><span class="brand-mark">W</span><span>WORLD <b>TG SHOP</b><small>MARKETPLACE</small></span></a><span>© 2026 WORLD TG SHOP</span><a href="https://t.me/world_tg_shop" target="_blank" rel="noreferrer">@world_tg_shop ↗</a></footer>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="/app.js"></script>
+</body>
+</html>
