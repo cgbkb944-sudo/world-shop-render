@@ -49,8 +49,13 @@ loadProducts();loadMe();setupTelegramWidget();
 
 function setAvatar(el,url,fallback){if(!el)return;if(url){el.innerHTML='<img src="'+escapeHtml(url)+'" alt="Аватар Telegram">';}else{el.textContent=(fallback||'W').slice(0,1).toUpperCase();}}
 function showUser(user){
- currentUser=user;$('#loginPanel').classList.add('hidden');$('#profilePanel').classList.remove('hidden');$('#profileActions').classList.remove('hidden');
+ currentUser=user;
+ if(location.pathname==='/login')history.replaceState({},'','/profile');
+ const isProfileRoute=location.pathname==='/profile';
  $('#profileShortcut').classList.remove('hidden');$('#loginTop').classList.add('hidden');
+ $('#account').classList.toggle('hidden',!isProfileRoute);
+ if(!isProfileRoute)return;
+ $('#loginPanel').classList.add('hidden');$('#profilePanel').classList.remove('hidden');$('#profileActions').classList.remove('hidden');
  $('#profileName').textContent=user.display_name||user.first_name||user.username||'Пользователь';
  $('#profileHandle').textContent=user.username?'@'+user.username:'Аккаунт Telegram';
  $('#profileBalance').textContent=Number(user.balance||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+' ₽';
