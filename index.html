@@ -534,6 +534,10 @@
             <h3>📦 Выставить товар на продажу</h3>
             <label>Название товара:</label>
             <input type="text" id="newTitle" placeholder="Например: Буст в Roblox">
+            <label for="newProductImage">Фото товара (необязательно, до 2 МБ):</label>
+            <input type="file" id="newProductImage" accept="image/jpeg,image/png,image/webp">
+            <small style="display:block;color:var(--text-muted);margin:4px 0 12px;">Можно загрузить JPG, PNG или WebP. Без фото товар тоже можно опубликовать.</small>
+            <img id="newProductImagePreview" class="hidden" alt="Предпросмотр фото товара" style="display:block;max-width:180px;max-height:180px;object-fit:cover;border-radius:12px;margin:8px 0;">
             <label>Тип объявления:</label>
             <select id="newProductType" onchange="updateProductTypeHelp()">
                 <option value="standard">Обычный товар / услуга</option>
