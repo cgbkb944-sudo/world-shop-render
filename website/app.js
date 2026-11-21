@@ -4,7 +4,7 @@ async function api(path,options={}){const res=await fetch(path,{credentials:'sam
 function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function renderProducts(){const q=($('#searchProducts').value||'').toLowerCase();const filtered=products.filter(p=>{const text=[p.title,p.description,p.category,p.subcategory].join(' ').toLowerCase();const type=p.product_type||'standard';const cat=currentFilter==='all'||(currentFilter==='digital'?['telegram_stars','subscription','robux','roblox_account','telegram_account'].includes(type):['channel_customization','standard'].includes(type));return cat&&text.includes(q)});const grid=$('#productGrid');if(!filtered.length){grid.innerHTML='<div class="empty-card">Пока нет товаров по этому запросу.<br>Попробуй изменить поиск или загляни позже.</div>';return}grid.innerHTML=filtered.map(p=>'<article class="product-card">'+(p.has_image?'<img class="product-art product-photo" src="/api/products/'+encodeURIComponent(p.id)+'/image" alt="Фото товара" loading="lazy">':'<div class="product-art">✦</div>')+'<div class="product-category">'+escapeHtml(p.category||'WORLD TG SHOP')+'</div><h3>'+escapeHtml(p.title)+'</h3><p>'+escapeHtml((p.description||'').slice(0,100))+'</p><div class="product-foot"><span class="product-price">'+Number(p.price).toLocaleString('ru-RU')+' ₽</span><span class="product-seller">'+escapeHtml(p.seller_name||'Продавец')+'</span></div></article>').join('')}
 async function loadProducts(){const grid=$('#productGrid');grid.innerHTML='<div class="loading-card">Загружаем каталог<span class="loader"></span></div>';try{products=await api('/api/products');renderProducts()}catch(e){grid.innerHTML='<div class="empty-card">Не удалось загрузить каталог. Попробуй обновить страницу.</div>';$('#catalogNote').textContent=e.message}}
-function showUser(user){currentUser=user;$('#loginPanel').classList.add('hidden');$('#profilePanel').classList.remove('hidden');$('#profileName').textContent=user.display_name||user.first_name||user.username||'Пользователь';$('#profileHandle').textContent=user.username?'@'+user.username:'Аккаунт Telegram';$('#profileBalance').textContent=Number(user.balance||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+' ₽';$('#profileRole').textContent=({owner:'Владелец',admin:'Администратор',support:'Поддержка',seller:'Продавец',user:'Пользователь'})[user.role]||user.role;$('#profileId').textContent=user.telegram_id;$('#avatar').textContent=(user.first_name||user.username||'W').slice(0,1).toUpperCase();if(user.photo_url)$('#avatar').style.backgroundImage='url('+JSON.stringify(user.photo_url)+')';if(user.role==='owner')$('#ownerTools').classList.remove('hidden');else $('#ownerTools').classList.add('hidden')}
+function showUser(user){currentUser=user;$('#loginPanel').classList.add('hidden');$('#profilePanel').classList.remove('hidden');$('#profileName').textContent=user.display_name||user.first_name||user.username||'Пользователь';$('#profileHandle').textContent=user.username?'@'+user.username:'Аккаунт Telegram';$('#profileBalance').textContent=Number(user.balance||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+' ₽';$('#profileRole').textContent=({owner:'Владелец',admin:'Администратор',support:'Поддержка',seller:'Продавец',user:'Пользователь'})[user.role]||user.role;$('#profileId').textContent=user.telegram_id;$('#avatar').textContent=(user.first_name||user.username||'W').slice(0,1).toUpperCase();if(user.photo_url)$('#avatar').style.backgroundImage='url('+JSON.stringify(user.photo_url)+')';if(user.role==='owner')$('#ownerTools').classList.remove('hidden');else $('#ownerTools').classList.add('hidden');$('#sellerProductTools').classList.toggle('hidden',!['seller','admin','owner'].includes(user.role))}
 async function loadMe(){try{const user=await api('/api/me');if(user&&user.telegram_id)showUser(user)}catch{}}
 window.onTelegramAuth=async function(user){try{const result=await api('/api/auth/telegram',{method:'POST',body:JSON.stringify(user)});showUser(result.user);toast('Вы вошли в WORLD TG SHOP')}catch(e){toast(e.message)}};
 $('#loginTop').addEventListener('click',()=>$('#account').scrollIntoView({behavior:'smooth'}));
@@ -14,5 +14,35 @@ $('#refreshCatalog').addEventListener('click',loadProducts);
 $('#logoutBtn').addEventListener('click',async()=>{try{await api('/api/logout',{method:'POST',body:'{}'})}catch{}$('#profilePanel').classList.add('hidden');$('#loginPanel').classList.remove('hidden');currentUser=null;toast('Вы вышли из аккаунта')});
 $('#activateKey').addEventListener('click',async()=>{const key=$('#activationKey').value.trim();if(!key)return toast('Введи ключ');const status=$('#keyStatus');status.textContent='Проверяем ключ…';try{const result=await api('/api/key/activate',{method:'POST',body:JSON.stringify({key})});status.textContent=result.type==='topup'?'Баланс пополнен на '+result.amount+' ₽':'Роль аккаунта обновлена: '+result.role;$('#activationKey').value='';await loadMe()}catch(e){status.textContent=e.message}});
 $('#generateKey').addEventListener('click',async()=>{const role=$('#newKeyRole').value;try{const r=await api('/api/key/generate',{method:'POST',body:JSON.stringify({role})});$('#generatedKey').textContent=r.key;$('#generatedKey').classList.remove('hidden');await navigator.clipboard?.writeText(r.key);toast('Ключ создан'+(navigator.clipboard?' и скопирован':''))}catch(e){toast(e.message)}});
+
+const productImageInput=$('#webProductImage');
+productImageInput?.addEventListener('change',()=>{
+  const file=productImageInput.files?.[0],preview=$('#webProductPreview');
+  if(!file){preview.classList.add('hidden');preview.removeAttribute('src');return;}
+  if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>2*1024*1024){
+    toast('Выберите JPG, PNG или WebP размером до 2 МБ.');productImageInput.value='';preview.classList.add('hidden');preview.removeAttribute('src');return;
+  }
+  preview.src=URL.createObjectURL(file);preview.classList.remove('hidden');
+});
+$('#websiteProductForm')?.addEventListener('submit',async event=>{
+  event.preventDefault();
+  const status=$('#webProductStatus'),submit=$('#webProductSubmit'),file=productImageInput?.files?.[0];
+  status.textContent='Отправляем товар…';submit.disabled=true;
+  try{
+    let image_data=null,image_mime=null;
+    if(file){
+      if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>2*1024*1024)throw new Error('Фото должно быть JPG, PNG или WebP размером до 2 МБ.');
+      image_mime=file.type;
+      image_data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]||'');reader.onerror=()=>reject(new Error('Не удалось прочитать изображение.'));reader.readAsDataURL(file)});
+    }
+    const payload={title:$('#webProductTitle').value.trim(),category:$('#webProductCategory').value.trim(),price:$('#webProductPrice').value,description:$('#webProductDescription').value.trim(),image_data,image_mime};
+    const result=await api('/api/products/add',{method:'POST',body:JSON.stringify(payload)});
+    status.textContent='Заявка отправлена на модерацию. Товар появится в каталоге после одобрения.';
+    $('#websiteProductForm').reset();$('#webProductPreview').classList.add('hidden');$('#webProductPreview').removeAttribute('src');
+    toast('Товар отправлен на проверку');
+  }catch(e){status.textContent=e.message||'Не удалось отправить товар.'}
+  finally{submit.disabled=false}
+});
+
 function setupTelegramWidget(){const mount=$('#telegramLogin');const script=document.createElement('script');script.async=true;script.src='https://telegram.org/js/telegram-widget.js?22';script.setAttribute('data-telegram-login','World_tg_shop_bot');script.setAttribute('data-size','large');script.setAttribute('data-radius','10');script.setAttribute('data-onauth','onTelegramAuth(user)');script.setAttribute('data-request-access','write');mount.innerHTML='';mount.appendChild(script)}
 loadProducts();loadMe();setupTelegramWidget();
