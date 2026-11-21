@@ -16,7 +16,7 @@
   <header class="topbar">
     <a class="brand" href="/"><span class="brand-mark">W</span><span>WORLD <b>TG SHOP</b><small>MARKETPLACE</small></span></a>
     <nav class="desktop-nav"><a href="#catalog">Каталог</a><a href="#how">Как это работает</a><a href="#account">Личный кабинет</a></nav>
-    <button class="btn btn-outline" id="loginTop">Войти <span>↗</span></button>
+    <button class="profile-shortcut hidden" id="profileShortcut" aria-label="Открыть профиль"><img id="headerAvatar" alt=""><span id="headerName">Профиль</span></button><button class="btn btn-outline" id="loginTop">Войти <span>↗</span></button>
   </header>
   <main>
     <section class="hero">
@@ -68,6 +68,19 @@
             <button class="btn btn-primary" id="webProductSubmit" type="submit">Отправить на модерацию</button>
             <div id="webProductStatus" class="status-message" role="status"></div>
           </form>
+        </div>
+<div class="account-card profile-actions hidden" id="profileActions">
+          <h3>Мой аккаунт</h3><div class="profile-action-grid">
+            <button data-panel="topupPanel">＋ Пополнить баланс</button><button data-panel="transferPanel">⇄ Передать баланс</button>
+            <button data-panel="promoPanel">％ Активировать промокод</button><button data-panel="historyPanel">◷ История операций</button>
+            <button data-panel="ordersPanel">▤ Мои заказы</button><button data-panel="keysPanel">⌑ Активация ключа</button>
+          </div>
+          <section class="profile-subpanel hidden" id="topupPanel"><h4>Пополнение баланса</h4><label>Сумма, ₽</label><input id="topupAmount" type="number" min="10" step="1" placeholder="От 10 ₽"><label>Способ оплаты</label><select id="topupMethod"><option value="cryptobot">CryptoBot</option><option value="sbp">СБП / карта (RollaPay)</option><option value="crypto">Криптовалюта (RollaPay)</option></select><button class="btn btn-primary" id="topupCreate">Перейти к оплате</button><p class="status-message" id="topupStatus"></p></section>
+          <section class="profile-subpanel hidden" id="transferPanel"><h4>Передать баланс</h4><p>Создай одноразовый код на сумму перевода. Получатель активирует его в своём аккаунте в течение 24 часов.</p><label>Сумма, ₽</label><input id="transferAmount" type="number" min="0.01" step="0.01" placeholder="Сумма"><button class="btn btn-primary" id="transferCreate">Создать код перевода</button><div class="generated-key hidden" id="transferCode"></div><label>Активировать полученный код</label><input id="transferRedeemCode" placeholder="WTS-..."><button class="btn btn-outline" id="transferRedeem">Зачислить перевод</button><p class="status-message" id="transferStatus"></p></section>
+          <section class="profile-subpanel hidden" id="promoPanel"><h4>Промокод</h4><input id="promoCodeInput" placeholder="Введите промокод"><button class="btn btn-primary" id="promoRedeem">Активировать промокод</button><p class="status-message" id="promoStatus"></p></section>
+          <section class="profile-subpanel hidden" id="historyPanel"><h4>История операций</h4><div id="accountHistory">Загрузка…</div></section>
+          <section class="profile-subpanel hidden" id="ordersPanel"><h4>Мои заказы</h4><div id="accountOrders">Загрузка…</div></section>
+          <section class="profile-subpanel hidden" id="keysPanel"><h4>Активация ключа</h4><p>Ключи доступа и коды пополнения действуют в общей системе магазина.</p><div class="key-row"><input id="activationKey" placeholder="WTS-..." autocomplete="off"><button class="btn btn-primary" id="activateKey">Активировать</button></div><div class="status-message" id="keyStatus"></div></section>
         </div>
         <div class="account-card account-side"><div class="side-icon">⌘</div><h3>Всё связано</h3><ul><li><span>✓</span> Общий аккаунт сайта и Mini App</li><li><span>✓</span> Единый баланс и история</li><li><span>✓</span> Общие товары и заказы</li><li><span>✓</span> Ключи работают в обе стороны</li></ul><a href="https://t.me/world_tg_shop" target="_blank" rel="noreferrer">Telegram-канал магазина ↗</a></div>
       </div>
