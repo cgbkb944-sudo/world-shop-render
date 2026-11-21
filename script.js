@@ -342,7 +342,7 @@ function renderProducts(products) {
             priceText = `от ${p.price} ₽`;
         }
 
-        const image = p.image_url ? `<img src="${escapeHtml(p.image_url)}" alt="Фото товара" loading="lazy" style="width:76px;height:76px;object-fit:cover;border-radius:12px;flex:0 0 76px;">` : `<div aria-hidden="true" style="width:76px;height:76px;display:grid;place-items:center;border-radius:12px;background:#202b49;color:#9aa8d8;font-size:26px;flex:0 0 76px;">✦</div>`;
+        const image = p.has_image ? `<img src="/api/products/${encodeURIComponent(p.id)}/image" alt="Фото товара" loading="lazy" style="width:76px;height:76px;object-fit:cover;border-radius:12px;flex:0 0 76px;">` : `<div aria-hidden="true" style="width:76px;height:76px;display:grid;place-items:center;border-radius:12px;background:#202b49;color:#9aa8d8;font-size:26px;flex:0 0 76px;">✦</div>`;
         return `
             <div class="product-item" style="display:flex;align-items:center;gap:12px;">
                 ${image}
