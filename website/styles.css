@@ -11,3 +11,28 @@ html,body{width:100%;max-width:100%;overflow-x:clip}body{min-width:0}main,header
 @media(max-width:650px){.profile-action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.profile-shortcut{padding-right:9px}.profile-shortcut span{display:none}.profile-actions{width:100%;min-width:0}.profile-subpanel{padding:12px}}
 
 .site-footer{gap:24px;flex-wrap:wrap}.footer-links{display:flex;align-items:center;justify-content:flex-end;gap:12px 20px;flex-wrap:wrap}.footer-links a{font-size:10px;color:#8fa5c2;text-decoration:none}.footer-links a:hover{color:#8fc7ff}.legal-page{max-width:900px;min-height:75vh;padding-top:55px;padding-bottom:80px}.legal-page h1{font-size:36px;margin:22px 0}.legal-page h2{font-size:17px;margin:28px 0 8px}.legal-page p{font-size:13px;line-height:1.9;color:#aab8cc;max-width:780px}.legal-page .eyebrow{margin-top:32px}@media(max-width:650px){.site-footer{align-items:flex-start}.footer-links{width:100%;justify-content:flex-start;gap:12px 16px}.legal-page h1{font-size:28px}}
+
+/* Visual refinement */
+:root{--panel-glass:rgba(17,29,48,.82)}
+body{background:radial-gradient(ellipse at 50% -20%,#17345a 0,transparent 42%),var(--bg)}
+.topbar{backdrop-filter:blur(16px)}
+.desktop-nav a,.footer-links a{transition:color .2s ease}
+.btn,.filter,.profile-action-grid button,.product-card,.account-card{transition:transform .22s ease,border-color .22s ease,background .22s ease,box-shadow .22s ease}
+.btn-primary{background:linear-gradient(115deg,#2563eb,#399cff 58%,#54c9ed);box-shadow:0 10px 30px #2877f344,inset 0 1px #ffffff38}
+.btn-primary:hover{box-shadow:0 14px 38px #2877f366}
+.section-heading{margin-bottom:4px}
+.section-heading p{max-width:560px}
+.product-card{box-shadow:0 12px 32px #0002}
+.product-card:hover,.account-card:hover{box-shadow:0 18px 42px #0004;border-color:#4388ff66}
+.searchbox:focus-within,.profile-subpanel input:focus,.product-upload-form input:focus,.product-upload-form textarea:focus{border-color:#559fff;box-shadow:0 0 0 3px #4388ff1c}
+.profile-subpanel select option:disabled{color:#7f8ca1}
+.profile-subpanel select{cursor:pointer}
+.footer-note{flex-basis:100%;margin:0;color:#64758e;font-size:9px;line-height:1.7}
+.site-footer{padding-top:30px}
+.legal-page{border:1px solid var(--line);border-radius:22px;background:linear-gradient(145deg,#111d30ee,#0c1524ee);padding:34px;margin-top:38px;margin-bottom:60px;box-shadow:0 22px 70px #0003}
+.legal-page .eyebrow{margin-top:24px}
+.legal-page h1{letter-spacing:-.045em}
+.legal-page h2{color:#dceaff;margin-top:30px}
+.legal-page p{font-size:12px}
+.legal-notice{border:1px solid #416b9d66;background:#10233b;border-radius:13px;padding:15px 17px;margin:20px 0;color:#b9d4f4;font-size:11px;line-height:1.8}
+@media(max-width:650px){.legal-page{padding:22px 18px;margin:22px 14px 45px}.footer-note{font-size:8px}}
