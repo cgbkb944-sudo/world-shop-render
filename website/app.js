@@ -63,7 +63,7 @@ function showUser(user){
  if(location.pathname==='/login')history.replaceState({},'','/profile');
  if(location.pathname==='/profile')loadAccountData();
 }
-async function loadAccountData(){loadMe();loadHistoryAndOrders();loadPaymentMethods()}
+async function loadAccountData(){loadHistoryAndOrders();loadPaymentMethods()}
 async function loadHistoryAndOrders(){
  try{
   const pair=await Promise.all([api('/api/history'),api('/api/my/activity')]),h=pair[0],a=pair[1];
