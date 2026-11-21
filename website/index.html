@@ -53,6 +53,22 @@
       <div class="account-layout">
         <div class="account-card account-login" id="loginPanel"><div class="account-icon">◎</div><h3>Войти в WORLD TG SHOP</h3><p>Используй Telegram-аккаунт, который уже привязан к твоему магазину.</p><div id="telegramLogin"><div class="login-placeholder">Кнопка входа Telegram появится после настройки домена бота.</div></div><small>Мы не просим пароль от Telegram. Авторизация подтверждается самим Telegram.</small></div>
         <div class="account-card account-profile hidden" id="profilePanel"><div class="profile-head"><div class="avatar" id="avatar">W</div><div><div class="eyebrow">ТВОЙ ПРОФИЛЬ</div><h3 id="profileName">Пользователь</h3><p id="profileHandle"></p></div><button class="text-button" id="logoutBtn">Выйти</button></div><div class="balance-panel"><span>Доступный баланс</span><strong id="profileBalance">— ₽</strong><small>Единый баланс сайта и Mini App</small></div><div class="profile-grid"><div><span>Роль</span><b id="profileRole">Пользователь</b></div><div><span>Telegram ID</span><b id="profileId">—</b></div></div><div class="key-box"><h4>Активация ключа</h4><p>Ключ, созданный на сайте или в Mini App, действует на обеих платформах.</p><div class="key-row"><input id="activationKey" placeholder="WTS-..." autocomplete="off"><button class="btn btn-primary" id="activateKey">Активировать</button></div><div class="status-message" id="keyStatus"></div></div><div class="owner-tools hidden" id="ownerTools"><h4>Ключи доступа</h4><div class="key-row"><select id="newKeyRole"><option value="seller">Продавец</option><option value="support">Поддержка</option><option value="admin">Администратор</option></select><button class="btn btn-primary" id="generateKey">Создать ключ</button></div><div class="generated-key hidden" id="generatedKey"></div></div></div>
+        <div class="account-card hidden" id="sellerProductTools">
+          <div class="side-icon">＋</div><h3>Выставить товар на продажу</h3>
+          <p>Добавь описание и цену. Картинку можно загрузить по желанию.</p>
+          <form id="websiteProductForm" class="product-upload-form">
+            <label for="webProductTitle">Название товара</label><input id="webProductTitle" maxlength="160" required placeholder="Название товара">
+            <label for="webProductCategory">Категория</label><input id="webProductCategory" maxlength="80" required placeholder="Например: Цифровые товары">
+            <label for="webProductPrice">Цена, ₽</label><input id="webProductPrice" type="number" min="0.01" max="10000000" step="0.01" required placeholder="Например: 150">
+            <label for="webProductDescription">Описание</label><textarea id="webProductDescription" rows="4" maxlength="5000" placeholder="Расскажи о товаре"></textarea>
+            <label for="webProductImage">Картинка товара (необязательно, до 2 МБ)</label>
+            <input id="webProductImage" type="file" accept="image/jpeg,image/png,image/webp">
+            <small>Поддерживаются JPG, PNG и WebP. Можно оставить поле пустым.</small>
+            <img id="webProductPreview" class="hidden product-upload-preview" alt="Предпросмотр картинки товара">
+            <button class="btn btn-primary" id="webProductSubmit" type="submit">Отправить на модерацию</button>
+            <div id="webProductStatus" class="status-message" role="status"></div>
+          </form>
+        </div>
         <div class="account-card account-side"><div class="side-icon">⌘</div><h3>Всё связано</h3><ul><li><span>✓</span> Общий аккаунт сайта и Mini App</li><li><span>✓</span> Единый баланс и история</li><li><span>✓</span> Общие товары и заказы</li><li><span>✓</span> Ключи работают в обе стороны</li></ul><a href="https://t.me/world_tg_shop" target="_blank" rel="noreferrer">Telegram-канал магазина ↗</a></div>
       </div>
     </section>
