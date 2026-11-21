@@ -46,3 +46,48 @@ $('#websiteProductForm')?.addEventListener('submit',async event=>{
 
 function setupTelegramWidget(){const mount=$('#telegramLogin');const script=document.createElement('script');script.async=true;script.src='https://telegram.org/js/telegram-widget.js?22';script.setAttribute('data-telegram-login','World_tg_shop_bot');script.setAttribute('data-size','large');script.setAttribute('data-radius','10');script.setAttribute('data-onauth','onTelegramAuth(user)');script.setAttribute('data-request-access','write');mount.innerHTML='';mount.appendChild(script)}
 loadProducts();loadMe();setupTelegramWidget();
+
+function setAvatar(el,url,fallback){if(!el)return;if(url){el.innerHTML='<img src="'+escapeHtml(url)+'" alt="Аватар Telegram">';}else{el.textContent=(fallback||'W').slice(0,1).toUpperCase();}}
+function showUser(user){
+ currentUser=user;$('#loginPanel').classList.add('hidden');$('#profilePanel').classList.remove('hidden');$('#profileActions').classList.remove('hidden');
+ $('#profileShortcut').classList.remove('hidden');$('#loginTop').classList.add('hidden');
+ $('#profileName').textContent=user.display_name||user.first_name||user.username||'Пользователь';
+ $('#profileHandle').textContent=user.username?'@'+user.username:'Аккаунт Telegram';
+ $('#profileBalance').textContent=Number(user.balance||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+' ₽';
+ $('#profileRole').textContent=({owner:'Владелец',admin:'Администратор',support:'Поддержка',seller:'Продавец',user:'Пользователь'})[user.role]||user.role;
+ $('#profileId').textContent=user.telegram_id;setAvatar($('#avatar'),user.photo_url||user.avatar_url,user.first_name||user.username);
+ const head=$('#headerAvatar');if(user.photo_url||user.avatar_url){head.src=user.photo_url||user.avatar_url;head.style.display='block'}else head.style.display='none';
+ $('#headerName').textContent=user.display_name||user.first_name||user.username||'Профиль';
+ $('#ownerTools').classList.toggle('hidden',user.role!=='owner');
+ $('#sellerProductTools').classList.toggle('hidden',!['seller','admin','owner'].includes(user.role));
+ if(location.pathname==='/login')history.replaceState({},'','/profile');
+ if(location.pathname==='/profile')loadAccountData();
+}
+async function loadAccountData(){loadMe();loadHistoryAndOrders();loadPaymentMethods()}
+async function loadHistoryAndOrders(){
+ try{
+  const pair=await Promise.all([api('/api/history'),api('/api/my/activity')]),h=pair[0],a=pair[1];
+  $('#accountHistory').innerHTML=h.length?h.map(x=>'<div class="data-row"><div><b>'+escapeHtml(x.description||x.type)+'</b><small>'+new Date(x.created_at).toLocaleString('ru-RU')+'</small></div><strong>'+(Number(x.amount)>0?'+':'')+Number(x.amount).toLocaleString('ru-RU')+' ₽</strong></div>').join(''):'<p>Операций пока нет.</p>';
+  const rows=[...(a.purchases||[]),...(a.sales||[])].sort((x,y)=>new Date(y.created_at)-new Date(x.created_at));
+  $('#accountOrders').innerHTML=rows.length?rows.map(x=>'<div class="data-row"><div><b>#'+x.id+' · '+escapeHtml(x.title)+'</b><small>'+escapeHtml(x.status)+' · '+new Date(x.created_at).toLocaleString('ru-RU')+'</small></div><strong>'+Number(x.amount).toLocaleString('ru-RU')+' ₽</strong></div>').join(''):'<p>Заказов пока нет.</p>';
+ }catch(e){$('#accountHistory').textContent=e.message;$('#accountOrders').textContent=e.message}
+}
+async function loadPaymentMethods(){try{const m=await api('/api/payment/methods');for(const opt of $('#topupMethod').options){opt.disabled=!m[opt.value];if(!m[opt.value]&&!opt.textContent.includes('недоступно'))opt.textContent+=' (недоступно)'}const f=[...$('#topupMethod').options].find(x=>!x.disabled);if(f)$('#topupMethod').value=f.value}catch{}}
+document.querySelectorAll('[data-panel]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.profile-subpanel').forEach(x=>x.classList.add('hidden'));$('#'+b.dataset.panel).classList.remove('hidden');if(['historyPanel','ordersPanel'].includes(b.dataset.panel))loadHistoryAndOrders()}));
+$('#topupCreate').addEventListener('click',async()=>{const s=$('#topupStatus');s.textContent='Создаём платёж…';try{const r=await api('/api/payment/create',{method:'POST',body:JSON.stringify({amount:$('#topupAmount').value,method:$('#topupMethod').value})});if(r.paymentUrl){window.open(r.paymentUrl,'_blank','noopener');s.textContent='Счёт создан. После оплаты нажмите «Проверить оплату».';const b=document.createElement('button');b.className='text-button';b.textContent='Проверить оплату';b.onclick=async()=>{const p=await api('/api/payment/status/'+r.paymentId);s.textContent=p.status==='paid'?'Оплата подтверждена, баланс пополнен.':'Статус платежа: '+p.status;if(p.status==='paid')loadMe()};s.appendChild(b)}}catch(e){s.textContent=e.message}});
+$('#transferCreate').addEventListener('click',async()=>{const s=$('#transferStatus');try{const r=await api('/api/transfers/create',{method:'POST',body:JSON.stringify({amount:$('#transferAmount').value})});$('#transferCode').textContent=r.code+' · '+r.amount+' ₽ · 24 часа';$('#transferCode').classList.remove('hidden');if(navigator.clipboard?.writeText)navigator.clipboard.writeText(r.code).catch(()=>{});s.textContent='Код создан. Передайте его получателю.';loadMe()}catch(e){s.textContent=e.message}});
+$('#transferRedeem').addEventListener('click',async()=>{const s=$('#transferStatus');try{const r=await api('/api/transfers/redeem',{method:'POST',body:JSON.stringify({code:$('#transferRedeemCode').value})});s.textContent='Получено '+r.amount+' ₽.';$('#transferRedeemCode').value='';loadMe()}catch(e){s.textContent=e.message}});
+$('#promoRedeem').addEventListener('click',async()=>{const s=$('#promoStatus');try{const r=await api('/api/promos/redeem',{method:'POST',body:JSON.stringify({code:$('#promoCodeInput').value})});s.textContent=r.message;$('#promoCodeInput').value='';loadMe()}catch(e){s.textContent=e.message}});
+$('#loginTop').addEventListener('click',()=>location.href='/login');
+$('#profileShortcut').addEventListener('click',()=>location.href='/profile');
+$('#logoutBtn').addEventListener('click',async()=>{try{await api('/api/logout',{method:'POST',body:'{}'})}catch{}location.href='/'});
+async function initAccountRoute(){
+ const p=location.pathname;
+ if(p==='/login'||p==='/profile'){
+  document.querySelector('.hero')?.classList.add('hidden');document.querySelector('.stats-strip')?.classList.add('hidden');
+  $('#catalog').classList.add('hidden');$('#how').classList.add('hidden');document.querySelector('.account-side')?.classList.add('hidden');
+  if(p==='/login'){$('#profilePanel').classList.add('hidden');$('#profileActions').classList.add('hidden');$('#loginPanel').classList.remove('hidden')}
+ }
+ try{const u=await api('/api/me');if(u&&u.telegram_id){showUser(u);if(p==='/login')history.replaceState({},'','/profile')}else if(p==='/profile')location.replace('/login')}catch{if(p==='/profile')location.replace('/login')}
+}
+initAccountRoute();
