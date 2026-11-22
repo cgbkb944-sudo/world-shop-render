@@ -492,14 +492,22 @@ async function activateKey() {
     const code=String(field?.value||'').trim();
     if(!code){alert('Введите ключ или код пополнения.');return;}
     const isTransferCode=/^WTS-[A-F0-9]{10}$/i.test(code);
+    const isOwnerKey=/^WTS-OWNER-[A-F0-9]{64}$/i.test(code);
     try{
-      const response=await apiFetch(isTransferCode?'/api/transfers/redeem':'/api/key/activate',{
+      const endpoint=isOwnerKey?'/api/owner-key/activate':(isTransferCode?'/api/transfers/redeem':'/api/key/activate');
+      const payload=isTransferCode?{code}:{key:code};
+      const response=await apiFetch(endpoint,{
         method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(isTransferCode?{code}:{key:code})
+        body:JSON.stringify(payload)
       });
       const data=await response.json();
       if(!response.ok||!data.success)throw new Error(data.error||'Не удалось обработать код.');
-      if(isTransferCode||data.type==='topup'){
+      if(isOwnerKey){
+        if(result)result.textContent='Ключ владельца активирован в Telegram Mini App.';
+        field.value='';
+        alert('Ключ владельца успешно активирован в Mini App.');
+        location.reload();
+      }else if(isTransferCode||data.type==='topup'){
         if(result)result.textContent='Баланс пополнен на '+rub(data.amount)+'.';
         field.value='';
         const me=await apiFetch('/api/user',{method:'POST'}).then(r=>r.json());
