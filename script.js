@@ -636,13 +636,8 @@ function makePayment() {
             qrImage.src = data.qrCodeDataUrl || '';
             qrImage.alt = data.qrCodeDataUrl ? 'QR-код оплаты через TON-кошелёк' : 'QR-код временно недоступен';
             qrImage.style.display = data.qrCodeDataUrl ? 'block' : 'none';
-            const transferPanel=document.getElementById('transferModal');
-            const profileTab=document.getElementById('tab-profile');
-            if(profileTab && transferPanel.parentElement!==profileTab) profileTab.appendChild(transferPanel);
-            transferPanel.classList.add('inline-payment-details');
-            transferPanel.classList.remove('hidden');
-            transferPanel.setAttribute('aria-hidden','false');
-            requestAnimationFrame(()=>transferPanel.scrollIntoView({behavior:'smooth',block:'start'}));
+            document.getElementById('transferModal').classList.remove('hidden');
+            document.getElementById('transferModal').setAttribute('aria-hidden','false');
             if(directPaymentPoll) clearInterval(directPaymentPoll);
             directPaymentPoll = setInterval(checkDirectPayment,5000);
         } else if(data.paymentUrl) {
@@ -708,9 +703,8 @@ function closeTransferModal() {
     activeDirectWalletLinks=null;
     activeDirectPaymentUri=null;
     directPaymentPoll=null;
-    const transferPanel=document.getElementById('transferModal');
-    transferPanel.classList.add('hidden');
-    transferPanel.setAttribute('aria-hidden','true');
+    document.getElementById('transferModal').classList.add('hidden');
+    document.getElementById('transferModal').setAttribute('aria-hidden','true');
 }
 
 function switchTab(tabName, element) {
