@@ -192,7 +192,6 @@ apiFetch('/api/user', {
     if (data.subscription_required) return;
     if (data.error) throw new Error(data.error);
     currentRole = data.role;
-    document.getElementById('ownerAccessActivation')?.classList.toggle('hidden',data.role!=='owner');
     const promoCard=document.getElementById('promo-management-card');if(promoCard){promoCard.style.display=['owner','admin','support'].includes(data.role)?'block':'none';if(['owner','admin','support'].includes(data.role))loadPromoCodes();}
     document.getElementById('userrole-badge').innerText = data.role.toUpperCase();
     document.getElementById('user-balance').innerText = rub(data.balance);
@@ -343,11 +342,9 @@ function renderProducts(products) {
             priceText = `от ${p.price} ₽`;
         }
 
-        const image = p.has_image ? `<img src="/api/products/${encodeURIComponent(p.id)}/image" alt="Фото товара" loading="lazy" style="width:76px;height:76px;object-fit:cover;border-radius:12px;flex:0 0 76px;">` : `<div aria-hidden="true" style="width:76px;height:76px;display:grid;place-items:center;border-radius:12px;background:#202b49;color:#9aa8d8;font-size:26px;flex:0 0 76px;">✦</div>`;
         return `
-            <div class="product-item" style="display:flex;align-items:center;gap:12px;">
-                ${image}
-                <div style="min-width:0;flex:1;">
+            <div class="product-item">
+                <div>
                     <b style="font-size: 15px;">${escapeHtml(p.title)}</b>
                     <br><small style="color:var(--text-muted);">${escapeHtml(p.category)} / ${escapeHtml(p.subcategory || 'Общее')} · ${escapeHtml(p.seller_name||'Магазин')}</small>
                 </div>
@@ -458,20 +455,10 @@ function updateProductTypeHelp() {
     if(special){const range=document.getElementById('newPriceFrom');if(range)range.checked=false;document.getElementById('maxPriceContainer')?.classList.add('hidden');}
 }
 
-document.getElementById('newProductImage')?.addEventListener('change',event=>{const file=event.target.files?.[0],preview=document.getElementById('newProductImagePreview');if(!preview)return;if(!file){preview.classList.add('hidden');preview.removeAttribute('src');return;}if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>2*1024*1024){alert('Разрешены JPG, PNG или WebP размером до 2 МБ.');event.target.value='';preview.classList.add('hidden');return;}preview.src=URL.createObjectURL(file);preview.classList.remove('hidden');});
-
 function toggleTelegramDeliveryFields(){const m=document.getElementById('telegramDeliveryMethod')?.value||'file';document.getElementById('telegramFileFields')?.classList.toggle('hidden',m!=='file');document.getElementById('telegramPhoneFields')?.classList.toggle('hidden',m!=='phone');}
 
 async function addNewProduct() {
     const title=document.getElementById('newTitle').value,product_type=document.getElementById('newProductType')?.value||'standard';
-    const imageFile=document.getElementById('newProductImage')?.files?.[0];
-    let image_data=null,image_mime=null;
-    if(imageFile){
-      if(!['image/jpeg','image/png','image/webp'].includes(imageFile.type)){alert('Выберите изображение JPG, PNG или WebP.');return;}
-      if(imageFile.size>2*1024*1024){alert('Фото товара должно быть не больше 2 МБ.');return;}
-      image_mime=imageFile.type;
-      image_data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]||'');reader.onerror=reject;reader.readAsDataURL(imageFile);});
-    }
     const category=document.getElementById('newCategory').value,subcategory=document.getElementById('newSubcategory').value;
     const price=document.getElementById('newPrice').value,price_from=document.getElementById('newPriceFrom').checked,max_price=document.getElementById('newMaxPrice').value;
     let private_data={};
@@ -496,29 +483,9 @@ async function addNewProduct() {
     if(product_type==='roblox_account'&&(!private_data.roblox_username||!private_data.account_email||!private_data.account_password||!private_data.email_password)){alert('Заполните username Roblox, почту и оба пароля.');return;}
     if(product_type==='telegram_account'&&private_data.delivery_method==='phone'&&!private_data.phone){alert('Укажите номер телефона.');return;}
     apiFetch('/api/products/add',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({title,product_type,category,subcategory,price,price_from:['telegram_stars','robux','roblox_account','telegram_account'].includes(product_type)?false:price_from,max_price,private_data,image_data,image_mime})})
+      body:JSON.stringify({title,product_type,category,subcategory,price,price_from:['telegram_stars','robux','roblox_account','telegram_account'].includes(product_type)?false:price_from,max_price,private_data})})
     .then(async res=>{const data=await res.json();if(res.ok&&data.success){alert('Заявка отправлена на модерацию. Товар появится в каталоге после одобрения.');location.reload();}else alert(data.error||'Ошибка публикации товара');})
     .catch(()=>alert('Ошибка соединения с сервером'));
-}
-async function activateOwnerAccessKey() {
-    const field=document.getElementById('ownerAccessKey');
-    const status=document.getElementById('ownerAccessKeyStatus');
-    const key=String(field?.value||'').trim();
-    if(!key){if(status)status.textContent='Введите ключ владельца.';return;}
-    const button=field?.parentElement?.querySelector('button');
-    if(button)button.disabled=true;
-    if(status)status.textContent='Проверяем ключ…';
-    try{
-      const response=await apiFetch('/api/owner-key/activate',{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({key})
-      });
-      const data=await response.json();
-      if(!response.ok||!data.success)throw new Error(data.error||'Не удалось активировать ключ.');
-      if(status)status.textContent='Доступ владельца активирован в Mini App.';
-      if(field)field.value='';
-    }catch(error){if(status)status.textContent=error.message;}
-    finally{if(button)button.disabled=false;}
 }
 async function activateKey() {
     const field=document.getElementById('keyCode'), result=document.getElementById('key-activation-result');
