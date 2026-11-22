@@ -335,6 +335,15 @@ button:focus-visible{outline:2px solid #69baff;outline-offset:3px}
         .nav-item.active{color:#67bdff}
         @media(max-width:380px){.container{padding-left:12px;padding-right:12px}.card{padding:16px}.quick-btn{font-size:12px}}
 
+            /* Payment details open inline below the profile, not in a modal overlay */
+        .modal.inline-payment-details{position:static;inset:auto;display:block!important;background:transparent;padding:0;margin:16px 0 24px;z-index:auto}
+        .modal.inline-payment-details.hidden{display:none!important}
+        .inline-payment-details>.card{width:100%!important;max-width:none!important;max-height:none!important;overflow:visible!important;text-align:left!important;margin:0!important;padding:20px!important;border:1px solid #397fbd88!important;border-radius:22px!important;background:radial-gradient(circle at 100% 0,#39a8ff24,transparent 38%),linear-gradient(145deg,#142945,#0d1a2e)!important;box-shadow:0 16px 36px #02081766!important;animation:paymentDetailsDrop .28s ease-out}
+        @keyframes paymentDetailsDrop{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+        .inline-payment-details #transferQrImg{width:230px!important;height:230px!important;margin:14px auto!important}
+        .inline-payment-details button{margin-top:8px}
+        .inline-payment-details #transferStatusText{color:#8bd5ff;font-weight:700}
+
     </style>
 </head>
 <body>
