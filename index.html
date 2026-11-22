@@ -513,6 +513,13 @@ button:focus-visible{outline:2px solid #69baff;outline-offset:3px}
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px"><img id="profile-avatar" class="profile-avatar" alt="Аватар профиля"><span id="profile-display-name">Пользователь</span></div>
             <label>Название аккаунта</label><input id="profileName" maxlength="40" placeholder="Как вас показывать в магазине">
             <label>Ссылка на аватар (HTTPS)</label><input id="profileAvatarUrl" type="url" placeholder="https://...">
+            <div id="ownerAccessActivation" class="hidden" style="margin-top:16px;padding:14px;border:1px solid var(--border-color,rgba(148,163,184,.25));border-radius:14px;background:rgba(99,102,241,.08);">
+                <h4 style="margin:0 0 8px">🔐 Активация владельца</h4>
+                <p style="margin:0 0 8px">Введите ключ владельца отдельно от ключей сотрудников и кодов пополнения.</p>
+                <input id="ownerAccessKey" type="password" autocomplete="off" placeholder="Ключ владельца">
+                <button onclick="activateOwnerAccessKey()">Активировать доступ владельца</button>
+                <p id="ownerAccessKeyStatus" role="status" aria-live="polite" style="margin:8px 0 0"></p>
+            </div>
             <button onclick="saveProfileSettings()">Сохранить настройки</button>
             <h4 style="margin-top:18px">Мои покупки и продажи</h4><div id="my-activity" class="data-list">Загрузка истории…</div>
         </div>
