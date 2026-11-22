@@ -10,12 +10,19 @@ const BOT_TOKEN=process.env.BOT_TOKEN||'';
 const OWNER_ID=String(process.env.OWNER_TELEGRAM_ID||'8127900151');
 const PORT=Number(process.env.PORT||10000);
 if(!process.env.DATABASE_URL||!BOT_TOKEN)throw new Error('DATABASE_URL and BOT_TOKEN are required');
-app.disable('x-powered-by');app.use(express.json({limit:'4mb',verify:(req,res,buf)=>{if(req.originalUrl==='/webhooks/rollypay'||req.originalUrl==='/webhooks/cryptobot')req.rawBody=Buffer.from(buf)}}));
+app.disable('x-powered-by');app.set('trust proxy',1);
+const requestBuckets=new Map();
+function limitRequests({windowMs,max,keyPrefix}){return (req,res,next)=>{const ip=String(req.ip||req.socket.remoteAddress||'unknown'),key=keyPrefix+':'+ip,now=Date.now();let v=requestBuckets.get(key);if(!v||now-v.start>windowMs)v={start:now,count:0};v.count++;requestBuckets.set(key,v);if(v.count>max)return res.status(429).json({error:'Слишком много запросов. Подождите немного.'});next()}}
+setInterval(()=>{const now=Date.now();for(const [k,v] of requestBuckets)if(now-v.start>3600000)requestBuckets.delete(k)},600000).unref();
+app.use(express.json({limit:'2mb',verify:(req,res,buf)=>{if(req.originalUrl==='/webhooks/rollypay'||req.originalUrl==='/webhooks/cryptobot')req.rawBody=Buffer.from(buf)}}));
+app.use((req,res,next)=>{if(req.method==='GET'||req.path.startsWith('/webhooks/'))return next();const origin=req.get('origin');if(!origin)return res.status(403).json({error:'Запрос отклонён: отсутствует проверка источника.'});try{const a=new URL(origin);if(a.host!==req.get('host')||!['https:'].includes(a.protocol))return res.status(403).json({error:'Запрос отклонён: неверный источник.'});}catch{return res.status(403).json({error:'Неверный источник запроса.'});}next()});
+app.use('/api/auth/telegram',limitRequests({windowMs:15*60*1000,max:12,keyPrefix:'login'}));
+app.use('/api',limitRequests({windowMs:60*1000,max:180,keyPrefix:'api'}));
 const sha=s=>crypto.createHash('sha256').update(String(s)).digest('hex');
 const safeEqual=(a,b)=>{const x=Buffer.from(String(a)),y=Buffer.from(String(b));return x.length===y.length&&crypto.timingSafeEqual(x,y)};
 function cookie(req,name){const raw=req.headers.cookie||'';for(const part of raw.split(';')){const i=part.indexOf('=');if(i>0&&part.slice(0,i).trim()===name)return decodeURIComponent(part.slice(i+1).trim())}return ''}
 function verifyTelegramLogin(data){if(!data||typeof data!=='object')return null;const authDate=Number(data.auth_date),hash=String(data.hash||'');if(!/^\d+$/.test(String(data.id||''))||!/^\w{64}$/.test(hash)||!Number.isFinite(authDate)||Math.abs(Date.now()/1000-authDate)>300)return null;const check=Object.keys(data).filter(k=>k!=='hash'&&data[k]!==undefined&&data[k]!==null).sort().map(k=>k+'='+data[k]).join('\n');const secret=crypto.createHash('sha256').update(BOT_TOKEN).digest();const expected=crypto.createHmac('sha256',secret).update(check).digest('hex');return safeEqual(expected,hash)?{id:String(data.id),username:String(data.username||'').slice(0,64),first_name:String(data.first_name||'').slice(0,64),last_name:String(data.last_name||'').slice(0,64),photo_url:String(data.photo_url||'').slice(0,1000)}:null}
-async function ensureSchema(){await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS image_data TEXT; ALTER TABLE products ADD COLUMN IF NOT EXISTS image_mime TEXT; CREATE TABLE IF NOT EXISTS web_sessions(session_hash TEXT PRIMARY KEY,telegram_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),expires_at TIMESTAMPTZ NOT NULL);CREATE INDEX IF NOT EXISTS web_sessions_expiry_idx ON web_sessions(expires_at);`)}
+async function ensureSchema(){await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS image_data TEXT; ALTER TABLE products ADD COLUMN IF NOT EXISTS image_mime TEXT; CREATE TABLE IF NOT EXISTS web_sessions(session_hash TEXT PRIMARY KEY,telegram_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),expires_at TIMESTAMPTZ NOT NULL);CREATE INDEX IF NOT EXISTS web_sessions_expiry_idx ON web_sessions(expires_at);CREATE TABLE IF NOT EXISTS web_purchase_keys(telegram_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,idempotency_key TEXT NOT NULL,order_id BIGINT,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),PRIMARY KEY(telegram_id,idempotency_key));`)}
 async function webAuth(req,res,next){try{const token=cookie(req,'wts_session');if(!/^[a-f0-9]{64}$/.test(token))return res.status(401).json({error:'Войдите через Telegram.'});const q=await pool.query(`SELECT u.telegram_id,u.username,u.role,u.balance,u.seller_balance,u.display_name,u.avatar_url,u.is_banned,s.expires_at FROM web_sessions s JOIN users u ON u.telegram_id=s.telegram_id WHERE s.session_hash=$1 AND s.expires_at>NOW()`,[sha(token)]);if(!q.rowCount)return res.status(401).json({error:'Сессия истекла. Войдите снова.'});if(q.rows[0].is_banned)return res.status(403).json({error:'Аккаунт заблокирован.'});req.user=q.rows[0];next()}catch(e){console.error('Website auth:',e.message);res.status(503).json({error:'Сервис временно недоступен.'})}}
 const ownerOnly=(req,res,next)=>String(req.user.telegram_id)===OWNER_ID?next():res.status(403).json({error:'Недостаточно прав.'});
 app.get('/health',async(req,res)=>{try{await pool.query('SELECT 1');res.json({ok:true})}catch{res.status(503).json({ok:false})}});
@@ -41,6 +48,77 @@ app.post('/api/transfers/redeem',webAuth,async(req,res)=>{const code=String(req.
 app.post('/api/promos/redeem',webAuth,async(req,res)=>{const code=String(req.body?.code||'').trim().toUpperCase();if(!/^[A-Z0-9-]{4,40}$/.test(code))return res.status(400).json({error:'Введите корректный промокод.'});const db=await pool.connect();try{await db.query('BEGIN');const q=await db.query('SELECT * FROM promo_codes WHERE code=$1 AND is_active=TRUE FOR UPDATE',[code]);if(!q.rowCount)throw new Error('Промокод не найден или отключён.');const p=q.rows[0];if(p.promo_type!=='topup')throw new Error('Этот промокод предназначен для скидки при покупке.');if(p.expires_at&&new Date(p.expires_at)<=new Date())throw new Error('Срок действия промокода истёк.');if(Number(p.uses_count)>=Number(p.max_uses))throw new Error('Лимит активаций исчерпан.');const used=await db.query('SELECT 1 FROM promo_redemptions WHERE promo_id=$1 AND user_id=$2',[p.id,req.user.telegram_id]);if(used.rowCount)throw new Error('Вы уже использовали этот промокод.');const amount=Number(p.value);await db.query('UPDATE users SET balance=balance+$1,updated_at=NOW() WHERE telegram_id=$2',[amount,req.user.telegram_id]);await db.query("INSERT INTO transactions(telegram_id,amount,type,reference,description) VALUES($1,$2,'topup',$3,$4)",[req.user.telegram_id,amount,'promo_'+p.id+'_'+req.user.telegram_id,'Пополнение по промокоду '+code]);await db.query('INSERT INTO promo_redemptions(promo_id,user_id,reward_amount) VALUES($1,$2,$3)',[p.id,req.user.telegram_id,amount]);await db.query('UPDATE promo_codes SET uses_count=uses_count+1 WHERE id=$1',[p.id]);await db.query('COMMIT');res.json({success:true,amount,message:'Начислено '+amount.toFixed(2)+' ₽.'})}catch(e){await db.query('ROLLBACK');res.status(400).json({error:e.message||'Не удалось активировать промокод.'})}finally{db.release()}});
 app.get('/api/history',webAuth,async(req,res)=>{try{const q=await pool.query('SELECT amount,type,description,created_at FROM transactions WHERE telegram_id=$1 ORDER BY created_at DESC LIMIT 100',[req.user.telegram_id]);res.json(q.rows)}catch(e){res.status(503).json({error:'Не удалось загрузить историю.'})}});
 app.get('/api/my/activity',webAuth,async(req,res)=>{try{const [purchases,sales,transfers]=await Promise.all([pool.query('SELECT o.id,o.amount,o.status,o.created_at,p.title FROM orders o JOIN products p ON p.id=o.product_id WHERE o.buyer_id=$1 ORDER BY o.created_at DESC LIMIT 100',[req.user.telegram_id]),pool.query('SELECT o.id,o.amount,o.status,o.created_at,p.title FROM orders o JOIN products p ON p.id=o.product_id WHERE o.seller_id=$1 ORDER BY o.created_at DESC LIMIT 100',[req.user.telegram_id]),pool.query("SELECT id,amount,status,created_at,CASE WHEN sender_id=$1 THEN 'sent' ELSE 'received' END direction FROM balance_transfer_codes WHERE sender_id=$1 OR recipient_id=$1 ORDER BY created_at DESC LIMIT 100",[req.user.telegram_id])]);res.json({purchases:purchases.rows,sales:sales.rows,transfers:transfers.rows})}catch(e){res.status(503).json({error:'Не удалось загрузить активность.'})}});
+
+app.post('/api/buy',webAuth,async(req,res)=>{
+  const id=Number(req.body?.product_id);if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'Неверный товар.'});
+  const c=await pool.connect();
+  try{
+    await c.query('BEGIN');
+    const idem=String(req.get('Idempotency-Key')||'');if(!/^[a-f0-9-]{36}$/i.test(idem)){await c.query('ROLLBACK');return res.status(400).json({error:'Не удалось подтвердить запрос покупки. Обновите страницу.'});}
+    const claimed=await c.query('INSERT INTO web_purchase_keys(telegram_id,idempotency_key) VALUES($1,$2) ON CONFLICT DO NOTHING RETURNING idempotency_key',[req.user.telegram_id,idem]);
+    if(!claimed.rowCount){const prior=await c.query('SELECT order_id FROM web_purchase_keys WHERE telegram_id=$1 AND idempotency_key=$2',[req.user.telegram_id,idem]);await c.query('ROLLBACK');if(prior.rows[0]?.order_id)return res.json({success:true,order_id:prior.rows[0].order_id,message:'Заказ уже оформлен.'});return res.status(409).json({error:'Этот запрос покупки уже обрабатывается.'});}
+    const p=await c.query("SELECT id,seller_id,price,product_type,title,status,private_data FROM products WHERE id=$1 FOR UPDATE",[id]);
+    if(!p.rowCount){await c.query('ROLLBACK');return res.status(404).json({error:'Товар не найден.'});}
+    const product=p.rows[0];
+    if(product.status==='frozen'){await c.query('ROLLBACK');return res.status(409).json({error:'Товар временно заморожен и недоступен для покупки. Ожидается решение владельца.'});}
+    if(product.status!=='active'){await c.query('ROLLBACK');return res.status(404).json({error:'Товар больше недоступен для покупки.'});}
+    if(String(product.seller_id)===String(req.user.telegram_id)){await c.query('ROLLBACK');return res.status(400).json({error:'Нельзя купить собственный товар.'});}
+    const type=product.product_type||'standard',quantity=['telegram_stars','robux'].includes(type)?Number(req.body?.quantity):1;
+    if(type==='telegram_stars'&&(!Number.isInteger(quantity)||quantity<50||quantity>1000)){await c.query('ROLLBACK');return res.status(400).json({error:'Количество Telegram Stars должно быть от 50 до 1 000.'});}
+    if(type==='robux'&&(!Number.isInteger(quantity)||quantity<10||quantity>100000)){await c.query('ROLLBACK');return res.status(400).json({error:'Количество Robux должно быть от 10 до 100 000.'});}
+    const details=req.body?.details&&typeof req.body.details==='object'&&!Array.isArray(req.body.details)?req.body.details:{},clean={};
+    if(type==='robux'||type==='roblox_account'){
+      const telegram=String(details.telegram_username||'').trim().replace(/^@/,'');
+      if(!/^[A-Za-z0-9_]{5,32}$/.test(telegram)){await c.query('ROLLBACK');return res.status(400).json({error:'Укажите свой Telegram username.'});}
+      clean.telegram_username='@'+telegram;
+    }
+    if(type==='robux'){
+      const username=String(details.roblox_username||'').trim();
+      if(!/^[A-Za-z0-9_]{3,20}$/.test(username)){await c.query('ROLLBACK');return res.status(400).json({error:'Укажите корректный username аккаунта Roblox.'});}
+      clean.roblox_username=username;clean.robux_quantity=quantity;
+    }else if(type==='roblox_account'){
+      if(!product.private_data?.data){await c.query('ROLLBACK');return res.status(409).json({error:'Продавец ещё не добавил данные аккаунта.'});}
+    }else if(type==='channel_customization'){
+      const owner=String(details.owner_username||'').trim().replace(/^@/,''),channel=String(details.channel_url||'').trim();
+      if(!/^[A-Za-z0-9_]{5,32}$/.test(owner)||!/^https:\/\/(t\.me|telegram\.me)\//i.test(channel)||channel.length>300){
+        await c.query('ROLLBACK');return res.status(400).json({error:'Укажите корректный Telegram username владельца и ссылку на канал.'});
+      }
+      clean.owner_username='@'+owner;clean.channel_url=channel;
+    }else if(type==='telegram_stars'){
+      const recipient=String(details.recipient_username||'').trim().replace(/^@/,'');
+      if(!/^[A-Za-z0-9_]{5,32}$/.test(recipient)){await c.query('ROLLBACK');return res.status(400).json({error:'Укажите Telegram username получателя звёзд.'});}
+      clean.recipient_username='@'+recipient;clean.quantity=quantity;
+    }else if(type==='subscription'||type==='loyalty_points'){
+      const account=String(details.account||'').trim().slice(0,120);
+      if(account.length<3){await c.query('ROLLBACK');return res.status(400).json({error:'Укажите аккаунт, номер телефона или идентификатор для зачисления.'});}
+      clean.account=account;
+    }
+    const originalAmount=Math.round(Number(product.price)*quantity*100)/100;
+    let amount=originalAmount,promoId=null;
+    const pendingPromoKey='pending_promo:'+req.user.telegram_id;
+    const pendingPromo=await c.query('SELECT setting_value FROM bot_settings WHERE setting_key=$1 FOR UPDATE',[pendingPromoKey]);
+    const promoCode=String(req.body?.promo_code||pendingPromo.rows[0]?.setting_value||'').trim().toUpperCase();
+    if(promoCode){const pr=await c.query('SELECT * FROM promo_codes WHERE code=$1 AND is_active=TRUE FOR UPDATE',[promoCode]);if(!pr.rowCount){await c.query('ROLLBACK');return res.status(400).json({error:'Промокод не найден или отключён.'});}const promo=pr.rows[0];if(promo.promo_type==='topup'){await c.query('ROLLBACK');return res.status(400).json({error:'Этот промокод пополняет баланс — активируйте его отдельно.'});}if(promo.expires_at&&new Date(promo.expires_at)<=new Date()){await c.query('ROLLBACK');return res.status(400).json({error:'Срок действия промокода истёк.'});}if(Number(promo.uses_count)>=Number(promo.max_uses)){await c.query('ROLLBACK');return res.status(400).json({error:'Лимит активаций исчерпан.'});}const used=await c.query('SELECT 1 FROM promo_redemptions WHERE promo_id=$1 AND user_id=$2',[promo.id,req.user.telegram_id]);if(used.rowCount){await c.query('ROLLBACK');return res.status(400).json({error:'Вы уже использовали этот промокод.'});}const discount=promo.promo_type==='discount_percent'?originalAmount*Number(promo.value)/100:Number(promo.value);amount=Math.max(0,Math.round((originalAmount-Math.min(originalAmount,discount))*100)/100);if(amount<=0){await c.query('ROLLBACK');return res.status(400).json({error:'Скидка не может сделать покупку бесплатной.'});}promoId=promo.id;}
+    if(!Number.isFinite(amount)||amount<=0||amount>1e7){await c.query('ROLLBACK');return res.status(400).json({error:'Итоговая стоимость заказа превышает допустимое значение.'});}
+    const fee=Math.round(amount*3)/100,sellerAmount=Math.round((amount-fee)*100)/100;
+    const debit=await c.query('UPDATE users SET balance=balance-$1,updated_at=NOW() WHERE telegram_id=$2 AND balance >= $1 RETURNING telegram_id',[amount,req.user.telegram_id]);
+    if(!debit.rowCount){await c.query('ROLLBACK');return res.status(400).json({error:'Недостаточно средств на балансе.'});}
+    await c.query('UPDATE users SET seller_balance=seller_balance+$1,updated_at=NOW() WHERE telegram_id=$2',[sellerAmount,product.seller_id]);
+    await c.query('UPDATE shop_wallet SET balance=balance+$1,updated_at=NOW() WHERE id=1',[fee]);
+    const order=await c.query("INSERT INTO orders (buyer_id,seller_id,product_id,amount,commission,status,buyer_details) VALUES ($1,$2,$3,$4,$5,'paid',$6) RETURNING id",
+      [req.user.telegram_id,product.seller_id,id,amount,fee,clean]);
+    await c.query('INSERT INTO shop_ledger(amount,kind,reference,description) VALUES($1,\'commission\',$2,$3)',[fee,'order_'+order.rows[0].id+'_fee','Комиссия 3% по заказу #'+order.rows[0].id]);
+    const ref='order_'+order.rows[0].id;
+    await c.query("INSERT INTO transactions (telegram_id,amount,type,reference,description) VALUES ($1,$2,'purchase',$3,$4),($5,$6,'sale',$7,$8)",
+      [req.user.telegram_id,-amount,ref,'Покупка товара #'+order.rows[0].id,product.seller_id,sellerAmount,ref+'_seller','Продажа товара #'+order.rows[0].id]);
+    if(promoId){await c.query('INSERT INTO promo_redemptions(promo_id,user_id,order_id,reward_amount) VALUES($1,$2,$3,$4)',[promoId,req.user.telegram_id,order.rows[0].id,originalAmount-amount]);await c.query('UPDATE promo_codes SET uses_count=uses_count+1 WHERE id=$1',[promoId]);await c.query('DELETE FROM bot_settings WHERE setting_key=$1',[pendingPromoKey]);}
+    if(['roblox_account','telegram_account'].includes(type))await c.query("UPDATE products SET status='sold' WHERE id=$1",[id]);
+    await c.query('UPDATE web_purchase_keys SET order_id=$3 WHERE telegram_id=$1 AND idempotency_key=$2',[req.user.telegram_id,idem,order.rows[0].id]);
+    await c.query('COMMIT');
+    res.json({success:true,message:'Покупка успешно совершена!',order_id:order.rows[0].id,total:amount,original_total:originalAmount,discount:originalAmount-amount,quantity});
+  }catch(e){await c.query('ROLLBACK');console.error('Purchase:',e.message);res.status(503).json({error:'Не удалось оформить заказ.'});}
+  finally{c.release();}
+});
 
 app.get('/api/products',async(req,res)=>{try{const q=await pool.query(`SELECT p.id,p.title,p.description,p.price,p.price_from,p.max_price,p.category,p.subcategory,p.product_type,(p.image_data IS NOT NULL) AS has_image,COALESCE(u.display_name,u.username,'Продавец') seller_name FROM products p JOIN users u ON u.telegram_id=p.seller_id WHERE p.status='active' ORDER BY p.created_at DESC LIMIT 200`);res.json(q.rows)}catch(e){console.error('Website catalog:',e.message);res.status(503).json({error:'Не удалось загрузить каталог.'})}});
 app.get('/api/products/:id/image',async(req,res)=>{try{const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.sendStatus(404);const q=await pool.query("SELECT image_data,image_mime FROM products WHERE id=$1 AND status='active'",[id]);if(!q.rowCount||!q.rows[0].image_data)return res.sendStatus(404);const mime=q.rows[0].image_mime;if(!['image/jpeg','image/png','image/webp'].includes(mime))return res.sendStatus(404);res.setHeader('Content-Type',mime);res.setHeader('Cache-Control','public, max-age=3600');res.send(Buffer.from(q.rows[0].image_data,'base64'));}catch(e){console.error('Website product image:',e.message);res.sendStatus(503);}});
