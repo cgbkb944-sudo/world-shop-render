@@ -46,3 +46,25 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#58a7ff;box-sh
 .key-row input,.profile-subpanel input,.profile-subpanel select{min-height:46px}
 .profile-subpanel label,.key-box label{color:#a9c4e6;font-weight:700;letter-spacing:.02em}
 button:focus-visible,a:focus-visible{outline:2px solid #69baff;outline-offset:3px}
+
+
+/* WORLD TG SHOP — polished balance top-up and form controls */
+.brand-mark{display:grid;place-items:center;overflow:hidden;background:linear-gradient(145deg,#62baff,#245ed4);border:1px solid #9bd5ff66;box-shadow:0 9px 28px #2679ed55,inset 0 1px 0 #ffffff55}
+.brand-logo-svg{display:block;width:100%;height:100%}
+input:not([type=checkbox]):not([type=radio]),select,textarea{min-height:48px;padding:14px 16px;border:1px solid #35517a;border-radius:14px;background:linear-gradient(145deg,#0b1830,#101f39);color:#f4f8ff;box-shadow:inset 0 2px 8px #02081755;transition:border-color .2s,box-shadow .2s}
+input::placeholder,textarea::placeholder{color:#7488a8}
+input:focus,select:focus,textarea:focus{border-color:#55b7ff;box-shadow:0 0 0 3px #328df42b,0 8px 24px #1676d51c;outline:none}
+label{display:block;margin:12px 2px 5px;color:#c7d7ef;font-size:12px;font-weight:700}
+.profile-subpanel{padding:18px;margin-top:14px;border:1px solid #345078;border-radius:19px;background:radial-gradient(circle at 100% 0,#2869b52a,transparent 38%),linear-gradient(145deg,#14243e,#0e192d);box-shadow:0 14px 32px #02081755}
+.profile-subpanel h4{font-size:17px;margin-bottom:12px}
+#topupAmount{font-size:20px;font-weight:800;min-height:58px;letter-spacing:.2px}
+#topupMethod{min-height:54px;font-weight:700}
+#topupCreate{width:100%;min-height:52px;border-radius:15px;font-size:13px;letter-spacing:.2px}
+.profile-action-grid button{min-height:54px;border:1px solid #314b70;background:linear-gradient(145deg,#172944,#101d33);border-radius:15px;color:#e8f3ff;box-shadow:0 8px 20px #02081744}
+.profile-action-grid button:hover{border-color:#5abaff;background:linear-gradient(145deg,#1b4678,#153354)}
+.key-row input,.product-upload-form input,.product-upload-form textarea{border-radius:13px}
+.account-card{border-color:#2d466b;box-shadow:0 18px 48px #0004,inset 0 1px 0 #ffffff08}
+.balance-panel{background:radial-gradient(circle at 95% 0,#55caff35,transparent 42%),linear-gradient(125deg,#123e85,#17375f);border:1px solid #5aaeff66;border-radius:18px;padding:18px;box-shadow:0 12px 28px #0753b622}
+.status-message{color:#b8d8f8;line-height:1.5}
+button:focus-visible,a:focus-visible{outline:2px solid #75caff;outline-offset:3px}
+@media(max-width:600px){.profile-subpanel{padding:15px}.profile-action-grid{gap:9px}}
