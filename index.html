@@ -302,6 +302,39 @@ input::placeholder,textarea::placeholder{color:#8194b1}
 input:focus,select:focus,textarea:focus{outline:none;border-color:#62b5ff;box-shadow:0 0 0 3px #398dff28,0 8px 24px #0003;background:#10233d}
 button:focus-visible{outline:2px solid #69baff;outline-offset:3px}
 
+    
+        /* WORLD TG SHOP — premium blue payment and form UI */
+        :root{--accent:#398dff;--accent-gradient:linear-gradient(120deg,#2165df 0%,#328df4 58%,#45c4e4 100%);--card-border:rgba(130,177,255,.17)}
+        .brand-mark{background:linear-gradient(145deg,#62baff,#245ed4)!important;border:1px solid #9bd5ff66;box-shadow:0 9px 30px #247ce955,inset 0 1px 0 #ffffff55!important;overflow:hidden}
+        .brand-logo-svg{display:block;width:100%;height:100%;filter:drop-shadow(0 2px 4px #0c347c66)}
+        .card{background:linear-gradient(145deg,rgba(20,34,59,.96),rgba(12,22,42,.96));border:1px solid rgba(117,171,255,.18);box-shadow:0 16px 42px rgba(0,0,0,.27),inset 0 1px 0 rgba(255,255,255,.035)}
+        input:not([type=checkbox]):not([type=radio]),select,textarea{width:100%;min-height:48px;padding:14px 16px;margin:8px 0 12px;background:linear-gradient(145deg,#0b1830,#101f39);border:1px solid #35517a;border-radius:15px;color:#f4f8ff;font:600 14px inherit;box-shadow:inset 0 2px 8px #02081755;transition:border-color .2s,box-shadow .2s,transform .2s}
+        input::placeholder,textarea::placeholder{color:#7488a8}
+        input:focus,select:focus,textarea:focus{border-color:#55b7ff;box-shadow:0 0 0 3px #328df42b,0 8px 24px #1676d51c;outline:none}
+        label{display:block;margin:12px 2px 3px;color:#c7d7ef;font-size:12px;font-weight:700;letter-spacing:.2px}
+        .balance-hero{position:relative;overflow:hidden;padding:24px 22px;border-radius:22px;background:radial-gradient(circle at 90% 5%,#59c8ff45,transparent 34%),linear-gradient(125deg,#123e85 0%,#1b5db4 48%,#14345f 100%);border:1px solid #76bfff66;box-shadow:0 16px 40px #0753b633,inset 0 1px 0 #ffffff22}
+        .balance-hero:after{content:"";position:absolute;width:150px;height:150px;border:1px solid #ffffff17;border-radius:50%;right:-55px;bottom:-95px;box-shadow:0 0 0 18px #ffffff08,0 0 0 38px #ffffff05}
+        .balance-hero small{color:#c8e7ff;letter-spacing:1.5px}
+        .balance-hero strong{background:linear-gradient(90deg,#fff,#bceaff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+        #payAmount{font-size:20px;font-weight:800;letter-spacing:.2px;min-height:58px}
+        .quick-amounts{gap:9px;margin:12px 0 18px}
+        .quick-btn{min-height:44px;border-radius:13px;background:#142440;border:1px solid #2d456b;color:#dcecff;font-weight:800;box-shadow:none}
+        .quick-btn:hover,.quick-btn.active{background:linear-gradient(130deg,#1c5db8,#247fce);border-color:#65c4ff;color:#fff;box-shadow:0 7px 20px #1767bd3b}
+        .pay-methods{gap:10px;margin:14px 0 18px}
+        .payment-group-title{color:#78caff;letter-spacing:1.6px;font-size:10px}
+        .pay-method-item{min-height:66px;padding:14px 15px;border-radius:16px;background:linear-gradient(110deg,#14243e,#101c32);border:1px solid #2c4265;box-shadow:0 6px 18px #02081730}
+        .pay-method-item.selected{background:linear-gradient(110deg,#173e72,#153354);border-color:#53b8ff;box-shadow:0 0 0 2px #3b9df326,0 9px 24px #1262a82a}
+        .pay-method-item>span:first-child{width:38px;height:38px;margin-left:0;display:grid;place-items:center;border-radius:12px;background:#ffffff0c}
+        .pay-method-item span strong{font-size:14px;letter-spacing:.1px}
+        .pay-method-description{color:#9db4d2;font-size:11px}
+        .card h3{font-size:18px;letter-spacing:-.3px}
+        button{border-radius:15px;background:var(--accent-gradient);box-shadow:0 9px 24px #176bd544;font-weight:800}
+        button:disabled{opacity:.55;filter:saturate(.5)}
+        .status-message,.support-result{border:1px solid #35517a;border-radius:14px;background:#0d1a30;padding:12px;color:#c8dcf7}
+        .nav{background:rgba(7,15,30,.92);border-top:1px solid #2b4266}
+        .nav-item.active{color:#67bdff}
+        @media(max-width:380px){.container{padding-left:12px;padding-right:12px}.card{padding:16px}.quick-btn{font-size:12px}}
+
     </style>
 </head>
 <body>
@@ -320,7 +353,7 @@ button:focus-visible{outline:2px solid #69baff;outline-offset:3px}
     <!-- Главная вкладка -->
     <div id="tab-main" class="tab-content">
         <header class="store-header">
-            <div class="brand-mark">W</div>
+            <div class="brand-mark"><svg class="brand-logo-svg" viewBox="0 0 48 48" role="img" aria-label="WORLD TG SHOP"><defs><linearGradient id="wtsLogoGrad" x1="5" y1="4" x2="43" y2="44" gradientUnits="userSpaceOnUse"><stop stop-color="#8bd7ff"/><stop offset=".48" stop-color="#398cff"/><stop offset="1" stop-color="#2050c8"/></linearGradient></defs><rect x="2" y="2" width="44" height="44" rx="14" fill="url(#wtsLogoGrad)"/><path d="M10 13.5 16.2 34h4.1L24 22.4 27.8 34h4.1L38 13.5h-5.1l-3.2 12-3.8-12h-3.8l-3.8 12-3.2-12H10Z" fill="white"/><path d="M7 8.5 10 6" stroke="white" stroke-opacity=".6" stroke-width="1.4" stroke-linecap="round"/></svg></div>
             <div class="brand-copy"><strong>WORLD TG SHOP</strong><small>Цифровые товары и услуги</small></div>
             <button class="header-profile" onclick="switchTab('profile', document.querySelector('.nav-item[data-tab=profile]'))" aria-label="Профиль">◉</button>
         </header>
