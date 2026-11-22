@@ -270,14 +270,14 @@ app.use(express.urlencoded({ extended: false, limit: '32kb' }));
 app.use(express.static(path.join(__dirname), { index: false }));
 
 function verifyInitData(raw) {
-  if (!raw || typeof raw !== 'string' || raw.length > 4096) return null;
+  if (!raw || typeof raw !== 'string' || raw.length > 16384) return null;
   const p = new URLSearchParams(raw);
   const hash = p.get('hash');
   const authDate = Number(p.get('auth_date'));
   if (!hash || !/^[a-f0-9]{64}$/i.test(hash) || !Number.isFinite(authDate) ||
       Math.abs(Date.now() / 1000 - authDate) > 86400) return null;
   p.delete('hash');
-  const check = [...p.entries()].sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => k + '=' + v).join('\n');
+  const check = [...p.entries()].sort(([a],[b]) => a < b ? -1 : a > b ? 1 : 0).map(([k,v]) => k + '=' + v).join('\\n');
   const secret = crypto.createHmac('sha256', 'WebAppData').update(BOT_TOKEN).digest();
   const calculated = crypto.createHmac('sha256', secret).update(check).digest('hex');
   const a = Buffer.from(calculated, 'hex'), b = Buffer.from(hash, 'hex');
@@ -289,14 +289,18 @@ function verifyInitData(raw) {
   } catch { return null; }
 }
 async function auth(req,res,next) {
-  const u = verifyInitData(req.get('x-telegram-init-data'));
-  if (!u) return res.status(401).json({error:'Откройте магазин через Telegram.'});
+  const rawInitData = req.get('x-telegram-init-data') || '';
+  const u = verifyInitData(rawInitData);
+  if (!u) {
+    console.warn('[Mini App auth] rejected request:', !rawInitData ? 'missing initData' : rawInitData.length > 16384 ? 'initData too long' : 'invalid signature or expired initData');
+    return res.status(401).json({error:'Не удалось подтвердить авторизацию Telegram. Полностью закройте Mini App и откройте его кнопкой в @World_tg_shop_bot.'});
+  }
   try {
     const role = u.id === OWNER_TELEGRAM_ID ? 'owner' : 'user';
     const r = await pool.query(
       "INSERT INTO users (telegram_id,username,role) VALUES ($1,$2,$3) " +
       "ON CONFLICT (telegram_id) DO UPDATE SET username=EXCLUDED.username, " +
-      "role=CASE WHEN users.telegram_id=$4 THEN 'owner' WHEN users.telegram_id=8127900151 AND $4<>8127900151 THEN 'user' ELSE users.role END, updated_at=NOW() " +
+      "role=CASE WHEN users.telegram_id=$4 THEN 'owner' WHEN users.role='owner' AND users.telegram_id<>$4 THEN 'user' ELSE users.role END, updated_at=NOW() " +
       "RETURNING telegram_id,username,role,balance,seller_balance,is_banned,banned_until,banned_reason",
       [u.id,u.username,role,OWNER_TELEGRAM_ID]);
     req.user = r.rows[0];
