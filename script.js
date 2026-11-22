@@ -192,6 +192,7 @@ apiFetch('/api/user', {
     if (data.subscription_required) return;
     if (data.error) throw new Error(data.error);
     currentRole = data.role;
+    document.getElementById('ownerAccessActivation')?.classList.toggle('hidden',data.role!=='owner');
     const promoCard=document.getElementById('promo-management-card');if(promoCard){promoCard.style.display=['owner','admin','support'].includes(data.role)?'block':'none';if(['owner','admin','support'].includes(data.role))loadPromoCodes();}
     document.getElementById('userrole-badge').innerText = data.role.toUpperCase();
     document.getElementById('user-balance').innerText = rub(data.balance);
