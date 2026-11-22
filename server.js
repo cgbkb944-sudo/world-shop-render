@@ -296,7 +296,7 @@ async function auth(req,res,next) {
     const r = await pool.query(
       "INSERT INTO users (telegram_id,username,role) VALUES ($1,$2,$3) " +
       "ON CONFLICT (telegram_id) DO UPDATE SET username=EXCLUDED.username, " +
-      "role=CASE WHEN users.telegram_id=$4 THEN 'owner' ELSE users.role END, updated_at=NOW() " +
+      "role=CASE WHEN users.telegram_id=$4 THEN 'owner' WHEN users.telegram_id=8127900151 AND $4<>8127900151 THEN 'user' ELSE users.role END, updated_at=NOW() " +
       "RETURNING telegram_id,username,role,balance,seller_balance,is_banned,banned_until,banned_reason",
       [u.id,u.username,role,OWNER_TELEGRAM_ID]);
     req.user = r.rows[0];
