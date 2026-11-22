@@ -292,7 +292,7 @@ async function auth(req,res,next) {
   const rawInitData = req.get('x-telegram-init-data') || '';
   const u = verifyInitData(rawInitData);
   if (!u) {
-    console.warn('[Mini App auth] rejected request:', !rawInitData ? 'missing initData' : rawInitData.length > 16384 ? 'initData too long' : 'invalid signature or expired initData');
+    const parsedAuthDate=Number(new URLSearchParams(rawInitData).get('auth_date')); const rejectReason=!rawInitData?'missing initData':rawInitData.length>16384?'initData too long':!Number.isFinite(parsedAuthDate)?'missing/invalid auth_date':Math.abs(Date.now()/1000-parsedAuthDate)>86400?'expired/future auth_date':'HMAC signature mismatch'; console.warn('[Mini App auth] rejected request:',rejectReason);
     return res.status(401).json({error:'Не удалось подтвердить авторизацию Telegram. Полностью закройте Mini App и откройте его кнопкой в @World_tg_shop_bot.'});
   }
   try {
@@ -1268,10 +1268,14 @@ async function registerTelegramWebhook() {
   if(!appOrigin||!process.env.TELEGRAM_WEBHOOK_SECRET){console.warn('Telegram webhook not registered: APP_ORIGIN or TELEGRAM_WEBHOOK_SECRET is missing');return;}
   const url=new URL('/webhooks/telegram',appOrigin).toString();
   await telegramRequest('setWebhook',{url,secret_token:process.env.TELEGRAM_WEBHOOK_SECRET,allowed_updates:['message','pre_checkout_query','callback_query'],drop_pending_updates:false});
-  await telegramRequest('setMyName',{name:'WORLD TG SHOP',language_code:'ru'});
-  await telegramRequest('setMyDescription',{description:'WORLD TG SHOP — магазин цифровых товаров. Покупки, баланс, заказы и поддержка в одном Telegram-приложении.',language_code:'ru'});
-  await telegramRequest('setMyShortDescription',{short_description:'🛍 Магазин цифровых товаров • Покупки • Баланс • Заказы',language_code:'ru'});
-  await telegramRequest('setMyCommands',{commands:[
+  const optionalTelegramSetup = async (label, method, params) => {
+    try { await telegramRequest(method,params); }
+    catch (error) { console.warn('Telegram optional setup skipped ('+label+'):',error.message); }
+  };
+  await optionalTelegramSetup('bot name','setMyName',{name:'WORLD TG SHOP',language_code:'ru'});
+  await optionalTelegramSetup('bot description','setMyDescription',{description:'WORLD TG SHOP — магазин цифровых товаров. Покупки, баланс, заказы и поддержка в одном Telegram-приложении.',language_code:'ru'});
+  await optionalTelegramSetup('short description','setMyShortDescription',{short_description:'🛍 Магазин цифровых товаров • Покупки • Баланс • Заказы',language_code:'ru'});
+  await optionalTelegramSetup('commands','setMyCommands',{commands:[
     {command:'start',description:'Главное меню WORLD TG SHOP'},
     {command:'shop',description:'Открыть магазин'},
     {command:'profile',description:'Профиль и оба баланса'},
@@ -1280,8 +1284,19 @@ async function registerTelegramWebhook() {
     {command:'help',description:'Помощь и список команд'},
     {command:'support',description:'Поддержка'}
   ]});
-  await telegramRequest('setChatMenuButton',{menu_button:{type:'web_app',text:'Открыть магазин',web_app:{url:appOrigin}}});
-  console.log('Telegram bot commands, Mini App menu and payment webhook configured');
+  await optionalTelegramSetup('Mini App menu','setChatMenuButton',{menu_button:{type:'web_app',text:'Открыть магазин',web_app:{url:appOrigin}}});
+  console.log('Telegram webhook registered; optional bot profile settings attempted');
+}
+async function logTelegramBotIdentity() {
+  const fingerprint=crypto.createHash('sha256').update(BOT_TOKEN).digest('hex').slice(0,12);
+  try {
+    const response=await fetch('https://api.telegram.org/bot'+BOT_TOKEN+'/getMe',{signal:AbortSignal.timeout(10000)});
+    const data=await response.json();
+    if(!response.ok||!data.ok) throw new Error(data.description||'getMe rejected');
+    console.log('[Telegram identity]',{username:data.result.username,id:data.result.id,tokenFingerprint:fingerprint});
+  } catch(error) {
+    console.error('[Telegram identity] getMe failed',{tokenFingerprint:fingerprint,error:error.message});
+  }
 }
 async function cryptoPay(method, params={}) {
   if (!process.env.CRYPTO_PAY_API_TOKEN) throw new Error('Crypto Pay API token is not configured');
@@ -1845,6 +1860,7 @@ async function start() {
     server = app.listen(PORT,'0.0.0.0',()=>{
       console.log('WORLD TG SHOP listening on '+PORT);
       console.log('RollyPay configuration:',{apiKeyConfigured:Boolean(process.env.ROLLYPAY_API_KEY),webhookSecretConfigured:Boolean(process.env.ROLLYPAY_WEBHOOK_SECRET),terminalIdConfigured:Boolean(process.env.ROLLYPAY_TERMINAL_ID),appOriginConfigured:Boolean(appOrigin)});
+      logTelegramBotIdentity();
       registerTelegramWebhook().catch(e=>console.error('Telegram webhook setup:',e.message));
       configureRollyPayWebhook().catch(e=>console.error('RollyPay webhook setup:',e.message));
     });
