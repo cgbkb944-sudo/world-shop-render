@@ -8,7 +8,7 @@ const QRCode = require('qrcode');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
-const { DATABASE_URL, BOT_TOKEN } = process.env;
+const DATABASE_URL = process.env.DATABASE_URL; const BOT_TOKEN = String(process.env.BOT_TOKEN || '').trim();
 const OWNER_TELEGRAM_ID = process.env.OWNER_TELEGRAM_ID || '8127900151';
 const WITHDRAWAL_GROUP_ID = '-1004497861005';
 const SALES_NOTIFICATION_GROUP_ID = process.env.SALES_NOTIFICATION_GROUP_ID || WITHDRAWAL_GROUP_ID;
