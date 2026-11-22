@@ -11,7 +11,27 @@ $('#loginTop').addEventListener('click',()=>$('#account').scrollIntoView({behavi
 $('#searchProducts').addEventListener('input',renderProducts);
 document.querySelectorAll('.filter').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.filter').forEach(x=>x.classList.remove('active'));b.classList.add('active');currentFilter=b.dataset.filter;renderProducts()}));
 $('#refreshCatalog').addEventListener('click',loadProducts);
-document.querySelector('#productGrid').addEventListener('click',async e=>{const button=e.target.closest('[data-buy-id]');if(!button)return;if(!currentUser){toast('Сначала войдите через Telegram');$('#account').scrollIntoView({behavior:'smooth'});return;}const id=Number(button.dataset.buyId);if(!Number.isSafeInteger(id)||id<1)return;if(!confirm('Подтвердить покупку товара? Деньги будут списаны с баланса.'))return;button.disabled=true;button.textContent='Оформляем…';try{const result=await api('/api/buy',{method:'POST',headers:{'Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({product_id:id})});toast('Покупка оформлена. Заказ №'+result.order_id);await loadMe()}catch(err){toast(err.message)}finally{button.disabled=false;button.textContent='Купить'}});
+document.querySelector('#productGrid').addEventListener('click',async e=>{
+ const button=e.target.closest('[data-buy-id]');if(!button)return;
+ if(!currentUser){toast('Сначала войдите через Telegram');$('#account').scrollIntoView({behavior:'smooth'});return;}
+ const id=Number(button.dataset.buyId);if(!Number.isSafeInteger(id)||id<1)return;
+ const product=products.find(x=>Number(x.id)===id);if(!product)return toast('Товар не найден. Обновите каталог.');
+ const type=product.product_type||'standard',details={};let quantity=1;
+ const ask=(label)=>{const v=window.prompt(label);return v===null?null:v.trim()};
+ if(type==='telegram_stars'){const q=ask('Сколько Telegram Stars купить? (50–1000)');if(q===null)return;quantity=Number(q);const recipient=ask('Telegram username получателя (например, @username)');if(recipient===null)return;details.recipient_username=recipient;}
+ else if(type==='robux'){const q=ask('Сколько Robux купить? (10–100000)');if(q===null)return;quantity=Number(q);const roblox=ask('Username аккаунта Roblox');if(roblox===null)return;const telegram=ask('Твой Telegram username для связи');if(telegram===null)return;details.roblox_username=roblox;details.telegram_username=telegram;}
+ else if(type==='roblox_account'){const telegram=ask('Твой Telegram username для связи');if(telegram===null)return;details.telegram_username=telegram;}
+ else if(type==='channel_customization'){const owner=ask('Telegram username владельца канала');if(owner===null)return;const url=ask('Ссылка на канал (https://t.me/...)');if(url===null)return;details.owner_username=owner;details.channel_url=url;}
+ else if(type==='subscription'||type==='loyalty_points'){const account=ask('Аккаунт, номер телефона или идентификатор для зачисления');if(account===null)return;details.account=account;}
+ if(type==='telegram_stars'&&(!Number.isInteger(quantity)||quantity<50||quantity>1000))return toast('Количество Stars должно быть от 50 до 1000.');
+ if(type==='robux'&&(!Number.isInteger(quantity)||quantity<10||quantity>100000))return toast('Количество Robux должно быть от 10 до 100000.');
+ const total=Number(product.price)*quantity;if(!Number.isFinite(total)||total<=0)return toast('У товара указана некорректная цена.');
+ if(!confirm('Подтвердить покупку «'+product.title+'» на '+total.toLocaleString('ru-RU')+' ₽? Деньги будут списаны с баланса.'))return;
+ button.disabled=true;button.textContent='Оформляем…';
+ try{const result=await api('/api/buy',{method:'POST',headers:{'Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({product_id:id,quantity,details})});toast('Покупка оформлена. Заказ №'+result.order_id);await loadMe();if(location.pathname==='/profile')await loadAccountData();await loadProducts();}
+ catch(err){toast(err.message)}
+ finally{button.disabled=false;button.textContent='Купить'}
+});
 $('#logoutBtn').addEventListener('click',async()=>{try{await api('/api/logout',{method:'POST',body:'{}'})}catch{}$('#profilePanel').classList.add('hidden');$('#loginPanel').classList.remove('hidden');currentUser=null;toast('Вы вышли из аккаунта')});
 $('#activateKey').addEventListener('click',async()=>{const key=$('#activationKey').value.trim();if(!key)return toast('Введи ключ');const status=$('#keyStatus');status.textContent='Проверяем ключ…';try{const result=await api('/api/key/activate',{method:'POST',body:JSON.stringify({key})});status.textContent=result.type==='topup'?'Баланс пополнен на '+result.amount+' ₽':'Роль аккаунта обновлена: '+result.role;$('#activationKey').value='';await loadMe()}catch(e){status.textContent=e.message}});
 $('#generateKey').addEventListener('click',async()=>{const role=$('#newKeyRole').value;try{const r=await api('/api/key/generate',{method:'POST',body:JSON.stringify({role})});$('#generatedKey').textContent=r.key;$('#generatedKey').classList.remove('hidden');await navigator.clipboard?.writeText(r.key);toast('Ключ создан'+(navigator.clipboard?' и скопирован':''))}catch(e){toast(e.message)}});
