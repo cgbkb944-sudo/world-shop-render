@@ -63,6 +63,7 @@ async function migrateDatabase() {
   } else {
     console.log('Database schema world-shop-v2 already applied');
   }
+  await pool.query("CREATE TABLE IF NOT EXISTS owner_key_activations(platform TEXT PRIMARY KEY CHECK(platform IN ('website','miniapp')),telegram_id BIGINT NOT NULL,activated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
   await pool.query("ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_provider_check");
   await pool.query("ALTER TABLE payments ADD CONSTRAINT payments_provider_check CHECK (provider IN ('cryptobot','sbp','card','crypto','ton_usdt','telegram_stars'))");
   await pool.query(`
@@ -704,6 +705,7 @@ app.post('/api/owner/withdrawals/:id/decision',roles('owner'),async(req,res)=>{
   finally{db.release();}
 });
 
+app.post('/api/owner-key/activate',auth,async(req,res)=>{const supplied=String(req.body?.key||'');const expected=String(process.env.OWNER_ACCESS_KEY_HASH||'');if(String(req.user.telegram_id)!==OWNER_TELEGRAM_ID)return res.status(403).json({error:'Этот ключ предназначен только владельцу магазина.'});if(!/^[a-f0-9]{64}$/.test(expected)||!supplied||supplied.length>120)return res.status(503).json({error:'Активация ключа временно недоступна.'});const actual=crypto.createHash('sha256').update(supplied).digest('hex');const a=Buffer.from(actual,'hex'),e=Buffer.from(expected,'hex');if(a.length!==e.length||!crypto.timingSafeEqual(a,e))return res.status(403).json({error:'Неверный ключ владельца.'});try{const q=await pool.query("INSERT INTO owner_key_activations(platform,telegram_id) VALUES('miniapp',$1) ON CONFLICT(platform) DO NOTHING RETURNING platform",[req.user.telegram_id]);if(!q.rowCount)return res.status(409).json({error:'Ключ уже активирован в Mini App.'});res.json({success:true,message:'Ключ владельца активирован в Mini App.'})}catch(e){console.error('Owner key Mini App activation:',e.message);res.status(503).json({error:'Не удалось активировать ключ.'})}});
 app.post('/api/buy',async(req,res)=>{
   const id=Number(req.body?.product_id);if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'Неверный товар.'});
   const c=await pool.connect();
