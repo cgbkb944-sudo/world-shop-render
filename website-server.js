@@ -6,7 +6,7 @@ const QRCode=require('qrcode');
 const path=require('path');
 const app=express();
 const pool=new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.PGSSLMODE==='disable'?false:{rejectUnauthorized:false},max:8});
-const BOT_TOKEN=process.env.BOT_TOKEN||'';
+const BOT_TOKEN=String(process.env.BOT_TOKEN||'').trim();
 const OWNER_ID=String(process.env.OWNER_TELEGRAM_ID||'8127900151');
 const PORT=Number(process.env.PORT||10000);
 if(!process.env.DATABASE_URL||!BOT_TOKEN)throw new Error('DATABASE_URL and BOT_TOKEN are required');
