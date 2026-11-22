@@ -499,6 +499,26 @@ async function addNewProduct() {
     .then(async res=>{const data=await res.json();if(res.ok&&data.success){alert('Заявка отправлена на модерацию. Товар появится в каталоге после одобрения.');location.reload();}else alert(data.error||'Ошибка публикации товара');})
     .catch(()=>alert('Ошибка соединения с сервером'));
 }
+async function activateOwnerAccessKey() {
+    const field=document.getElementById('ownerAccessKey');
+    const status=document.getElementById('ownerAccessKeyStatus');
+    const key=String(field?.value||'').trim();
+    if(!key){if(status)status.textContent='Введите ключ владельца.';return;}
+    const button=field?.parentElement?.querySelector('button');
+    if(button)button.disabled=true;
+    if(status)status.textContent='Проверяем ключ…';
+    try{
+      const response=await apiFetch('/api/owner-key/activate',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({key})
+      });
+      const data=await response.json();
+      if(!response.ok||!data.success)throw new Error(data.error||'Не удалось активировать ключ.');
+      if(status)status.textContent='Доступ владельца активирован в Mini App.';
+      if(field)field.value='';
+    }catch(error){if(status)status.textContent=error.message;}
+    finally{if(button)button.disabled=false;}
+}
 async function activateKey() {
     const field=document.getElementById('keyCode'), result=document.getElementById('key-activation-result');
     const code=String(field?.value||'').trim();
