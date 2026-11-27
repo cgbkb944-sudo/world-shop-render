@@ -24,6 +24,10 @@
     #wts-support-panel.open{display:flex;flex-direction:column}
     #wts-support-head{padding:14px 16px;background:#172338;display:flex;align-items:center;justify-content:space-between;font-weight:700}
     #wts-support-close{background:transparent;color:#fff;border:0;font-size:22px}
+    #wts-support-filters{padding:8px 12px;display:flex;gap:6px;overflow-x:auto;border-bottom:1px solid #334155}
+    #wts-support-filters[hidden]{display:none}
+    #wts-support-filters button{border:1px solid #475569;background:#1e293b;color:#e2e8f0;border-radius:10px;padding:7px 10px;white-space:nowrap}
+    #wts-support-filters button.active{background:#1d4ed8;border-color:#60a5fa}
     #wts-support-list{padding:8px 12px;display:flex;gap:6px;overflow-x:auto;border-bottom:1px solid #334155}
     #wts-support-list button,#wts-support-new{border:1px solid #475569;background:#1e293b;color:#e2e8f0;border-radius:10px;padding:7px 10px;white-space:nowrap}
     #wts-support-list button.active{background:#1d4ed8;border-color:#60a5fa}
@@ -48,7 +52,7 @@
   launch.id='wts-support-launch'; launch.type='button'; launch.setAttribute('aria-label','Открыть чат поддержки WORLD TG SHOP'); launch.innerHTML='<span class="wts-support-icon">💬</span><span class="wts-support-label"><span>Поддержка</span><small>Мы на связи</small></span>';
   const panel = document.createElement('section');
   panel.id='wts-support-panel';
-  panel.innerHTML = `<div id="wts-support-head"><span>WORLD TG SHOP · Поддержка</span><button id="wts-support-close" aria-label="Закрыть">×</button></div><div id="wts-support-list"></div><div id="wts-support-messages"></div><div id="wts-support-status">AI-помощник онлайн, оператор может подключиться к диалогу.</div><form id="wts-support-compose"><textarea id="wts-support-input" rows="1" placeholder="Напишите сообщение…" required></textarea><button id="wts-support-send" type="submit">➤</button></form>`;
+  panel.innerHTML = `<div id="wts-support-head"><span>WORLD TG SHOP · Поддержка</span><button id="wts-support-close" aria-label="Закрыть">×</button></div><div id="wts-support-filters" hidden><button data-state="all">Все</button><button data-state="ai">AI ведёт</button><button data-state="human">Нужен оператор</button><button data-state="closed">Закрытые</button></div><div id="wts-support-list"></div><div id="wts-support-messages"></div><div id="wts-support-status">AI-помощник онлайн, оператор может подключиться к диалогу.</div><form id="wts-support-compose"><textarea id="wts-support-input" rows="1" placeholder="Напишите сообщение…" required></textarea><button id="wts-support-send" type="submit">➤</button></form>`;
   const launchTarget=document.querySelector('#tab-profile .card')||document.querySelector('#profileActions .profile-action-grid')||document.querySelector('#profilePanel');
   if(launchTarget){
     if(launchTarget.closest('#tab-profile')){const identity=launchTarget.querySelector('p');if(identity)identity.after(launch);else launchTarget.appendChild(launch);}
@@ -56,7 +60,7 @@
   }
   document.body.appendChild(panel);
   const list=panel.querySelector('#wts-support-list'), messages=panel.querySelector('#wts-support-messages'), form=panel.querySelector('#wts-support-compose'), input=panel.querySelector('#wts-support-input'), status=panel.querySelector('#wts-support-status');
-  let tickets=[], current=null, staff=false, canApprove=false, busy=false;
+  let tickets=[], current=null, staff=false, canApprove=false, busy=false, staffFilter='all';
   const renderMessages = async () => {
     if(!current){messages.innerHTML='<p>Опишите вопрос — мы поможем.</p>';return;}
     const data=await api('/api/support/tickets/'+current+'/messages');
@@ -80,22 +84,30 @@
         }
         messages.appendChild(card);
       });
-      const take=document.createElement('button');take.type='button';take.textContent='Подключиться к обращению';take.className='wts-support-takeover';
-      take.onclick=async()=>{try{await api('/api/support/tickets/'+current+'/takeover',{method:'POST',body:'{}'});await loadTickets();}catch(e){status.textContent=e.message;}};
-      messages.appendChild(take);
+      const selected=tickets.find(t=>Number(t.id)===Number(current));
+      const canReply=selected&&selected.status==='human';
+      input.disabled=staff&&!canReply;
+      status.textContent=staff?(canReply?'Пользователь или AI запросил оператора — можно ответить.':'Просмотр переписки. Вмешательство пока не запрошено.'):'AI-помощник отвечает автоматически.';
     }
     messages.scrollTop=messages.scrollHeight;
   };
   const renderList = () => {
     list.innerHTML='';
+    const filters=panel.querySelector('#wts-support-filters');
+    filters.hidden=!staff;
     if(staff){
-      tickets.forEach(t=>{const b=document.createElement('button');b.textContent='#'+t.id+' · '+t.status+' · '+t.user_id;b.className=String(t.id)===String(current)?'active':'';b.onclick=()=>selectTicket(t.id);list.appendChild(b);});
+      const visible=tickets.filter(t=>staffFilter==='all'||t.status===staffFilter);
+      filters.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.state===staffFilter));
+      visible.forEach(t=>{const b=document.createElement('button');b.textContent='#'+t.id+' · '+t.status+' · '+t.user_id;b.className=String(t.id)===String(current)?'active':'';b.onclick=()=>selectTicket(t.id);list.appendChild(b);});
+      if(!visible.length){const empty=document.createElement('small');empty.textContent='В этой категории обращений нет.';list.appendChild(empty);}
+      const fresh=document.createElement('button');fresh.id='wts-support-new';fresh.textContent='Обновить список';fresh.onclick=loadTickets;list.appendChild(fresh);
     }else{
       const active=tickets.find(t=>t.status!=='closed');
       if(active){const b=document.createElement('button');b.textContent='Обращение #'+active.id+' · '+active.status;b.className='active';list.appendChild(b);}
+      const fresh=document.createElement('button');fresh.id='wts-support-new';fresh.textContent='＋ Новое обращение';fresh.onclick=newTicket;list.appendChild(fresh);
     }
-    const fresh=document.createElement('button');fresh.id='wts-support-new';fresh.textContent=staff?'Обновить':'＋ Новое обращение';fresh.onclick=staff?loadTickets:newTicket;list.appendChild(fresh);
   };
+  panel.querySelector('#wts-support-filters').addEventListener('click',e=>{const b=e.target.closest('button[data-state]');if(!b)return;staffFilter=b.dataset.state;renderList();});
   async function reviewAction(id,decision){
     const note=decision==='rejected'?'Отклонено владельцем/администратором':'Одобрено владельцем/администратором';
     try{await api('/api/support/actions/'+id+'/review',{method:'POST',body:JSON.stringify({decision,note})});await loadTickets();status.textContent='Решение сохранено и отправлено пользователю.';}
@@ -117,6 +129,7 @@
   panel.querySelector('#wts-support-close').onclick=()=>panel.classList.remove('open');
   form.onsubmit=async e=>{
     e.preventDefault();const body=input.value.trim();if(!body||busy)return;
+    if(staff){const t=tickets.find(x=>Number(x.id)===Number(current));if(!t||t.status!=='human'){status.textContent='Ответить можно только после запроса оператора.';return;}}
     busy=true;input.disabled=true;status.textContent='Отправляем…';
     try{
       if(!current && !staff){
