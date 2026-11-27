@@ -68,10 +68,10 @@ async function callOpenAI(pool, ticketId) {
     parts: [{ text: m.body }]
   }));
   const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' +
-    encodeURIComponent(model) + ':generateContent?key=' + encodeURIComponent(key);
+    encodeURIComponent(model) + ':generateContent';
   const response = await fetch(endpoint, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
     body: JSON.stringify({
       system_instruction: { parts: [{ text: [
         'Ты — AI-помощник службы поддержки WORLD TG SHOP.',
