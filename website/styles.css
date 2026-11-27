@@ -68,3 +68,27 @@ label{display:block;margin:12px 2px 5px;color:#c7d7ef;font-size:12px;font-weight
 .status-message{color:#b8d8f8;line-height:1.5}
 button:focus-visible,a:focus-visible{outline:2px solid #75caff;outline-offset:3px}
 @media(max-width:600px){.profile-subpanel{padding:15px}.profile-action-grid{gap:9px}}
+
+/* WORLD TG SHOP cinematic intro */
+.site-intro{position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:13px;background:radial-gradient(ellipse at 50% 45%,#102d58 0%,#091326 42%,#050914 100%);overflow:hidden;opacity:1;visibility:visible;transition:opacity .55s ease,visibility .55s ease}
+.site-intro.intro-leave{opacity:0;visibility:hidden;pointer-events:none}
+.intro-orbit{position:absolute;width:270px;height:270px;border:1px solid #65bfff28;border-radius:50%;box-shadow:0 0 90px #2578ff20,inset 0 0 65px #2578ff14;animation:intro-orbit 3s ease-in-out infinite}
+.intro-orbit:before,.intro-orbit:after{content:"";position:absolute;inset:18px;border:1px solid #66dfff22;border-radius:50%;transform:rotateX(65deg) rotate(25deg)}
+.intro-orbit:after{inset:37px;transform:rotateX(65deg) rotate(-35deg)}
+.intro-logo{position:relative;width:82px;height:82px;filter:drop-shadow(0 0 26px #348cffaa);animation:intro-assemble .9s cubic-bezier(.2,.8,.2,1) both}
+.intro-logo svg{width:100%;height:100%;overflow:visible}
+.intro-wordmark{position:relative;font-size:clamp(23px,6vw,32px);font-weight:800;letter-spacing:.13em;color:#f5f9ff;animation:intro-rise .7s .25s both}
+.intro-wordmark b{color:#7bc5ff}
+.intro-caption{position:relative;font-size:9px;letter-spacing:.34em;color:#90b8e9;animation:intro-rise .7s .38s both}
+.intro-progress{position:relative;margin-top:27px;width:132px;height:3px;border-radius:9px;background:#ffffff18;overflow:hidden}
+.intro-progress i{display:block;width:40%;height:100%;border-radius:9px;background:linear-gradient(90deg,#48a0ff,#7ce8ff);box-shadow:0 0 12px #4baaff;animation:intro-progress 1.65s ease-in-out forwards}
+@keyframes intro-assemble{0%{opacity:0;transform:translateY(25px) rotate(-35deg) scale(.35);filter:blur(12px)}65%{opacity:1;transform:translateY(-4px) rotate(8deg) scale(1.08);filter:blur(0)}100%{transform:translateY(0) rotate(0) scale(1)}}
+@keyframes intro-rise{from{opacity:0;transform:translateY(12px);letter-spacing:.28em}to{opacity:1;transform:translateY(0)}}
+@keyframes intro-orbit{50%{transform:scale(1.08) rotate(18deg);opacity:.65}}
+@keyframes intro-progress{from{width:0}to{width:100%}}
+.ticker{height:37px;overflow:hidden;border-bottom:1px solid #3c78bd35;background:linear-gradient(90deg,#0b1425,#101e34,#0b1425);display:flex;align-items:center;position:relative}
+.ticker-track{display:flex;align-items:center;gap:28px;width:max-content;white-space:nowrap;animation:ticker-run 34s linear infinite;color:#9eb8d9;font-size:9px;font-weight:800;letter-spacing:.17em}
+.ticker-track b{color:#55c9ef;font-size:13px}
+.ticker:hover .ticker-track{animation-play-state:paused}
+@keyframes ticker-run{to{transform:translateX(-50%)}}
+@media(prefers-reduced-motion:reduce){.site-intro,.intro-logo,.intro-wordmark,.intro-caption,.intro-progress i,.intro-orbit,.ticker-track{animation:none!important;transition:none!important}}
