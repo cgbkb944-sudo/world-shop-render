@@ -1016,11 +1016,11 @@ async function sendBotText(chatId,text,replyMarkup) {
 }
 async function botHomeMarkup() {
   const rows=[];
-  if(appOrigin)rows.push([{text:'🚀 Открыть приложение',web_app:{url:appOrigin}}]);
-  rows.push([{text:'🛍 Каталог',callback_data:'bot:catalog'},{text:'📦 Мои заказы',callback_data:'bot:orders'}]);
-  rows.push([{text:'💳 Баланс',callback_data:'bot:balance'},{text:'👤 Профиль',callback_data:'bot:profile'}]);
-  rows.push([{text:'➕ Пополнить',callback_data:'bot:topup'},{text:'🆘 Поддержка',callback_data:'bot:support'}]);
-  rows.push([{text:'ℹ️ Помощь',callback_data:'bot:help'}]);
+  if(appOrigin)rows.push([{text:'✨ ОТКРЫТЬ WORLD TG SHOP',web_app:{url:appOrigin}}]);
+  rows.push([{text:'🛍 Каталог товаров',callback_data:'bot:catalog'},{text:'📦 Мои заказы',callback_data:'bot:orders'}]);
+  rows.push([{text:'💳 Мой баланс',callback_data:'bot:balance'},{text:'👤 Профиль',callback_data:'bot:profile'}]);
+  rows.push([{text:'⚡ Пополнить',callback_data:'bot:topup'},{text:'💬 Поддержка',callback_data:'bot:support'}]);
+  rows.push([{text:'🌐 О магазине',callback_data:'bot:help'}]);
   return {inline_keyboard:rows};
 }
 async function botProfileText(id) {
@@ -1157,7 +1157,7 @@ async function handleTelegramBotCallback(query) {
   }
   if(String(userId)!==OWNER_TELEGRAM_ID&&subscriptionGateEnabled())await grantChannelSubscriptionReward(String(userId));
   await telegramRequest('answerCallbackQuery',{callback_query_id:query.id});
-  const screen=action==='home'?{text:'✨ WORLD TG SHOP\n\nДобро пожаловать! Выберите нужный раздел:',markup:await botHomeMarkup()}:await botScreen(action,String(userId));
+  const screen=action==='home'?{text:'✨ WORLD TG SHOP\n\n✨ WORLD TG SHOP\nТВОЙ МАГАЗИН ПРЯМО В TELEGRAM\n\nВыбирай цифровые товары, следи за заказами и управляй балансом в одном месте.\n\nВыбери нужный раздел:',markup:await botHomeMarkup()}:await botScreen(action,String(userId));
   try{await telegramRequest('editMessageText',{chat_id:chatId,message_id:messageId,text:screen.text,reply_markup:screen.markup});}
   catch(e){if(!/message is not modified/i.test(e.message))await sendBotText(chatId,screen.text,screen.markup);}
 }
