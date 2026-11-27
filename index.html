@@ -293,6 +293,30 @@
         .subscription-gate-card a{background:linear-gradient(135deg,#7567ef,#a15be8);color:white}
         .subscription-gate-card button{background:#273452;color:#fff}
         #subscription-status{min-height:20px;margin-top:14px;font-size:12px;color:#b7c5e8}
+    
+/* WORLD TG SHOP — unified Cyber Dark visual refresh */
+:root{--bg-gradient:radial-gradient(ellipse at 85% -10%,rgba(35,115,220,.25),transparent 42%),linear-gradient(145deg,#070d19,#0b1930 58%,#07111f);--card-bg:rgba(13,27,47,.88);--card-border:rgba(117,177,239,.18);--accent:#398cff;--accent-gradient:linear-gradient(110deg,#246fe5 0%,#42b9e8 100%);--text-main:#f4f8ff;--text-muted:#9aabc2}
+body{background:var(--bg-gradient)!important}
+.container{max-width:560px;padding:18px 16px 110px}
+.card{border-color:var(--card-border);border-radius:22px;background:linear-gradient(145deg,rgba(20,43,72,.92),rgba(9,20,36,.94));box-shadow:0 18px 44px rgba(0,0,0,.24)}
+.profile-card,.balance-hero{background:linear-gradient(130deg,rgba(25,92,166,.38),rgba(17,45,77,.55)),rgba(12,26,45,.92);border-color:rgba(77,166,255,.35)}
+.brand-mark{overflow:hidden;background:linear-gradient(140deg,#8bd7ff,#398cff 55%,#2050c8);box-shadow:0 8px 26px #2879e866}
+.brand-copy strong{letter-spacing:1.6px}
+.welcome-block{border:1px solid rgba(95,174,255,.28);background:radial-gradient(circle at 90% 0%,rgba(45,151,226,.25),transparent 38%),linear-gradient(130deg,#142f52,#0d1b31 72%);box-shadow:0 20px 50px #0004}
+.welcome-block:after{background:radial-gradient(circle,rgba(66,185,232,.25),transparent 70%)}
+.eyebrow{color:#75caff}
+.welcome-block h1 em{color:#70c9f3}
+button{background:var(--accent-gradient);box-shadow:0 7px 22px rgba(40,132,235,.25);border-radius:14px}
+input,select{background:rgba(5,16,30,.78);border-color:rgba(112,164,218,.22);border-radius:13px}
+input:focus,select:focus{border-color:#54b9ed;box-shadow:0 0 0 3px rgba(64,163,231,.12)}
+.nav{background:rgba(6,15,28,.92);border-top:1px solid rgba(117,177,239,.2);padding:11px 0 calc(10px + env(safe-area-inset-bottom));backdrop-filter:blur(22px)}
+.nav-item.active{color:#65c9f1}
+.product-item{background:linear-gradient(135deg,#142b49,#0d1c31);border-color:rgba(117,177,239,.17);border-radius:17px}
+.badge{background:rgba(49,135,226,.18);color:#7dcaff}
+.subscription-gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:22px;z-index:300}
+.subscription-gate-card{width:min(100%,420px);margin:auto;border-radius:24px;border:1px solid rgba(112,184,255,.28);background:linear-gradient(145deg,#132b49,#091526);box-shadow:0 28px 90px #000b;padding:26px;text-align:center}
+@media(max-width:420px){.container{padding-inline:13px}.welcome-block{padding:21px 18px}.welcome-block h1{font-size:29px}.card{padding:16px}}
+
     </style>
 </head>
 <body>
