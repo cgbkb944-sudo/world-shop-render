@@ -264,7 +264,7 @@ function mountSupportRoutes(app, { pool, authMiddleware, telegramRequest=default
         const sensitive=requestedSensitiveAction(body);
         if(sensitive){
           const actionId=await createActionRequest(pool,id,req.user.telegram_id,sensitive,body);
-          await notifyStaff(pool,telegramRequest,ownerId,'⚠️ Запрос на решение владельца/администратора\\nОбращение №'+id+' · Запрос №'+actionId+'\\nТип: '+(sensitive==='refund'?'Возврат средств':'Изменение аккаунта/заказа')+'\\nПользователь: '+req.user.telegram_id+'\\n\\n'+body+'\\n\\nПроверьте переписку и рассмотрите запрос в панели поддержки.',{inline_keyboard:[[{text:'✅ Одобрить',callback_data:'support:action:approve:'+actionId},{text:'❌ Отклонить',callback_data:'support:action:reject:'+actionId}]]});
+          await notifyStaff(pool,telegramRequest,ownerId,'⚠️ Запрос на решение владельца/администратора\nОбращение №'+id+' · Запрос №'+actionId+'\nТип: '+(sensitive==='refund'?'Возврат средств':'Изменение аккаунта/заказа')+'\nПользователь: '+req.user.telegram_id+'\n\n'+body+'\n\nПроверьте переписку и рассмотрите запрос в панели поддержки.',{inline_keyboard:[[{text:'✅ Одобрить',callback_data:'support:action:approve:'+actionId},{text:'❌ Отклонить',callback_data:'support:action:reject:'+actionId}]]});
           answer='Запрос передан владельцу и администраторам. Они проверят переписку и сообщат решение. Пока решение не принято, никаких изменений с балансом или заказом не выполняется.';
           await addMessage(pool,id,null,'assistant',answer); forwarded=true;
         }else{
@@ -302,20 +302,20 @@ function mountSupportRoutes(app, { pool, authMiddleware, telegramRequest=default
       if(isStaff){
         await pool.query("UPDATE support_tickets SET status='human',updated_at=NOW() WHERE id=$1",[id]);
         await addMessage(pool,id,req.user.telegram_id,req.user.role,body);
-        await telegramSend(telegramRequest,ticket.rows[0].user_id,'👤 Ответ поддержки по обращению №'+id+':\\n\\n'+body);
+        await telegramSend(telegramRequest,ticket.rows[0].user_id,'👤 Ответ поддержки по обращению №'+id+':\n\n'+body);
         return res.json({success:true});
       }
       await addMessage(pool,id,req.user.telegram_id,'user',body);
       const sensitive=requestedSensitiveAction(body);
       if(sensitive){
         const actionId=await createActionRequest(pool,id,req.user.telegram_id,sensitive,body);
-        await notifyStaff(pool,telegramRequest,ownerId,'⚠️ Запрос на решение владельца/администратора\\nОбращение №'+id+' · Запрос №'+actionId+'\\nТип: '+(sensitive==='refund'?'Возврат средств':'Изменение аккаунта/заказа')+'\\nПользователь: '+req.user.telegram_id+'\\n\\n'+body,{inline_keyboard:[[{text:'✅ Одобрить',callback_data:'support:action:approve:'+actionId},{text:'❌ Отклонить',callback_data:'support:action:reject:'+actionId}]]});
+        await notifyStaff(pool,telegramRequest,ownerId,'⚠️ Запрос на решение владельца/администратора\nОбращение №'+id+' · Запрос №'+actionId+'\nТип: '+(sensitive==='refund'?'Возврат средств':'Изменение аккаунта/заказа')+'\nПользователь: '+req.user.telegram_id+'\n\n'+body,{inline_keyboard:[[{text:'✅ Одобрить',callback_data:'support:action:approve:'+actionId},{text:'❌ Отклонить',callback_data:'support:action:reject:'+actionId}]]});
         const answer='Запрос передан владельцу и администраторам. Они проверят переписку и сообщат решение. До решения никаких действий с деньгами или заказом не выполняется.';
         await addMessage(pool,id,null,'assistant',answer);
         return res.json({success:true,answer,forwarded_to_operator:true,approval_required:true});
       }
       if(ticket.rows[0].status==='human'){
-        await notifyStaff(pool,telegramRequest,ownerId,'🆘 Новое сообщение в обращении №'+id+' от пользователя '+req.user.telegram_id+':\\n'+body.slice(0,1200));
+        await notifyStaff(pool,telegramRequest,ownerId,'🆘 Новое сообщение в обращении №'+id+' от пользователя '+req.user.telegram_id+':\n'+body.slice(0,1200));
         return res.json({success:true,forwarded_to_operator:true});
       }
       const answer=await callOpenAI(pool,id);
