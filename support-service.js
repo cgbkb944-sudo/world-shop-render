@@ -237,7 +237,7 @@ function mountSupportRoutes(app, { pool, authMiddleware, telegramRequest=default
          ORDER BY t.updated_at DESC LIMIT 100`,
         isStaff ? [] : [String(req.user.telegram_id)]
       );
-      res.json({ tickets: q.rows, is_staff: isStaff });
+      res.json({ tickets: q.rows, is_staff: isStaff, can_approve: ['owner','admin'].includes(req.user.role) });
     } catch (e) { res.status(503).json({ error: 'Не удалось загрузить обращения.' }); }
   });
 
