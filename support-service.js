@@ -146,6 +146,8 @@ async function handleBotMessage(message, { pool, telegramRequest, ownerId }) {
     return true;
   }
 
+  if (command.startsWith('/') && !['/support','/stop_support','/reply'].includes(command)) return false;
+
   const active = await pool.query(
     "SELECT id,status FROM support_tickets WHERE user_id=$1 AND status<>'closed' ORDER BY updated_at DESC LIMIT 1",
     [String(userId)]
@@ -186,7 +188,16 @@ async function handleBotMessage(message, { pool, telegramRequest, ownerId }) {
   return true;
 }
 
-function mountSupportRoutes(app, { pool, authMiddleware, telegramRequest, ownerId }) {
+async function defaultTelegramRequest(method, params) {
+  const token = String(process.env.BOT_TOKEN || '').trim();
+  if (!token) throw new Error('BOT_TOKEN is not configured');
+  const response = await fetch('https://api.telegram.org/bot' + token + '/' + method, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(params), signal: AbortSignal.timeout(12000) });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) throw new Error(data.description || 'Telegram API request failed');
+  return data.result;
+}
+
+function mountSupportRoutes(app, { pool, authMiddleware, telegramRequest=defaultTelegramRequest, ownerId }) {
   app.get('/api/support/tickets', authMiddleware, async (req, res) => {
     try {
       const isStaff = ['owner','admin','support'].includes(req.user.role);
