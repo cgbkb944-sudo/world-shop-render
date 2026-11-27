@@ -264,7 +264,7 @@ function mountSupportRoutes(app, { pool, authMiddleware, telegramRequest=default
         const sensitive=requestedSensitiveAction(body);
         if(sensitive){
           const actionId=await createActionRequest(pool,id,req.user.telegram_id,sensitive,body);
-          await notifyStaff(pool,telegramRequest,ownerId,'⚠️ Запрос на решение владельца/администратора\nОбращение №'+id+' · Запрос №'+actionId+'\nТип: '+(sensitive==='refund'?'Возврат средств':'Изменение аккаунта/заказа')+'\nПользователь: '+req.user.telegram_id+'\n\n'+body+'\n\nПроверьте переписку и рассмотрите запрос в панели поддержки.');
+          await notifyStaff(pool,telegramRequest,ownerId,'⚠️ Запрос на решение владельца/администратора\\nОбращение №'+id+' · Запрос №'+actionId+'\\nТип: '+(sensitive==='refund'?'Возврат средств':'Изменение аккаунта/заказа')+'\\nПользователь: '+req.user.telegram_id+'\\n\\n'+body+'\\n\\nПроверьте переписку и рассмотрите запрос в панели поддержки.',{inline_keyboard:[[{text:'✅ Одобрить',callback_data:'support:action:approve:'+actionId},{text:'❌ Отклонить',callback_data:'support:action:reject:'+actionId}]]});
           answer='Запрос передан владельцу и администраторам. Они проверят переписку и сообщат решение. Пока решение не принято, никаких изменений с балансом или заказом не выполняется.';
           await addMessage(pool,id,null,'assistant',answer); forwarded=true;
         }else{
@@ -309,7 +309,7 @@ function mountSupportRoutes(app, { pool, authMiddleware, telegramRequest=default
       const sensitive=requestedSensitiveAction(body);
       if(sensitive){
         const actionId=await createActionRequest(pool,id,req.user.telegram_id,sensitive,body);
-        await notifyStaff(pool,telegramRequest,ownerId,'⚠️ Запрос на решение владельца/администратора\nОбращение №'+id+' · Запрос №'+actionId+'\nТип: '+(sensitive==='refund'?'Возврат средств':'Изменение аккаунта/заказа')+'\nПользователь: '+req.user.telegram_id+'\n\n'+body);
+        await notifyStaff(pool,telegramRequest,ownerId,'⚠️ Запрос на решение владельца/администратора\\nОбращение №'+id+' · Запрос №'+actionId+'\\nТип: '+(sensitive==='refund'?'Возврат средств':'Изменение аккаунта/заказа')+'\\nПользователь: '+req.user.telegram_id+'\\n\\n'+body,{inline_keyboard:[[{text:'✅ Одобрить',callback_data:'support:action:approve:'+actionId},{text:'❌ Отклонить',callback_data:'support:action:reject:'+actionId}]]});
         const answer='Запрос передан владельцу и администраторам. Они проверят переписку и сообщат решение. До решения никаких действий с деньгами или заказом не выполняется.';
         await addMessage(pool,id,null,'assistant',answer);
         return res.json({success:true,answer,forwarded_to_operator:true,approval_required:true});
