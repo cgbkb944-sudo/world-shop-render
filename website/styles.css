@@ -92,3 +92,36 @@ button:focus-visible,a:focus-visible{outline:2px solid #75caff;outline-offset:3p
 .ticker:hover .ticker-track{animation-play-state:paused}
 @keyframes ticker-run{to{transform:translateX(-50%)}}
 @media(prefers-reduced-motion:reduce){.site-intro,.intro-logo,.intro-wordmark,.intro-caption,.intro-progress i,.intro-orbit,.ticker-track{animation:none!important;transition:none!important}}
+
+
+/* WTS mobile polish: centered loading, balanced panels and reliable viewport layout */
+:root{scroll-padding-top:92px}
+html,body{width:100%;max-width:100%;overflow-x:clip}
+.site-intro{inset:0!important;width:100vw;height:100dvh;min-height:100svh;display:grid!important;grid-template-rows:auto auto auto auto;align-content:center;justify-items:center;gap:14px;padding:24px;box-sizing:border-box}
+.intro-orbit{left:50%;top:50%;transform:translate(-50%,-50%)!important;pointer-events:none}
+.intro-logo,.intro-wordmark,.intro-caption,.intro-progress{position:relative;z-index:1}
+.intro-progress{width:min(220px,62vw);margin:7px auto 0}
+.loading-card,.empty-card{min-height:150px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:14px;padding:30px 18px}
+.loader{width:30px;height:30px;margin:0 auto;border-width:3px}
+.topbar{width:100%;box-sizing:border-box}
+main,.section,.hero,.feature-band{min-width:0}
+.section{scroll-margin-top:90px}
+.account-layout,.profile-grid,.profile-action-grid,.product-grid{min-width:0}
+button,a,.btn{touch-action:manipulation}
+@media(max-width:600px){
+ .topbar{padding-inline:16px}
+ .hero{grid-template-columns:minmax(0,1fr)}
+ .hero h1{font-size:clamp(42px,12vw,56px)}
+ .product-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ .product-card{min-width:0;padding:13px}
+ .catalog-tools{flex-wrap:wrap}
+ .searchbox{width:100%;flex:1 1 100%}
+ .filter-pills{width:100%;overflow-x:auto;padding-bottom:3px}
+ .filter{min-height:38px;white-space:nowrap}
+ .feature-band{grid-template-columns:1fr;margin-inline:14px;padding:22px}
+ .feature-band .btn{grid-column:1;justify-self:stretch}
+ .account-layout{gap:12px}
+ .account-card{min-width:0;padding:17px}
+ .profile-action-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(prefers-reduced-motion:reduce){.site-intro *,.ticker-track{animation:none!important;transition:none!important}}
