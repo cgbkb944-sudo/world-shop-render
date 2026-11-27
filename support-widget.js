@@ -13,8 +13,14 @@
   const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const style = document.createElement('style');
   style.textContent = `
-    #wts-support-launch{position:fixed;right:18px;bottom:88px;z-index:9998;border:0;border-radius:999px;padding:13px 18px;background:#2563eb;color:#fff;font:600 14px system-ui;box-shadow:0 8px 28px #0005}
-    #wts-support-panel{position:fixed;right:14px;bottom:145px;width:min(370px,calc(100vw - 28px));height:min(560px,calc(100dvh - 180px));z-index:9999;background:#101827;color:#f8fafc;border:1px solid #334155;border-radius:18px;box-shadow:0 18px 60px #0008;display:none;overflow:hidden;font:14px system-ui}
+    #wts-support-launch{position:fixed;right:18px;bottom:94px;z-index:9998;display:flex;align-items:center;gap:10px;padding:8px 17px 8px 9px;border:1px solid rgba(125,211,252,.42);border-radius:999px;background:linear-gradient(135deg,#172b48 0%,#111827 62%,#16233c 100%);color:#f8fafc;font:650 14px/1 system-ui;letter-spacing:.1px;box-shadow:0 8px 28px rgba(2,8,23,.48),inset 0 1px 0 rgba(255,255,255,.09);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);cursor:pointer;transition:transform .18s ease,box-shadow .18s ease}
+    #wts-support-launch:hover{transform:translateY(-2px);box-shadow:0 12px 34px rgba(2,8,23,.58),0 0 0 3px rgba(56,189,248,.12)}
+    #wts-support-launch:active{transform:scale(.97)}
+    #wts-support-launch .wts-support-icon{width:38px;height:38px;display:grid;place-items:center;border-radius:50%;background:linear-gradient(145deg,#38bdf8,#2563eb 72%);box-shadow:0 4px 14px rgba(37,99,235,.42);font-size:19px}
+    #wts-support-launch .wts-support-label{display:flex;flex-direction:column;gap:3px;text-align:left}
+    #wts-support-launch .wts-support-label small{font-size:10px;font-weight:500;letter-spacing:.25px;color:#a5c9e8}
+    #wts-support-panel{position:fixed;right:14px;bottom:158px;width:min(380px,calc(100vw - 28px));height:min(570px,calc(100dvh - 195px));z-index:9999;background:linear-gradient(160deg,#111c2e,#0b1220 70%);color:#f8fafc;border:1px solid rgba(125,211,252,.2);border-radius:22px;box-shadow:0 22px 70px rgba(0,0,0,.62),0 0 36px rgba(37,99,235,.12);display:none;overflow:hidden;font:14px system-ui}
+    @media(max-width:480px){#wts-support-launch{right:13px;bottom:84px}#wts-support-panel{right:10px;bottom:145px;width:calc(100vw - 20px);height:min(570px,calc(100dvh - 175px))}}
     #wts-support-panel.open{display:flex;flex-direction:column}
     #wts-support-head{padding:14px 16px;background:#172338;display:flex;align-items:center;justify-content:space-between;font-weight:700}
     #wts-support-close{background:transparent;color:#fff;border:0;font-size:22px}
@@ -32,7 +38,7 @@
   `;
   document.head.appendChild(style);
   const launch = document.createElement('button');
-  launch.id='wts-support-launch'; launch.type='button'; launch.textContent='🆘 Поддержка';
+  launch.id='wts-support-launch'; launch.type='button'; launch.setAttribute('aria-label','Открыть чат поддержки WORLD TG SHOP'); launch.innerHTML='<span class="wts-support-icon">💬</span><span class="wts-support-label"><span>Поддержка</span><small>Мы на связи</small></span>';
   const panel = document.createElement('section');
   panel.id='wts-support-panel';
   panel.innerHTML = `<div id="wts-support-head"><span>WORLD TG SHOP · Поддержка</span><button id="wts-support-close" aria-label="Закрыть">×</button></div><div id="wts-support-list"></div><div id="wts-support-messages"></div><div id="wts-support-status">AI-помощник онлайн, оператор может подключиться к диалогу.</div><form id="wts-support-compose"><textarea id="wts-support-input" rows="1" placeholder="Напишите сообщение…" required></textarea><button id="wts-support-send" type="submit">➤</button></form>`;
