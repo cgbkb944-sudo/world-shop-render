@@ -216,8 +216,14 @@ function mountSupportRoutes(app, { pool, authMiddleware, telegramRequest=default
     try {
       const id = await openTicket(pool, req.user.telegram_id, 'website', String(req.body?.subject || 'Обращение в поддержку'));
       const body = String(req.body?.message || '').trim();
-      if (body) await addMessage(pool, id, req.user.telegram_id, 'user', body);
-      res.json({ success: true, ticket_id: id });
+      let answer = null;
+      if (body) {
+        await addMessage(pool, id, req.user.telegram_id, 'user', body);
+        answer = await callOpenAI(pool, id).catch(e => { console.error('[Support AI]', e.message); return null; });
+        if (answer) await addMessage(pool, id, null, 'assistant', answer);
+        else await telegramSend(telegramRequest, ownerId, '🆘 Новое обращение №' + id + ' ожидает ответа. Пользователь: ' + req.user.telegram_id).catch(() => {});
+      }
+      res.json({ success: true, ticket_id: id, answer, forwarded_to_operator: Boolean(body && !answer) });
     } catch (e) { res.status(400).json({ error: e.message || 'Не удалось создать обращение.' }); }
   });
 
