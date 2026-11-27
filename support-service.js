@@ -110,10 +110,10 @@ function requestedSensitiveAction(body) {
   if (/(перевед.{0,20}баланс|измен.{0,20}баланс|начисл.{0,20}баланс|спис.{0,20}средств|удал.{0,20}заказ|отмен.{0,20}заказ|разблокир|заблокир)/i.test(value)) return 'account_or_order_change';
   return null;
 }
-async function notifyStaff(pool,telegramRequest,ownerId,message) {
+async function notifyStaff(pool,telegramRequest,ownerId,message,replyMarkup) {
   const recipients=new Set([String(ownerId)]);
   try { const q=await pool.query("SELECT telegram_id FROM users WHERE role IN ('owner','admin')"); for(const row of q.rows)recipients.add(String(row.telegram_id)); } catch {}
-  await Promise.all([...recipients].filter(Boolean).map(id=>telegramSend(telegramRequest,id,message).catch(()=>{})));
+  await Promise.all([...recipients].filter(Boolean).map(id=>telegramSend(telegramRequest,id,message,replyMarkup).catch(()=>{})));
 }
 async function createActionRequest(pool,ticketId,userId,actionType,details) {
   const q=await pool.query('INSERT INTO support_action_requests(ticket_id,user_id,action_type,details) VALUES($1,$2,$3,$4) RETURNING id',[ticketId,String(userId),actionType,String(details||'').slice(0,2000)]);
@@ -193,7 +193,7 @@ async function handleBotMessage(message, { pool, telegramRequest, ownerId }) {
       {text:'❌ Отклонить',callback_data:'support:action:reject:'+actionId}
     ]]};
     const notice='⚠️ Запрос на решение владельца/администратора\nОбращение №'+ticketId+' · Запрос №'+actionId+'\nТип: '+(sensitiveAction==='refund'?'Возврат средств':'Изменение аккаунта/заказа')+'\nПользователь: '+userId+'\n\n'+text+'\n\nПроверьте историю переписки. Одобрение разрешает дальнейшую ручную обработку, но само по себе не выполняет возврат.';
-    await notifyStaff(pool,telegramRequest,ownerId,notice);
+    await notifyStaff(pool,telegramRequest,ownerId,notice,markup);
     await telegramSend(telegramRequest,chatId,'Запрос передан владельцу и администраторам. Они проверят историю переписки и примут решение. Пока решение не принято, никаких действий с деньгами или заказом не выполняется.');
     return true;
   }
