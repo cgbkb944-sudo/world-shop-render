@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const QRCode = require('qrcode');
+const supportService = require('./support-service');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -318,6 +319,7 @@ async function auth(req,res,next) {
   } catch(e) { console.error('Auth error:',e.message); res.status(503).json({error:'Сервис временно недоступен.'}); }
 }
 const roles = (...allowed) => (req,res,next) => allowed.includes(req.user.role) ? next() : res.status(403).json({error:'Недостаточно прав.'});
+supportService.mountSupportRoutes(app,{pool,authMiddleware:auth,telegramRequest,ownerId:OWNER_TELEGRAM_ID});
 const money = v => { const n=Number(v); return Number.isFinite(n)&&n>0&&n<=1e7&&Math.round(n*100)/100===n?n:null; };
 const hashKey = v => crypto.createHash('sha256').update(String(v).trim().toUpperCase()).digest('hex');
 function privateDataKey() {
@@ -1092,6 +1094,8 @@ async function handleTelegramBotCallback(query) {
   const chatId=query.message?.chat?.id,messageId=query.message?.message_id,userId=query.from?.id;
   if(!chatId||!userId){await telegramRequest('answerCallbackQuery',{callback_query_id:query.id});return;}
   const action=String(query.data||'').replace(/^bot:/,'');
+  if(action.startsWith('support:close:')){const ticketId=Number(action.split(':')[2]);await pool.query("UPDATE support_tickets SET status='closed',closed_at=NOW(),updated_at=NOW() WHERE id=$1 AND user_id=$2",[ticketId,String(userId)]);await telegramRequest('answerCallbackQuery',{callback_query_id:query.id,text:'Обращение закрыто.'});await sendBotText(chatId,'Обращение №'+ticketId+' закрыто.');return;}
+  if(action==='support'){await telegramRequest('answerCallbackQuery',{callback_query_id:query.id});await supportService.startBotTicket(pool,telegramRequest,OWNER_TELEGRAM_ID,{id:userId});return;}
   if(query.message?.chat?.type==='private' && ['broadcast_confirm','broadcast_cancel'].includes(action)){
     await telegramRequest('answerCallbackQuery',{callback_query_id:query.id});
     const role=String(userId)===OWNER_TELEGRAM_ID?'owner':await userRole(userId);
@@ -1141,6 +1145,7 @@ async function handleTelegramBotMessage(message) {
   if(!chatId||!from?.id)return;
   const text=String(message.text||message.caption||'').trim(),command=(text.split(/\s+/)[0]||'').split('@')[0].toLowerCase();
   const id=String(from.id),isOwner=id===OWNER_TELEGRAM_ID;
+  if(await supportService.handleBotMessage(message,{pool,telegramRequest,ownerId:OWNER_TELEGRAM_ID}))return;
   if(message.chat?.type!=='private'){
     if(isOwner&&command==='/setreportgroup'){
       await setBotSetting('sales_report_group_id',String(chatId));
@@ -1857,6 +1862,7 @@ async function configureRollyPayWebhook() {
 async function start() {
   try {
     await migrateDatabase();
+    await supportService.initSupport(pool);
     server = app.listen(PORT,'0.0.0.0',()=>{
       console.log('WORLD TG SHOP listening on '+PORT);
       console.log('RollyPay configuration:',{apiKeyConfigured:Boolean(process.env.ROLLYPAY_API_KEY),webhookSecretConfigured:Boolean(process.env.ROLLYPAY_WEBHOOK_SECRET),terminalIdConfigured:Boolean(process.env.ROLLYPAY_TERMINAL_ID),appOriginConfigured:Boolean(appOrigin)});
