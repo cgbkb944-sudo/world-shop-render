@@ -4,7 +4,7 @@ const OPENAI_ENDPOINT = 'https://api.openai.com/v1/responses';
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-6.2-astra';
 
 async function initSupport(pool) {
-  await pool.query(\`
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS support_tickets (
       id BIGSERIAL PRIMARY KEY,
       user_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
@@ -26,7 +26,7 @@ async function initSupport(pool) {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS support_messages_ticket_idx ON support_messages(ticket_id, created_at);
-  \`);
+  `);
 }
 
 async function openTicket(pool, userId, source='bot', subject='Обращение в поддержку') {
@@ -202,10 +202,10 @@ function mountSupportRoutes(app, { pool, authMiddleware, telegramRequest=default
     try {
       const isStaff = ['owner','admin','support'].includes(req.user.role);
       const q = await pool.query(
-        \`SELECT t.id,t.user_id,t.source,t.status,t.subject,t.created_at,t.updated_at,
+        `SELECT t.id,t.user_id,t.source,t.status,t.subject,t.created_at,t.updated_at,
           (SELECT body FROM support_messages m WHERE m.ticket_id=t.id ORDER BY m.created_at DESC LIMIT 1) AS last_message
-         FROM support_tickets t \${isStaff ? '' : 'WHERE t.user_id=$1'}
-         ORDER BY t.updated_at DESC LIMIT 100\`,
+         FROM support_tickets t ${isStaff ? '' : 'WHERE t.user_id=$1'}
+         ORDER BY t.updated_at DESC LIMIT 100`,
         isStaff ? [] : [String(req.user.telegram_id)]
       );
       res.json({ tickets: q.rows, is_staff: isStaff });
