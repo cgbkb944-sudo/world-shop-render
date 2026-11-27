@@ -26,6 +26,19 @@ async function initSupport(pool) {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS support_messages_ticket_idx ON support_messages(ticket_id, created_at);
+    CREATE TABLE IF NOT EXISTS support_action_requests (
+      id BIGSERIAL PRIMARY KEY,
+      ticket_id BIGINT NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+      user_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
+      action_type TEXT NOT NULL,
+      details TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
+      reviewed_by BIGINT,
+      review_note TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      reviewed_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS support_action_requests_ticket_idx ON support_action_requests(ticket_id,created_at DESC);
   `);
 }
 
@@ -91,6 +104,22 @@ async function addMessage(pool, ticketId, senderId, senderRole, body) {
   return text;
 }
 
+function requestedSensitiveAction(body) {
+  const value=String(body||'').toLowerCase();
+  if (/(возврат|вернуть деньги|верните деньги|refund|chargeback|отменить покупк|вернуть оплат|деньги обратно)/i.test(value)) return 'refund';
+  if (/(перевед.{0,20}баланс|измен.{0,20}баланс|начисл.{0,20}баланс|спис.{0,20}средств|удал.{0,20}заказ|отмен.{0,20}заказ|разблокир|заблокир)/i.test(value)) return 'account_or_order_change';
+  return null;
+}
+async function notifyStaff(pool,telegramRequest,ownerId,message) {
+  const recipients=new Set([String(ownerId)]);
+  try { const q=await pool.query("SELECT telegram_id FROM users WHERE role IN ('owner','admin')"); for(const row of q.rows)recipients.add(String(row.telegram_id)); } catch {}
+  await Promise.all([...recipients].filter(Boolean).map(id=>telegramSend(telegramRequest,id,message).catch(()=>{})));
+}
+async function createActionRequest(pool,ticketId,userId,actionType,details) {
+  const q=await pool.query('INSERT INTO support_action_requests(ticket_id,user_id,action_type,details) VALUES($1,$2,$3,$4) RETURNING id',[ticketId,String(userId),actionType,String(details||'').slice(0,2000)]);
+  await pool.query("UPDATE support_tickets SET status='human',updated_at=NOW() WHERE id=$1",[ticketId]);
+  return Number(q.rows[0].id);
+}
 async function telegramSend(telegramRequest, chatId, text, replyMarkup) {
   return telegramRequest('sendMessage', {
     chat_id: String(chatId),
@@ -214,17 +243,29 @@ function mountSupportRoutes(app, { pool, authMiddleware, telegramRequest=default
 
   app.post('/api/support/tickets', authMiddleware, async (req, res) => {
     try {
-      const id = await openTicket(pool, req.user.telegram_id, 'website', String(req.body?.subject || 'Обращение в поддержку'));
-      const body = String(req.body?.message || '').trim();
-      let answer = null;
-      if (body) {
-        await addMessage(pool, id, req.user.telegram_id, 'user', body);
-        answer = await callOpenAI(pool, id).catch(e => { console.error('[Support AI]', e.message); return null; });
-        if (answer) await addMessage(pool, id, null, 'assistant', answer);
-        else await telegramSend(telegramRequest, ownerId, '🆘 Новое обращение №' + id + ' ожидает ответа. Пользователь: ' + req.user.telegram_id).catch(() => {});
+      const id=await openTicket(pool,req.user.telegram_id,'website',String(req.body?.subject||'Обращение в поддержку'));
+      const body=String(req.body?.message||'').trim();
+      let answer=null,forwarded=false;
+      if(body){
+        await addMessage(pool,id,req.user.telegram_id,'user',body);
+        const sensitive=requestedSensitiveAction(body);
+        if(sensitive){
+          const actionId=await createActionRequest(pool,id,req.user.telegram_id,sensitive,body);
+          await notifyStaff(pool,telegramRequest,ownerId,'⚠️ Запрос на решение владельца/администратора\nОбращение №'+id+' · Запрос №'+actionId+'\nТип: '+(sensitive==='refund'?'Возврат средств':'Изменение аккаунта/заказа')+'\nПользователь: '+req.user.telegram_id+'\n\n'+body+'\n\nПроверьте переписку и рассмотрите запрос в панели поддержки.');
+          answer='Запрос передан владельцу и администраторам. Они проверят переписку и сообщат решение. Пока решение не принято, никаких изменений с балансом или заказом не выполняется.';
+          await addMessage(pool,id,null,'assistant',answer); forwarded=true;
+        }else{
+          answer=await callOpenAI(pool,id).catch(e=>{console.error('[Support AI]',e.message);return null;});
+          if(answer)await addMessage(pool,id,null,'assistant',answer);
+          else{
+            await pool.query("UPDATE support_tickets SET status='human',updated_at=NOW() WHERE id=$1",[id]);
+            await notifyStaff(pool,telegramRequest,ownerId,'🆘 Обращение №'+id+' требует ответа оператора. Пользователь: '+req.user.telegram_id+'\n\n'+body);
+            forwarded=true;
+          }
+        }
       }
-      res.json({ success: true, ticket_id: id, answer, forwarded_to_operator: Boolean(body && !answer) });
-    } catch (e) { res.status(400).json({ error: e.message || 'Не удалось создать обращение.' }); }
+      res.json({success:true,ticket_id:id,answer,forwarded_to_operator:forwarded});
+    }catch(e){res.status(400).json({error:e.message||'Не удалось создать обращение.'});}
   });
 
   app.get('/api/support/tickets/:id/messages', authMiddleware, async (req, res) => {
@@ -238,33 +279,60 @@ function mountSupportRoutes(app, { pool, authMiddleware, telegramRequest=default
     } catch (e) { res.status(503).json({ error: 'Не удалось загрузить переписку.' }); }
   });
 
-  app.post('/api/support/tickets/:id/messages', authMiddleware, async (req, res) => {
+  app.post('/api/support/tickets/:id/messages', authMiddleware, async (req,res) => {
     try {
-      const id = Number(req.params.id);
-      const body = String(req.body?.message || '').trim();
-      const ticket = await pool.query('SELECT id,user_id,status FROM support_tickets WHERE id=$1', [id]);
-      const isStaff = ['owner','admin','support'].includes(req.user.role);
-      if (!ticket.rowCount || (!isStaff && String(ticket.rows[0].user_id) !== String(req.user.telegram_id))) return res.status(404).json({ error: 'Обращение не найдено.' });
-      if (ticket.rows[0].status === 'closed') return res.status(409).json({ error: 'Обращение закрыто.' });
-      if (isStaff) await pool.query("UPDATE support_tickets SET status='human',updated_at=NOW() WHERE id=$1", [id]);
-      await addMessage(pool, id, req.user.telegram_id, isStaff ? req.user.role : 'user', body);
-      if (isStaff) {
-        await telegramSend(telegramRequest, ticket.rows[0].user_id, '👤 Ответ поддержки по обращению №' + id + ':\n\n' + body);
-        return res.json({ success: true });
+      const id=Number(req.params.id),body=String(req.body?.message||'').trim();
+      const ticket=await pool.query('SELECT id,user_id,status FROM support_tickets WHERE id=$1',[id]);
+      const isStaff=['owner','admin','support'].includes(req.user.role);
+      if(!ticket.rowCount||(!isStaff&&String(ticket.rows[0].user_id)!==String(req.user.telegram_id)))return res.status(404).json({error:'Обращение не найдено.'});
+      if(ticket.rows[0].status==='closed')return res.status(409).json({error:'Обращение закрыто.'});
+      if(isStaff){
+        await pool.query("UPDATE support_tickets SET status='human',updated_at=NOW() WHERE id=$1",[id]);
+        await addMessage(pool,id,req.user.telegram_id,req.user.role,body);
+        await telegramSend(telegramRequest,ticket.rows[0].user_id,'👤 Ответ поддержки по обращению №'+id+':\\n\\n'+body);
+        return res.json({success:true});
       }
-      if (ticket.rows[0].status === 'human') {
-        await telegramSend(telegramRequest, ownerId, '🆘 Сообщение в обращении №' + id + '\nПользователь: ' + req.user.telegram_id + '\n\n' + body.slice(0,1200) + '\n\nОтвет: /reply ' + id + ' текст').catch(() => {});
-        return res.json({ success: true, forwarded_to_operator: true });
+      await addMessage(pool,id,req.user.telegram_id,'user',body);
+      const sensitive=requestedSensitiveAction(body);
+      if(sensitive){
+        const actionId=await createActionRequest(pool,id,req.user.telegram_id,sensitive,body);
+        await notifyStaff(pool,telegramRequest,ownerId,'⚠️ Запрос на решение владельца/администратора\nОбращение №'+id+' · Запрос №'+actionId+'\nТип: '+(sensitive==='refund'?'Возврат средств':'Изменение аккаунта/заказа')+'\nПользователь: '+req.user.telegram_id+'\n\n'+body);
+        const answer='Запрос передан владельцу и администраторам. Они проверят переписку и сообщат решение. До решения никаких действий с деньгами или заказом не выполняется.';
+        await addMessage(pool,id,null,'assistant',answer);
+        return res.json({success:true,answer,forwarded_to_operator:true,approval_required:true});
       }
-      const answer = await callOpenAI(pool, id);
-      if (answer) {
-        await addMessage(pool, id, null, 'assistant', answer);
-        res.json({ success: true, answer });
-      } else {
-        await telegramSend(telegramRequest, ownerId, '🆘 Обращение №' + id + ' ожидает ответа оператора. Пользователь: ' + req.user.telegram_id);
-        res.json({ success: true, forwarded_to_operator: true });
+      if(ticket.rows[0].status==='human'){
+        await notifyStaff(pool,telegramRequest,ownerId,'🆘 Новое сообщение в обращении №'+id+' от пользователя '+req.user.telegram_id+':\\n'+body.slice(0,1200));
+        return res.json({success:true,forwarded_to_operator:true});
       }
-    } catch (e) { console.error('[Support API]', e.message); res.status(503).json({ error: 'Не удалось отправить сообщение.' }); }
+      const answer=await callOpenAI(pool,id);
+      if(answer){await addMessage(pool,id,null,'assistant',answer);return res.json({success:true,answer});}
+      await pool.query("UPDATE support_tickets SET status='human',updated_at=NOW() WHERE id=$1",[id]);
+      await notifyStaff(pool,telegramRequest,ownerId,'🆘 Обращение №'+id+' ожидает ответа оператора. Пользователь: '+req.user.telegram_id);
+      return res.json({success:true,forwarded_to_operator:true});
+    }catch(e){console.error('[Support API]',e.message);res.status(503).json({error:'Не удалось отправить сообщение.'});}
+  });
+
+  app.get('/api/support/tickets/:id/actions',authMiddleware,async(req,res)=>{
+    if(!['owner','admin','support'].includes(req.user.role))return res.status(403).json({error:'Недостаточно прав.'});
+    try{const q=await pool.query('SELECT id,ticket_id,user_id,action_type,details,status,review_note,created_at,reviewed_at FROM support_action_requests WHERE ticket_id=$1 ORDER BY created_at DESC',[Number(req.params.id)]);res.json({actions:q.rows});}
+    catch{res.status(503).json({error:'Не удалось загрузить запросы на согласование.'});}
+  });
+  app.post('/api/support/actions/:actionId/review',authMiddleware,async(req,res)=>{
+    if(!['owner','admin'].includes(req.user.role))return res.status(403).json({error:'Решение доступно только владельцу или администратору.'});
+    const decision=String(req.body?.decision||'');
+    if(!['approved','rejected'].includes(decision))return res.status(400).json({error:'Выберите одобрение или отказ.'});
+    try{
+      const q=await pool.query("UPDATE support_action_requests SET status=$1,reviewed_by=$2,review_note=$3,reviewed_at=NOW() WHERE id=$4 AND status='pending' RETURNING id,ticket_id,user_id,action_type",[decision,String(req.user.telegram_id),String(req.body?.note||'').slice(0,1000),Number(req.params.actionId)]);
+      if(!q.rowCount)return res.status(409).json({error:'Запрос уже рассмотрен или не найден.'});
+      const a=q.rows[0];
+      const message=decision==='approved'
+        ? '✅ Владелец/администратор одобрил запрос №'+a.id+'. Это одобрение на дальнейшую обработку, а не автоматический возврат денег. Если речь о возврате, оператор выполнит его через платёжную систему и сообщит результат.'
+        : '❌ Владелец/администратор отклонил запрос №'+a.id+'.'+(req.body?.note?' Причина: '+String(req.body.note).slice(0,500):'');
+      await addMessage(pool,a.ticket_id,req.user.telegram_id,req.user.role,message);
+      await telegramSend(telegramRequest,a.user_id,message).catch(()=>{});
+      res.json({success:true,action_id:a.id,status:decision});
+    }catch(e){console.error('[Support approval]',e.message);res.status(503).json({error:'Не удалось сохранить решение.'});}
   });
 
   app.post('/api/support/tickets/:id/takeover', authMiddleware, async (req, res) => {
