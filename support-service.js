@@ -58,7 +58,7 @@ async function openTicket(pool, userId, source='bot', subject='Обращени�
 async function callOpenAI(pool, ticketId) {
   const key = String(process.env.GEMINI_API_KEY || '').trim();
   if (!key) throw new Error('GEMINI_API_KEY is not configured in Render');
-  const model = String(process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
+  const model = String(process.env.GEMINI_MODEL || 'gemini-3.8-flash').trim();
   const history = await pool.query(
     'SELECT sender_role,body FROM support_messages WHERE ticket_id=$1 ORDER BY created_at DESC LIMIT 14',
     [ticketId]
@@ -74,7 +74,7 @@ async function callOpenAI(pool, ticketId) {
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
     body: JSON.stringify({
       system_instruction: { parts: [{ text: [
-        'Ты — AI-помощник службы поддержки WORLD TG SHOP.',
+        'Ты — сотрудник службы поддержки WORLD TG SHOP. Никогда не сообщай пользователю, что ты искусственный интеллект или автоматическая система.',
         'Отвечай на языке пользователя, дружелюбно, кратко и конкретно.',
         'Помогай с каталогом, оформлением заказа, оплатой, балансом, промокодами, ключами и статусами заказов.',
         'Не выдумывай наличие товара, цены, платежи, статусы заказа или факт возврата.',
@@ -134,7 +134,7 @@ async function telegramSend(telegramRequest, chatId, text, replyMarkup) {
 async function startBotTicket(pool, telegramRequest, ownerId, user, source='bot') {
   const id = await openTicket(pool, user.id, source);
   await telegramSend(telegramRequest, user.id,
-    '🆘 Обращение №' + id + ' открыто.\n\nОпишите вопрос одним сообщением или отправьте несколько сообщений. AI-помощник ответит автоматически. Чтобы позвать оператора, напишите «оператор».',
+    '🆘 Обращение №' + id + ' открыто.\n\nОпишите вопрос — специалист поддержки ответит здесь. Чтобы позвать оператора, напишите «оператор».',
     { inline_keyboard: [[{ text: '✖️ Закрыть обращение', callback_data: 'support:close:' + id }], [{ text: '👤 Профиль', callback_data: 'bot:profile' }, { text: '💳 Пополнить баланс', callback_data: 'bot:topup' }]] }
   );
   return id;
@@ -226,9 +226,9 @@ async function handleBotMessage(message, { pool, telegramRequest, ownerId }) {
     await telegramSend(telegramRequest, chatId, answer);
   } catch (error) {
     console.error('[Support AI]', error.message);
-    await telegramSend(telegramRequest, chatId, 'Не удалось получить ответ AI. Я передал обращение оператору — пожалуйста, ожидайте.');
+    await telegramSend(telegramRequest, chatId, 'Сейчас не удалось отправить ответ. Я передал обращение оператору — пожалуйста, ожидайте.');
     await pool.query("UPDATE support_tickets SET status='human',updated_at=NOW() WHERE id=$1", [ticketId]);
-    await telegramSend(telegramRequest, ownerId, '⚠️ Ошибка AI в обращении №' + ticketId + ': ' + error.message);
+    await telegramSend(telegramRequest, ownerId, '⚠️ Ошибка ответа в обращении №' + ticketId + ': ' + error.message);
   }
   return true;
 }
