@@ -12,7 +12,7 @@
   };
   const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const style = document.createElement('style');
-  style.textContent = \`
+  style.textContent = `
     #wts-support-launch{position:fixed;right:18px;bottom:88px;z-index:9998;border:0;border-radius:999px;padding:13px 18px;background:#2563eb;color:#fff;font:600 14px system-ui;box-shadow:0 8px 28px #0005}
     #wts-support-panel{position:fixed;right:14px;bottom:145px;width:min(370px,calc(100vw - 28px));height:min(560px,calc(100dvh - 180px));z-index:9999;background:#101827;color:#f8fafc;border:1px solid #334155;border-radius:18px;box-shadow:0 18px 60px #0008;display:none;overflow:hidden;font:14px system-ui}
     #wts-support-panel.open{display:flex;flex-direction:column}
@@ -29,13 +29,13 @@
     #wts-support-input{flex:1;min-width:0;resize:none;max-height:100px;border:1px solid #475569;border-radius:12px;background:#172338;color:#fff;padding:10px;font:14px system-ui}
     #wts-support-send{border:0;border-radius:12px;background:#2563eb;color:#fff;padding:0 14px;font-weight:700}
     #wts-support-status{padding:4px 12px;color:#cbd5e1;font-size:11px}
-  \`;
+  `;
   document.head.appendChild(style);
   const launch = document.createElement('button');
   launch.id='wts-support-launch'; launch.type='button'; launch.textContent='🆘 Поддержка';
   const panel = document.createElement('section');
   panel.id='wts-support-panel';
-  panel.innerHTML = \`<div id="wts-support-head"><span>WORLD TG SHOP · Поддержка</span><button id="wts-support-close" aria-label="Закрыть">×</button></div><div id="wts-support-list"></div><div id="wts-support-messages"></div><div id="wts-support-status">AI-помощник онлайн, оператор может подключиться к диалогу.</div><form id="wts-support-compose"><textarea id="wts-support-input" rows="1" placeholder="Напишите сообщение…" required></textarea><button id="wts-support-send" type="submit">➤</button></form>\`;
+  panel.innerHTML = `<div id="wts-support-head"><span>WORLD TG SHOP · Поддержка</span><button id="wts-support-close" aria-label="Закрыть">×</button></div><div id="wts-support-list"></div><div id="wts-support-messages"></div><div id="wts-support-status">AI-помощник онлайн, оператор может подключиться к диалогу.</div><form id="wts-support-compose"><textarea id="wts-support-input" rows="1" placeholder="Напишите сообщение…" required></textarea><button id="wts-support-send" type="submit">➤</button></form>`;
   document.body.append(launch,panel);
   const list=panel.querySelector('#wts-support-list'), messages=panel.querySelector('#wts-support-messages'), form=panel.querySelector('#wts-support-compose'), input=panel.querySelector('#wts-support-input'), status=panel.querySelector('#wts-support-status');
   let tickets=[], current=null, staff=false, busy=false;
@@ -45,7 +45,7 @@
     messages.innerHTML=(data.messages||[]).map(m=>{
       const mine=m.sender_role==='user' || (staff && ['owner','admin','support'].includes(m.sender_role));
       const label=m.sender_role==='assistant'?'AI-помощник':(['owner','admin','support'].includes(m.sender_role)?'Оператор':'Вы');
-      return \`<div class="wts-support-msg \${mine?'mine':''}"><small>\${esc(label)}</small>\${esc(m.body)}</div>\`;
+      return `<div class="wts-support-msg ${mine?'mine':''}"><small>${esc(label)}</small>${esc(m.body)}</div>`;
     }).join('') || '<p>Начните переписку.</p>';
     messages.scrollTop=messages.scrollHeight;
   };
