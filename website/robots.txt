@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /profile
+Disallow: /api/
+Sitemap: https://worldtgshop-site.onrender.com/sitemap.xml
