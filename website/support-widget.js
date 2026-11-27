@@ -13,7 +13,7 @@
   const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const style = document.createElement('style');
   style.textContent = `
-    #wts-support-launch{position:relative;z-index:1;display:flex;width:100%;align-items:center;justify-content:center;gap:10px;padding:11px 17px 11px 9px;margin:12px 0 0;border:1px solid rgba(125,211,252,.42);border:1px solid rgba(125,211,252,.42);border-radius:999px;background:linear-gradient(135deg,#172b48 0%,#111827 62%,#16233c 100%);color:#f8fafc;font:650 14px/1 system-ui;letter-spacing:.1px;box-shadow:0 8px 28px rgba(2,8,23,.48),inset 0 1px 0 rgba(255,255,255,.09);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);cursor:pointer;transition:transform .18s ease,box-shadow .18s ease}
+    #wts-support-launch{position:relative;z-index:1;display:flex;width:100%;align-items:center;justify-content:center;gap:10px;padding:11px 17px 11px 9px;margin:12px 0 0;border:1px solid rgba(125,211,252,.42);border-radius:999px;background:linear-gradient(135deg,#172b48 0%,#111827 62%,#16233c 100%);color:#f8fafc;font:650 14px/1 system-ui;letter-spacing:.1px;box-shadow:0 8px 28px rgba(2,8,23,.48),inset 0 1px 0 rgba(255,255,255,.09);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);cursor:pointer;transition:transform .18s ease,box-shadow .18s ease}
     #wts-support-launch:hover{transform:translateY(-2px);box-shadow:0 12px 34px rgba(2,8,23,.58),0 0 0 3px rgba(56,189,248,.12)}
     #wts-support-launch:active{transform:scale(.97)}
     #wts-support-launch .wts-support-icon{width:38px;height:38px;display:grid;place-items:center;border-radius:50%;background:linear-gradient(145deg,#38bdf8,#2563eb 72%);box-shadow:0 4px 14px rgba(37,99,235,.42);font-size:19px}
@@ -50,7 +50,10 @@
   panel.id='wts-support-panel';
   panel.innerHTML = `<div id="wts-support-head"><span>WORLD TG SHOP · Поддержка</span><button id="wts-support-close" aria-label="Закрыть">×</button></div><div id="wts-support-list"></div><div id="wts-support-messages"></div><div id="wts-support-status">AI-помощник онлайн, оператор может подключиться к диалогу.</div><form id="wts-support-compose"><textarea id="wts-support-input" rows="1" placeholder="Напишите сообщение…" required></textarea><button id="wts-support-send" type="submit">➤</button></form>`;
   const launchTarget=document.querySelector('#tab-profile .card')||document.querySelector('#profileActions .profile-action-grid')||document.querySelector('#profilePanel');
-  if(launchTarget)launchTarget.appendChild(launch);
+  if(launchTarget){
+    if(launchTarget.closest('#tab-profile')){const identity=launchTarget.querySelector('p');if(identity)identity.after(launch);else launchTarget.appendChild(launch);}
+    else launchTarget.appendChild(launch);
+  }
   document.body.appendChild(panel);
   const list=panel.querySelector('#wts-support-list'), messages=panel.querySelector('#wts-support-messages'), form=panel.querySelector('#wts-support-compose'), input=panel.querySelector('#wts-support-input'), status=panel.querySelector('#wts-support-status');
   let tickets=[], current=null, staff=false, canApprove=false, busy=false;
