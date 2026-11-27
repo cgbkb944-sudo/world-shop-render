@@ -19,8 +19,8 @@
     #wts-support-launch .wts-support-icon{width:38px;height:38px;display:grid;place-items:center;border-radius:50%;background:linear-gradient(145deg,#38bdf8,#2563eb 72%);box-shadow:0 4px 14px rgba(37,99,235,.42);font-size:19px}
     #wts-support-launch .wts-support-label{display:flex;flex-direction:column;gap:3px;text-align:left}
     #wts-support-launch .wts-support-label small{font-size:10px;font-weight:500;letter-spacing:.25px;color:#a5c9e8}
-    #wts-support-panel{position:fixed;right:14px;bottom:14px;width:min(420px,calc(100vw - 28px));height:min(620px,calc(100dvh - 28px));z-index:9999;background:linear-gradient(160deg,#111c2e,#0b1220 70%);color:#f8fafc;border:1px solid rgba(125,211,252,.2);border-radius:22px;box-shadow:0 22px 70px rgba(0,0,0,.62),0 0 36px rgba(37,99,235,.12);display:none;overflow:hidden;font:14px system-ui}
-    @media(max-width:480px){#wts-support-panel{right:10px;bottom:10px;width:calc(100vw - 20px);height:min(620px,calc(100dvh - 20px))}}
+    #wts-support-panel{position:fixed;right:14px;bottom:14px;width:min(420px,calc(100vw - 28px));height:min(680px,calc(100dvh - 32px));max-height:calc(100dvh - 32px);z-index:9999;background:linear-gradient(160deg,#111c2e,#0b1220 70%);color:#f8fafc;border:1px solid rgba(125,211,252,.2);border-radius:22px;box-shadow:0 22px 70px rgba(0,0,0,.62),0 0 36px rgba(37,99,235,.12);display:none;overflow:hidden;font:14px system-ui}
+    @media(max-width:480px){#wts-support-panel{right:10px;bottom:10px;width:calc(100vw - 20px);height:min(680px,calc(100dvh - 20px));max-height:calc(100dvh - 20px)}}
     #wts-support-panel.open{display:flex;flex-direction:column}
     #wts-support-head{padding:14px 16px;background:#172338;display:flex;align-items:center;justify-content:space-between;font-weight:700}
     #wts-support-close{background:transparent;color:#fff;border:0;font-size:22px}
@@ -35,9 +35,9 @@
     .wts-support-msg{max-width:88%;padding:10px 12px;border-radius:13px;background:#243247;white-space:pre-wrap;overflow-wrap:anywhere;align-self:flex-start}
     .wts-support-msg.mine{background:#1d4ed8;align-self:flex-end}
     .wts-support-msg small{display:block;color:#cbd5e1;font-size:10px;margin-bottom:4px}
-    #wts-support-compose{display:flex;gap:8px;padding:10px;border-top:1px solid #334155}
-    #wts-support-input{flex:1;min-width:0;resize:none;max-height:100px;border:1px solid #475569;border-radius:12px;background:#172338;color:#fff;padding:10px;font:14px system-ui}
-    #wts-support-send{border:0;border-radius:12px;background:#2563eb;color:#fff;padding:0 14px;font-weight:700}
+    #wts-support-compose{display:grid;grid-template-columns:minmax(0,1fr) 54px;align-items:end;gap:9px;padding:12px;border-top:1px solid #334155;background:#0b1220;flex-shrink:0}
+    #wts-support-input{display:block;box-sizing:border-box;width:100%;min-width:0;min-height:54px;height:54px;max-height:132px;resize:none;overflow-y:auto;border:1px solid #40516b;border-radius:16px;background:#172338;color:#fff;padding:15px 14px;font:16px/1.4 system-ui;outline:none;box-shadow:inset 0 1px 2px #0005}#wts-support-input:focus{border-color:#3b82f6;box-shadow:0 0 0 3px #2563eb2b}#wts-support-input::placeholder{color:#91a2ba}
+    #wts-support-send{width:54px;height:54px;border:0;border-radius:16px;background:linear-gradient(145deg,#3478ff,#1d4ed8);color:#fff;font-size:23px;font-weight:700;display:grid;place-items:center;box-shadow:0 5px 16px #1d4ed855}#wts-support-send:disabled{opacity:.55}
     #wts-support-status{padding:4px 12px;color:#cbd5e1;font-size:11px}
     .wts-support-action{border:1px solid #d97706;background:#42200655;border-radius:12px;padding:12px;margin:8px 0}
     .wts-support-action p{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0;color:#e2e8f0}
@@ -52,7 +52,7 @@
   launch.id='wts-support-launch'; launch.type='button'; launch.setAttribute('aria-label','Открыть чат поддержки WORLD TG SHOP'); launch.innerHTML='<span class="wts-support-icon">💬</span><span class="wts-support-label"><span>Поддержка</span><small>Мы на связи</small></span>';
   const panel = document.createElement('section');
   panel.id='wts-support-panel';
-  panel.innerHTML = `<div id="wts-support-head"><span>WORLD TG SHOP · Поддержка</span><button id="wts-support-close" aria-label="Закрыть">×</button></div><div id="wts-support-filters" hidden><button data-state="all">Все</button><button data-state="ai">AI ведёт</button><button data-state="human">Нужен оператор</button><button data-state="closed">Закрытые</button></div><div id="wts-support-list"></div><div id="wts-support-messages"></div><div id="wts-support-status">AI-помощник онлайн, оператор может подключиться к диалогу.</div><form id="wts-support-compose"><textarea id="wts-support-input" rows="1" placeholder="Напишите сообщение…" required></textarea><button id="wts-support-send" type="submit">➤</button></form>`;
+  panel.innerHTML = `<div id="wts-support-head"><span>WORLD TG SHOP · Поддержка</span><button id="wts-support-close" aria-label="Закрыть">×</button></div><div id="wts-support-filters" hidden><button data-state="all">Все</button><button data-state="ai">Ведёт поддержка</button><button data-state="human">Нужен оператор</button><button data-state="closed">Закрытые</button></div><div id="wts-support-list"></div><div id="wts-support-messages"></div><div id="wts-support-status">AI-помощник онлайн, оператор может подключиться к диалогу.</div><form id="wts-support-compose"><textarea id="wts-support-input" rows="2" placeholder="Введите сообщение…" required></textarea><button id="wts-support-send" type="submit">➤</button></form>`;
   const launchTarget=document.querySelector('#tab-profile .card')||document.querySelector('#profileActions .profile-action-grid')||document.querySelector('#profilePanel');
   if(launchTarget){
     if(launchTarget.closest('#tab-profile')){const identity=launchTarget.querySelector('p');if(identity)identity.after(launch);else launchTarget.appendChild(launch);}
@@ -66,7 +66,7 @@
     const data=await api('/api/support/tickets/'+current+'/messages');
     messages.innerHTML=(data.messages||[]).map(m=>{
       const mine=m.sender_role==='user' || (staff && ['owner','admin','support'].includes(m.sender_role));
-      const label=m.sender_role==='assistant'?'AI-помощник':(['owner','admin','support'].includes(m.sender_role)?'Оператор':'Вы');
+      const label=m.sender_role==='assistant'?'Поддержка':(['owner','admin','support'].includes(m.sender_role)?'Оператор':'Вы');
       return `<div class="wts-support-msg ${mine?'mine':''}"><small>${esc(label)}</small>${esc(m.body)}</div>`;
     }).join('') || '<p>Начните переписку.</p>';
     if(staff){
@@ -87,7 +87,7 @@
       const selected=tickets.find(t=>Number(t.id)===Number(current));
       const canReply=selected&&selected.status==='human';
       input.disabled=staff&&!canReply;
-      status.textContent=staff?(canReply?'Пользователь или AI запросил оператора — можно ответить.':'Просмотр переписки. Вмешательство пока не запрошено.'):'AI-помощник отвечает автоматически.';
+      status.textContent=staff?(canReply?'Запрошено подключение оператора — можно ответить.':'Просмотр переписки. Вмешательство пока не запрошено.'):'Специалист поддержки ответит здесь.';
     }
     messages.scrollTop=messages.scrollHeight;
   };
@@ -125,6 +125,8 @@
   async function newTicket(){
     current=null;renderList();messages.innerHTML='<p>Напишите первый вопрос, чтобы открыть обращение.</p>';input.focus();
   }
+  input.addEventListener('input',()=>{input.style.height='54px';input.style.height=Math.min(input.scrollHeight,132)+'px';});
+  input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();form.requestSubmit();}});
   launch.onclick=()=>{panel.classList.toggle('open');if(panel.classList.contains('open'))loadTickets();};
   panel.querySelector('#wts-support-close').onclick=()=>panel.classList.remove('open');
   form.onsubmit=async e=>{
