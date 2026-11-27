@@ -185,6 +185,19 @@ async function handleBotMessage(message, { pool, telegramRequest, ownerId }) {
   const ticketId = Number(active.rows[0].id);
   await addMessage(pool, ticketId, userId, 'user', text);
 
+  const sensitiveAction=requestedSensitiveAction(text);
+  if(sensitiveAction){
+    const actionId=await createActionRequest(pool,ticketId,userId,sensitiveAction,text);
+    const markup={inline_keyboard:[[
+      {text:'✅ Одобрить',callback_data:'support:action:approve:'+actionId},
+      {text:'❌ Отклонить',callback_data:'support:action:reject:'+actionId}
+    ]]};
+    const notice='⚠️ Запрос на решение владельца/администратора\nОбращение №'+ticketId+' · Запрос №'+actionId+'\nТип: '+(sensitiveAction==='refund'?'Возврат средств':'Изменение аккаунта/заказа')+'\nПользователь: '+userId+'\n\n'+text+'\n\nПроверьте историю переписки. Одобрение разрешает дальнейшую ручную обработку, но само по себе не выполняет возврат.';
+    await notifyStaff(pool,telegramRequest,ownerId,notice);
+    await telegramSend(telegramRequest,chatId,'Запрос передан владельцу и администраторам. Они проверят историю переписки и примут решение. Пока решение не принято, никаких действий с деньгами или заказом не выполняется.');
+    return true;
+  }
+
   if (/^(оператор|человек|менеджер|живой оператор)$/i.test(text)) {
     await pool.query("UPDATE support_tickets SET status='human',updated_at=NOW() WHERE id=$1", [ticketId]);
     await telegramSend(telegramRequest, chatId, 'Передал обращение оператору. Ответ придёт сюда.');
