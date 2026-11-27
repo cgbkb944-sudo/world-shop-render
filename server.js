@@ -1094,6 +1094,27 @@ async function handleTelegramBotCallback(query) {
   const chatId=query.message?.chat?.id,messageId=query.message?.message_id,userId=query.from?.id;
   if(!chatId||!userId){await telegramRequest('answerCallbackQuery',{callback_query_id:query.id});return;}
   const action=String(query.data||'').replace(/^bot:/,'');
+  if(action.startsWith('support:action:')){
+    const parts=action.split(':');
+    const decision=parts[2]==='approve'?'approved':parts[2]==='reject'?'rejected':null;
+    const actionId=Number(parts[3]);
+    const role=String(userId)===String(OWNER_TELEGRAM_ID)?'owner':await userRole(userId);
+    if(!['owner','admin'].includes(role)||!decision||!Number.isSafeInteger(actionId)){
+      await telegramRequest('answerCallbackQuery',{callback_query_id:query.id,text:'Только владелец или администратор может принять решение.',show_alert:true});return;
+    }
+    const reviewed=await pool.query("UPDATE support_action_requests SET status=$1,reviewed_by=$2,review_note=$3,reviewed_at=NOW() WHERE id=$4 AND status='pending' RETURNING id,ticket_id,user_id,action_type",[decision,String(userId),decision==='approved'?'Одобрено через Telegram':'Отклонено через Telegram',actionId]);
+    if(!reviewed.rowCount){await telegramRequest('answerCallbackQuery',{callback_query_id:query.id,text:'Запрос уже рассмотрен или не найден.',show_alert:true});return;}
+    const a=reviewed.rows[0];
+    const message=decision==='approved'
+      ? '✅ Владелец/администратор одобрил запрос №'+a.id+'. Это разрешение на дальнейшую ручную обработку, а не автоматический возврат денег. Оператор сообщит результат после выполнения через платёжную систему.'
+      : '❌ Владелец/администратор отклонил запрос №'+a.id+'.';
+    await pool.query('INSERT INTO support_messages(ticket_id,sender_id,sender_role,body) VALUES($1,$2,$3,$4)',[a.ticket_id,String(userId),role,message]);
+    await pool.query('UPDATE support_tickets SET updated_at=NOW() WHERE id=$1',[a.ticket_id]);
+    await sendBotText(a.user_id,message);
+    await telegramRequest('answerCallbackQuery',{callback_query_id:query.id,text:decision==='approved'?'Запрос одобрен':'Запрос отклонён'});
+    await sendBotText(chatId,'Решение по запросу №'+a.id+' сохранено.');
+    return;
+  }
   if(action.startsWith('support:close:')){const ticketId=Number(action.split(':')[2]);await pool.query("UPDATE support_tickets SET status='closed',closed_at=NOW(),updated_at=NOW() WHERE id=$1 AND user_id=$2",[ticketId,String(userId)]);await telegramRequest('answerCallbackQuery',{callback_query_id:query.id,text:'Обращение закрыто.'});await sendBotText(chatId,'Обращение №'+ticketId+' закрыто.');return;}
   if(action==='support'){await telegramRequest('answerCallbackQuery',{callback_query_id:query.id});await supportService.startBotTicket(pool,telegramRequest,OWNER_TELEGRAM_ID,{id:userId});return;}
   if(query.message?.chat?.type==='private' && ['broadcast_confirm','broadcast_cancel'].includes(action)){
