@@ -142,3 +142,5 @@ button,a,.btn{touch-action:manipulation}
 .btn-primary:hover{box-shadow:0 10px 28px rgba(14,165,233,.25);filter:brightness(1.08)}
 :focus-visible{outline:2px solid rgba(56,189,248,.9);outline-offset:3px}
 @media(prefers-reduced-motion:reduce){.product-card,.product-art,.btn,.filter,.catalog-category,.catalog-subcategory{animation:none!important;transition:none!important}}
+
+.coming-soon-label{display:block;color:#8b95a7;font-size:9px;letter-spacing:.04em;margin:0 0 12px}.coming-soon-card{border-style:dashed;border-color:rgba(130,148,174,.22)}.coming-soon-card .product-price{color:#9aa6b8}.coming-soon-card .product-art{color:#8293aa;background:radial-gradient(circle at 30% 30%,#60748a33,transparent 58%),#142033}
