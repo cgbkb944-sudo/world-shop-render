@@ -298,3 +298,46 @@ body[data-page="orders"] .hero,body[data-page="orders"] .stats-strip,body[data-p
  .site-footer{padding-bottom:105px}
 }
 @media(max-width:370px){.product-grid{grid-template-columns:minmax(0,1fr)}}
+
+
+/* Navigation pill: true viewport centering, no stretched empty space */
+.wts-app-tabs{
+  width:fit-content!important;
+  max-width:calc(100vw - 24px)!important;
+  margin:12px auto 24px!important;
+  left:auto;
+  right:auto;
+  transform:none;
+  justify-content:center!important;
+  gap:4px!important;
+  box-sizing:border-box;
+}
+.wts-tab{
+  flex:0 0 auto!important;
+  padding-inline:18px;
+}
+@media(max-width:700px){
+  .wts-app-tabs{
+    position:fixed!important;
+    top:auto!important;
+    bottom:calc(12px + env(safe-area-inset-bottom))!important;
+    left:50%!important;
+    right:auto!important;
+    transform:translateX(-50%)!important;
+    width:fit-content!important;
+    max-width:calc(100vw - 24px)!important;
+    margin:0!important;
+    display:flex!important;
+    justify-content:center!important;
+    gap:2px!important;
+    padding:5px!important;
+  }
+  .wts-tab{
+    flex:0 0 auto!important;
+    min-width:0;
+    padding:9px 13px!important;
+  }
+}
+@media(max-width:370px){
+  .wts-tab{padding-inline:9px!important;font-size:9px!important}
+}
