@@ -117,7 +117,7 @@ async function notifyStaff(pool,telegramRequest,ownerId,message,replyMarkup) {
 }
 async function getTicketContext(pool,ticketId) {
   const q=await pool.query('SELECT sender_role,body FROM support_messages WHERE ticket_id=$1 ORDER BY created_at DESC LIMIT 12',[ticketId]);
-  return q.rows.reverse().map(m=>(m.sender_role==='user'?'Пользователь':m.sender_role==='assistant'?'Поддержка':m.sender_role==='owner'?'Владелец':m.sender_role==='admin'?'Администратор':'Сотрудник')+': '+m.body).join('\n').slice(-6500);
+  return q.rows.reverse().map(m=>(m.sender_role==='user'?'Пользователь':m.sender_role==='assistant'?'Поддержка':m.sender_role==='owner'?'Владелец':m.sender_role==='admin'?'Администратор':'Сотрудник')+': '+m.body).join('\n').slice(-3000);
 }
 async function createActionRequest(pool,ticketId,userId,actionType,details) {
   const q=await pool.query('INSERT INTO support_action_requests(ticket_id,user_id,action_type,details) VALUES($1,$2,$3,$4) RETURNING id',[ticketId,String(userId),actionType,String(details||'').slice(0,2000)]);
