@@ -365,9 +365,11 @@ function renderProducts(products) {
                     <button type="button" disabled style="width:auto;padding:6px 14px;margin:0;font-size:13px;opacity:.5;cursor:not-allowed;">Скоро</button>
                 </div>
             </div>`;
+        const visualIcon = ({Telegram:'✈',Roblox:'◈',VPN:'⌁',eSIM:'▤',Steam:'◉',PlayStation:'△',Xbox:'✕',Подписки:'✦',Пополнение:'◉'})[p.category] || '✧';
         return `
             <div class="product-item">
-                <div>
+                <div class="mini-product-art art-${escapeHtml(String(p.category||'digital').toLowerCase().replace(/[^a-zа-яё0-9]+/gi,'-'))}"><span>${visualIcon}</span><small>${escapeHtml(p.category||'DIGITAL GOODS')}</small></div>
+                <div class="mini-product-info">
                     <b style="font-size: 15px;">${escapeHtml(p.title)}</b>
                     <br><small style="color:var(--text-muted);">${escapeHtml(p.category)} / ${escapeHtml(p.subcategory || 'Общее')} · ${escapeHtml(p.seller_name||'Магазин')}</small>
                 </div>
