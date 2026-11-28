@@ -128,6 +128,23 @@ async function getTicketContext(pool,ticketId) {
   const q=await pool.query('SELECT sender_role,body FROM support_messages WHERE ticket_id=$1 ORDER BY created_at DESC LIMIT 12',[ticketId]);
   return q.rows.reverse().map(m=>(m.sender_role==='user'?'Пользователь':m.sender_role==='assistant'?'Поддержка':m.sender_role==='owner'?'Владелец':m.sender_role==='admin'?'Администратор':'Сотрудник')+': '+m.body).join('\n').slice(-3000);
 }
+async function processAIHandoff(pool,telegramRequest,ownerId,ticketId,userId,userText,aiText) {
+  const sensitive=requestedSensitiveAction(userText);
+  const context=await getTicketContext(pool,ticketId);
+  let userMessage=String(aiText||'Подключаю сотрудника поддержки.').trim();
+  if(sensitive){
+    const actionId=await createActionRequest(pool,ticketId,userId,sensitive,'Сообщение пользователя: '+userText+'\nОтвет поддержки: '+userMessage);
+    const label=sensitive==='refund'?'Возврат средств':'Изменение аккаунта/заказа';
+    const notice='⚠️ Запрос на решение владельца/администратора\nОбращение №'+ticketId+' · Запрос №'+actionId+'\nТип: '+label+'\nПользователь: '+userId+'\n\nПОЛНЫЙ КОНТЕКСТ (последние сообщения):\n'+context+'\n\nОдобрение разрешает дальнейшую ручную обработку, но само по себе не выполняет действие.';
+    await notifyStaff(pool,telegramRequest,ownerId,notice,{inline_keyboard:[[{text:'✅ Одобрить',callback_data:'support:action:approve:'+actionId},{text:'❌ Отклонить',callback_data:'support:action:reject:'+actionId}]]});
+    userMessage='Запрос передан владельцу и администраторам. Они проверят переписку и примут решение. До одобрения никаких действий с деньгами или заказом не выполняется.';
+  }else{
+    await pool.query("UPDATE support_tickets SET status='human',updated_at=NOW() WHERE id=$1",[ticketId]);
+    await notifyStaff(pool,telegramRequest,ownerId,'🆘 Поддержка запросила подключение сотрудника. Обращение №'+ticketId+' · Пользователь '+userId+'\n\nПОЛНЫЙ КОНТЕКСТ:\n'+context);
+  }
+  await addMessage(pool,ticketId,null,'assistant',userMessage);
+  return {message:userMessage,approvalRequired:Boolean(sensitive)};
+}
 async function createActionRequest(pool,ticketId,userId,actionType,details) {
   const q=await pool.query('INSERT INTO support_action_requests(ticket_id,user_id,action_type,details) VALUES($1,$2,$3,$4) RETURNING id',[ticketId,String(userId),actionType,String(details||'').slice(0,2000)]);
   await pool.query("UPDATE support_tickets SET status='human',updated_at=NOW() WHERE id=$1",[ticketId]);
@@ -198,20 +215,6 @@ async function handleBotMessage(message, { pool, telegramRequest, ownerId }) {
   const ticketId = Number(active.rows[0].id);
   await addMessage(pool, ticketId, userId, 'user', text);
 
-  const sensitiveAction=requestedSensitiveAction(text);
-  if(sensitiveAction){
-    const actionId=await createActionRequest(pool,ticketId,userId,sensitiveAction,text);
-    const markup={inline_keyboard:[[
-      {text:'✅ Одобрить',callback_data:'support:action:approve:'+actionId},
-      {text:'❌ Отклонить',callback_data:'support:action:reject:'+actionId}
-    ]]};
-    const context=await getTicketContext(pool,ticketId);
-    const notice='⚠️ Запрос на решение владельца/администратора\nОбращение №'+ticketId+' · Запрос №'+actionId+'\nТип: '+(sensitiveAction==='refund'?'Возврат средств':'Изменение аккаунта/заказа')+'\nПользователь: '+userId+'\n\nПОЛНЫЙ КОНТЕКСТ (последние сообщения):\n'+context+'\n\nОдобрение разрешает дальнейшую ручную обработку, но само по себе не выполняет возврат.';
-    await notifyStaff(pool,telegramRequest,ownerId,notice,markup);
-    await telegramSend(telegramRequest,chatId,'Запрос передан владельцу и администраторам. Они проверят историю переписки и примут решение. Пока решение не принято, никаких действий с деньгами или заказом не выполняется.');
-    return true;
-  }
-
   if (/^(оператор|человек|менеджер|живой оператор)$/i.test(text)) {
     await pool.query("UPDATE support_tickets SET status='human',updated_at=NOW() WHERE id=$1", [ticketId]);
     await telegramSend(telegramRequest, chatId, 'Передал обращение оператору. Ответ придёт сюда.');
@@ -227,10 +230,8 @@ async function handleBotMessage(message, { pool, telegramRequest, ownerId }) {
     const answer = await callGemini(pool, ticketId);
     if (answer.startsWith('[HANDOFF]')) {
       const humanAnswer=answer.replace(/^\[HANDOFF\]\s*/,'').trim()||'Подключаю сотрудника поддержки.';
-      await pool.query("UPDATE support_tickets SET status='human',updated_at=NOW() WHERE id=$1",[ticketId]);
-      await addMessage(pool,ticketId,null,'assistant',humanAnswer);
-      await telegramSend(telegramRequest,chatId,humanAnswer);
-      await notifyStaff(pool,telegramRequest,ownerId,'🆘 AI запросил подключение сотрудника. Обращение №'+ticketId+' · Пользователь '+userId+'\\n'+text.slice(0,1200));
+      const handoff=await processAIHandoff(pool,telegramRequest,ownerId,ticketId,userId,text,humanAnswer);
+      await telegramSend(telegramRequest,chatId,handoff.message);
       return true;
     }
     await addMessage(pool, ticketId, null, 'assistant', answer);
