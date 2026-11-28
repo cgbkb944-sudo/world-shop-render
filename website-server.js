@@ -112,6 +112,7 @@ app.post('/api/buy',webAuth,async(req,res)=>{
     const debit=await c.query('UPDATE users SET balance=balance-$1,updated_at=NOW() WHERE telegram_id=$2 AND balance >= $1 RETURNING telegram_id',[amount,req.user.telegram_id]);
     if(!debit.rowCount){await c.query('ROLLBACK');return res.status(400).json({error:'Недостаточно средств на балансе.'});}
     await c.query('UPDATE users SET seller_balance=seller_balance+$1,updated_at=NOW() WHERE telegram_id=$2',[sellerAmount,product.seller_id]);
+    if(['roblox_account','telegram_account','digital_key'].includes(type))await c.query("UPDATE products SET status='sold' WHERE id=$1",[id]);
     await c.query('UPDATE shop_wallet SET balance=balance+$1,updated_at=NOW() WHERE id=1',[fee]);
     const order=await c.query("INSERT INTO orders (buyer_id,seller_id,product_id,amount,commission,status,buyer_details) VALUES ($1,$2,$3,$4,$5,'paid',$6) RETURNING id",
       [req.user.telegram_id,product.seller_id,id,amount,fee,clean]);
@@ -142,8 +143,12 @@ app.get('/api/orders/:id/delivery',webAuth,async(req,res)=>{
   const q=await pool.query("SELECT o.id,o.status,p.product_type,p.private_data FROM orders o JOIN products p ON p.id=o.product_id WHERE o.id=$1 AND o.buyer_id=$2",[id,req.user.telegram_id]);
   if(!q.rowCount)return res.status(404).json({error:'Заказ не найден.'});
   const row=q.rows[0];if(!['paid','delivered','completed'].includes(row.status))return res.status(409).json({error:'Данные заказа пока недоступны.'});
-  if(!['roblox_account','telegram_account'].includes(row.product_type))return res.json({success:true,delivery:null});
+  if(!['roblox_account','telegram_account','digital_key'].includes(row.product_type))return res.json({success:true,delivery:null});
   const d=decryptPrivateData(row.private_data);
+  if(row.product_type==='digital_key'){
+   if(d.delivery_method==='file'){const m=/^data:([^;]+);base64,([A-Za-z0-9+/=]+)$/.exec(String(d.file?.data||''));if(!m)return res.status(410).json({error:'Файл выдачи недоступен. Обратитесь в поддержку.'});return res.json({success:true,delivery:{type:'file',file_name:String(d.file.name||'digital-delivery.bin').slice(0,120),mime:m[1],file_data:m[2]}})}
+   return res.json({success:true,delivery:{type:'code',code:d.code}});
+  }
   if(row.product_type==='telegram_account'){
    if(d.delivery_method==='file'){const m=/^data:([^;]+);base64,([A-Za-z0-9+/=]+)$/.exec(String(d.file?.data||''));if(!m)return res.status(410).json({error:'Файл выдачи недоступен. Обратитесь в поддержку.'});return res.json({success:true,delivery:{type:'file',file_name:String(d.file.name||'telegram-account.txt').slice(0,120),mime:m[1],file_data:m[2],premium:d.premium}})}
    return res.json({success:true,delivery:{type:'phone',phone:d.phone,premium:d.premium,notice:'Код авторизации и облачный пароль магазин не получает и не пересылает.'}});
