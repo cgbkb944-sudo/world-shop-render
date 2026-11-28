@@ -501,7 +501,7 @@ async function addNewProduct() {
     if(product_type==='digital_key'&&private_data.delivery_method==='code'&&!private_data.code){alert('Введите цифровой ключ или код.');return;}
     apiFetch('/api/products/add',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({title,product_type,category,subcategory,price,price_from:['telegram_stars','telegram_premium','robux','roblox_account','telegram_account','digital_key'].includes(product_type)?false:price_from,max_price,private_data})})
-    .then(async res=>{const data=await res.json();if(res.ok&&data.success){alert('Заявка отправлена на модерацию. Товар появится в каталоге после одобрения.');location.reload();}else alert(data.error||'Ошибка публикации товара');})
+    .then(async res=>{const data=await res.json();if(res.ok&&data.success){alert(data.pending?'Заявка отправлена на модерацию. Товар появится после одобрения.':'Товар опубликован от имени владельца и уже доступен в каталоге.');location.reload();}else alert(data.error||'Ошибка публикации товара');})
     .catch(()=>alert('Ошибка соединения с сервером'));
 }
 async function activateKey() {
