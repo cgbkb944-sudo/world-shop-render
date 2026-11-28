@@ -284,6 +284,21 @@ function selectCatalogSubcategory(subcategory) {
     toggleCatalogMenu(false);
 }
 
+const comingSoonCatalogProducts = [
+ {id:'soon-vpn',title:'VPN — подписка',category:'VPN',subcategory:'VPN-доступ',price:0,description:'Подписки на VPN-сервисы. Скоро будет в наличии.',seller_name:'WORLD TG SHOP',coming_soon:true},
+ {id:'soon-esim',title:'eSIM — виртуальная SIM-карта',category:'eSIM',subcategory:'eSIM QR-код',price:0,description:'eSIM для поездок и интернета. Скоро будет в наличии.',seller_name:'WORLD TG SHOP',coming_soon:true},
+ {id:'soon-stars',title:'Telegram Stars',category:'Telegram',subcategory:'Stars',price:0,description:'Пополнение Telegram Stars. Скоро будет в наличии.',seller_name:'WORLD TG SHOP',coming_soon:true},
+ {id:'soon-premium',title:'Telegram Premium',category:'Telegram',subcategory:'Telegram Premium',price:0,description:'Подписка Telegram Premium на разные сроки. Скоро будет в наличии.',seller_name:'WORLD TG SHOP',coming_soon:true},
+ {id:'soon-robux',title:'Robux',category:'Roblox',subcategory:'Robux',price:0,description:'Пополнение игровой валюты Roblox. Скоро будет в наличии.',seller_name:'WORLD TG SHOP',coming_soon:true},
+ {id:'soon-roblox-accounts',title:'Аккаунты Roblox',category:'Roblox',subcategory:'Аккаунты',price:0,description:'Игровые аккаунты Roblox. Скоро будет в наличии.',seller_name:'WORLD TG SHOP',coming_soon:true},
+ {id:'soon-game-keys',title:'Ключи для игр и программ',category:'Программное обеспечение',subcategory:'Цифровые ключи',price:0,description:'Цифровые ключи и лицензии. Скоро будет в наличии.',seller_name:'WORLD TG SHOP',coming_soon:true},
+ {id:'soon-game-topup',title:'Игровые пополнения и донат',category:'Пополнение',subcategory:'Игровой донат',price:0,description:'Пополнение баланса и игровые товары. Скоро будет в наличии.',seller_name:'WORLD TG SHOP',coming_soon:true},
+ {id:'soon-accounts',title:'Цифровые аккаунты',category:'Аккаунты',subcategory:'Аккаунты и профили',price:0,description:'Аккаунты и цифровые профили. Скоро будет в наличии.',seller_name:'WORLD TG SHOP',coming_soon:true},
+ {id:'soon-subscriptions',title:'Подписки на сервисы',category:'Подписки',subcategory:'Подписки и премиум',price:0,description:'Подписки на популярные цифровые сервисы. Скоро будет в наличии.',seller_name:'WORLD TG SHOP',coming_soon:true},
+ {id:'soon-social',title:'Услуги для соцсетей',category:'Услуги',subcategory:'Продвижение',price:0,description:'Услуги и оформление социальных сетей. Скоро будет в наличии.',seller_name:'WORLD TG SHOP',coming_soon:true}
+];
+function getCatalogProducts(){return [...allProducts,...comingSoonCatalogProducts];}
+
 function renderCatalogCategories() {
     const menu = document.getElementById('catalog-menu');
     if (!menu) return;
@@ -293,7 +308,7 @@ function renderCatalogCategories() {
         const known = Object.keys(subsByCat || {}).find(item => normalizeCatalogCategory(item) === normalizeCatalogCategory(raw));
         return known || raw;
     };
-    allProducts.forEach(product => {
+    getCatalogProducts().forEach(product => {
         const category = canonicalCategory(product.category);
         const subcategory = String(product.subcategory || 'Общее').trim() || 'Общее';
         counts.set(category, (counts.get(category) || 0) + 1);
@@ -302,11 +317,11 @@ function renderCatalogCategories() {
     });
 
     const knownCategories = Object.keys(subsByCat || {});
-    const extraCategories = Array.from(new Set(allProducts.map(p => canonicalCategory(p.category))))
+    const extraCategories = Array.from(new Set(getCatalogProducts().map(p => canonicalCategory(p.category))))
         .filter(category => !knownCategories.includes(category));
     const categories = ['Все товары', ...knownCategories, ...extraCategories];
     const categoryButtons = categories.map(category => {
-        const count = category === 'Все товары' ? allProducts.length : (counts.get(category) || 0);
+        const count = category === 'Все товары' ? getCatalogProducts().length : (counts.get(category) || 0);
         const label = category === 'Все товары' ? category : (catalogCategoryLabels[category] || category);
         return `<button type="button" class="catalog-category ${selectedCatalogCategory === category ? 'active' : ''}" onclick="selectCatalogCategory(${JSON.stringify(category).replace(/</g,'\\u003c')})"><span>${escapeHtml(label)}</span><small>${count}</small></button>`;
     }).join('');
@@ -336,12 +351,20 @@ function renderProducts(products) {
     }
     list.innerHTML = products.map(p => {
         let priceText = `${p.price} ₽`;
-        if (p.price_from && p.max_price) {
-            priceText = `от ${p.price} до ${p.max_price} ₽`;
-        } else if (p.price_from) {
-            priceText = `от ${p.price} ₽`;
-        }
-
+        if (p.price_from && p.max_price) priceText = `от ${p.price} до ${p.max_price} ₽`;
+        else if (p.price_from) priceText = `от ${p.price} ₽`;
+        if (p.coming_soon) return `
+            <div class="product-item" style="opacity:.92">
+                <div>
+                    <b style="font-size:15px;">${escapeHtml(p.title)}</b>
+                    <br><small style="color:var(--text-muted);">${escapeHtml(p.category)} / ${escapeHtml(p.subcategory)}</small>
+                    <br><small style="display:block;color:#8b95a7;margin-top:5px;">Скоро будет в наличии</small>
+                </div>
+                <div style="text-align:right;">
+                    <b style="display:block;margin-bottom:6px;color:var(--text-muted);">0 ₽</b>
+                    <button type="button" disabled style="width:auto;padding:6px 14px;margin:0;font-size:13px;opacity:.5;cursor:not-allowed;">Скоро</button>
+                </div>
+            </div>`;
         return `
             <div class="product-item">
                 <div>
@@ -352,8 +375,7 @@ function renderProducts(products) {
                     <b style="display:block; margin-bottom:6px; color:#818cf8;">${p.product_type === 'telegram_stars' ? `${Number(p.price).toFixed(2)} ₽ / ⭐` : p.product_type === 'telegram_premium' ? `${Number(p.price).toFixed(2)} ₽ / месяц Premium` : p.product_type === 'robux' ? `${Number(p.price).toFixed(2)} ₽ / Robux` : priceText}</b>
                     <button style="width:auto; padding:6px 14px; margin:0; font-size:13px;" onclick="buyProduct(${p.id})">Купить</button>
                 </div>
-            </div>
-        `;
+            </div>`;
     }).join('');
 }
 
@@ -380,7 +402,7 @@ function filterProducts() {
     const query = normalizeCatalogValue(document.getElementById('searchInput')?.value || '');
     const selectedCategory = normalizeCatalogCategory(selectedCatalogCategory);
     const selectedSubcategory = normalizeCatalogValue(selectedCatalogSubcategory);
-    const filtered = allProducts.filter(p => {
+    const filtered = getCatalogProducts().filter(p => {
         const category = normalizeCatalogCategory(p.category || 'Без категории');
         const subcategory = normalizeCatalogValue(p.subcategory || 'Общее');
         const matchesCategory = selectedCatalogCategory === 'Все товары' || category === selectedCategory;
