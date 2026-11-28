@@ -78,10 +78,9 @@ async function callGemini(pool, ticketId) {
   const payload={
     model,
     input:latestUser.body,
-    system_instruction:systemInstruction,
+    ...(previousId?{previous_interaction_id:previousId}:{system_instruction:systemInstruction}),
     generation_config:{max_output_tokens:450,thinking_level:'low'},
-    store:true,
-    ...(previousId?{previous_interaction_id:previousId}:{})
+    store:true
   };
   const response=await fetch('https://generativelanguage.googleapis.com/v1beta/interactions',{
     method:'POST',
