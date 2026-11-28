@@ -901,13 +901,7 @@ async function buyProduct(productId) {
     const product=allProducts.find(p=>Number(p.id)===Number(productId));
     if(!product){alert('Товар не найден. Обновите каталог.');return;}
     const type=product.product_type||'standard';let quantity=1,details={};
-    if(type==='digital_key'){
-      const delivery=await apiFetch('/api/orders/'+data.order_id+'/delivery').then(r=>r.json());
-      if(!delivery.success||!delivery.delivery)throw new Error(delivery.error||'Данные выдачи пока недоступны. Обратитесь в поддержку.');
-      const d=delivery.delivery;
-      if(d.type==='code'){alert('Ваш цифровой ключ / код:\n\n'+d.code);try{await navigator.clipboard.writeText(d.code)}catch{}}
-      else if(d.type==='file'){const bytes=Uint8Array.from(atob(d.file_data),c=>c.charCodeAt(0));const blob=new Blob([bytes],{type:d.mime||'application/octet-stream'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=d.file_name||'digital-delivery.bin';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);alert('Файл заказа #'+data.order_id+' загружен.');}
-    }else if(type==='telegram_premium'){
+    if(type==='telegram_premium'){
       const raw=prompt('На сколько месяцев оформить Telegram Premium? От 1 до 12.','3');
       if(raw===null)return;quantity=Number(raw);if(!Number.isInteger(quantity)||quantity<1||quantity>12){alert('Срок должен быть от 1 до 12 месяцев.');return;}
       const recipient=prompt('Укажите Telegram username получателя Premium:');if(recipient===null)return;details.recipient_username=recipient.trim();
@@ -935,7 +929,13 @@ async function buyProduct(productId) {
     try{
       const res=await apiFetch('/api/buy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({product_id:productId,quantity,details,promo_code:promoCode})});
       const data=await res.json();if(!res.ok||data.error)throw new Error(data.error||'Не удалось оформить заказ.');
-      if(type==='telegram_account'){
+      if(type==='digital_key'){
+        const dr=await apiFetch('/api/orders/'+data.order_id+'/delivery'),delivery=await dr.json();
+        if(!dr.ok||!delivery.success||!delivery.delivery)throw new Error(delivery.error||'Данные выдачи пока недоступны. Обратитесь в поддержку.');
+        const d=delivery.delivery;
+        if(d.type==='code'){alert('Ваш цифровой ключ / код:\n\n'+d.code);try{await navigator.clipboard.writeText(d.code)}catch{}}
+        else if(d.type==='file'){const bytes=Uint8Array.from(atob(d.file_data),c=>c.charCodeAt(0));const blob=new Blob([bytes],{type:d.mime||'application/octet-stream'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=d.file_name||'digital-delivery.bin';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);alert('Файл заказа #'+data.order_id+' загружен.');}
+      }else if(type==='telegram_account'){
         const dr=await apiFetch('/api/orders/'+data.order_id+'/delivery'),delivery=await dr.json();
         if(!dr.ok||!delivery.success)throw new Error(delivery.error||'Покупка прошла, но выдача пока недоступна. Заказ #'+data.order_id);
         const d=delivery.delivery||{};
