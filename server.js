@@ -584,11 +584,16 @@ app.post('/api/products/add',roles('seller','admin','owner'),async(req,res)=>{
     return res.status(400).json({error:'Проверьте название, тип объявления, категорию и цену. Для Robux указывается цена за 1 Robux.'});
   try{
     const encrypted=['roblox_account','telegram_account','digital_key'].includes(productType)?encryptPrivateData(privateData):{};
-    const r=await pool.query("INSERT INTO products (title,description,price,price_from,max_price,category,subcategory,seller_id,status,product_type,private_data,image_data,image_mime) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending',$9,$10,$11,$12) RETURNING id",
-      [b.title.trim(),b.description||'',price,Boolean(b.price_from),max,b.category,b.subcategory||'',req.user.telegram_id,productType,JSON.stringify(encrypted),imageData||null,imageData?imageMime:null]);
-    const m=await pool.query("INSERT INTO moderation_requests(kind,requested_by,product_id,reason) VALUES ('product',$1,$2,'Проверка нового товара') RETURNING id",[req.user.telegram_id,r.rows[0].id]);
-    await notifyModerators('Новый товар ожидает проверки. Заявка #'+m.rows[0].id+', товар #'+r.rows[0].id+'. Откройте панель управления.');
-    res.json({success:true,pending:true,product_id:r.rows[0].id,request_id:m.rows[0].id});
+    const ownerProduct=String(req.user.telegram_id)===String(OWNER_TELEGRAM_ID),productStatus=ownerProduct?'active':'pending';
+    const r=await pool.query("INSERT INTO products (title,description,price,price_from,max_price,category,subcategory,seller_id,status,product_type,private_data,image_data,image_mime) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id",
+      [b.title.trim(),b.description||'',price,Boolean(b.price_from),max,b.category,b.subcategory||'',req.user.telegram_id,productStatus,productType,JSON.stringify(encrypted),imageData||null,imageData?imageMime:null]);
+    if(!ownerProduct){
+      const m=await pool.query("INSERT INTO moderation_requests(kind,requested_by,product_id,reason) VALUES ('product',$1,$2,'Проверка нового товара') RETURNING id",[req.user.telegram_id,r.rows[0].id]);
+      await notifyModerators('Новый товар ожидает проверки. Заявка #'+m.rows[0].id+', товар #'+r.rows[0].id+'. Откройте панель управления.');
+      return res.json({success:true,pending:true,product_id:r.rows[0].id,request_id:m.rows[0].id});
+    }
+    await notifyModerators('Владелец опубликовал новый товар #'+r.rows[0].id+'.');
+    res.json({success:true,pending:false,product_id:r.rows[0].id,message:'Товар опубликован от имени владельца.'});
   }catch(e){console.error('Product create:',e.message);res.status(503).json({error:'Не удалось сохранить товар.'});}
 });
 
