@@ -135,7 +135,7 @@ async function migrateDatabase() {
     ALTER TABLE products ADD COLUMN IF NOT EXISTS image_data TEXT;
     ALTER TABLE products ADD COLUMN IF NOT EXISTS image_mime TEXT;
     ALTER TABLE products DROP CONSTRAINT IF EXISTS products_product_type_check;
-    ALTER TABLE products ADD CONSTRAINT products_product_type_check CHECK (product_type IN ('standard','channel_customization','telegram_stars','telegram_premium','subscription','loyalty_points','robux','roblox_account','telegram_account'));
+    ALTER TABLE products ADD CONSTRAINT products_product_type_check CHECK (product_type IN ('standard','channel_customization','telegram_stars','telegram_premium','subscription','loyalty_points','robux','roblox_account','telegram_account','digital_key'));
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS buyer_details JSONB NOT NULL DEFAULT '{}'::jsonb;
     CREATE TABLE IF NOT EXISTS shop_wallet (
       id SMALLINT PRIMARY KEY CHECK (id=1),
@@ -541,8 +541,8 @@ app.post('/api/products/add',roles('seller','admin','owner'),async(req,res)=>{
   const imageData=typeof b.image_data==='string'?b.image_data:'';
   const imageMime=String(b.image_mime||'');
   if(imageData && (!['image/jpeg','image/png','image/webp'].includes(imageMime)||imageData.length>2800000||!/^[A-Za-z0-9+/]+={0,2}$/.test(imageData)))return res.status(400).json({error:'Фото должно быть JPG, PNG или WebP размером до 2 МБ.'});
-  const special=['telegram_stars','telegram_premium','robux','roblox_account','telegram_account'].includes(productType);
-  const allowed=['standard','channel_customization','telegram_stars','telegram_premium','subscription','loyalty_points','robux','roblox_account','telegram_account'];
+  const special=['telegram_stars','telegram_premium','robux','roblox_account','telegram_account','digital_key'].includes(productType);
+  const allowed=['standard','channel_customization','telegram_stars','telegram_premium','subscription','loyalty_points','robux','roblox_account','telegram_account','digital_key'];
   let privateData={};
   if(productType==='roblox_account'){
     const d=b.private_data&&typeof b.private_data==='object'?b.private_data:{};
@@ -551,6 +551,18 @@ app.post('/api/products/add',roles('seller','admin','owner'),async(req,res)=>{
     if(!/^[A-Za-z0-9_]{3,20}$/.test(username)||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||!password||password.length>256||!emailPassword||emailPassword.length>256)
       return res.status(400).json({error:'Для аккаунта Roblox укажите корректный username, почту, пароль аккаунта и пароль от почты.'});
     privateData={roblox_username:username,account_email:email,account_password:password,email_password:emailPassword};
+  }
+  if(productType==='digital_key'){
+    const d=b.private_data&&typeof b.private_data==='object'?b.private_data:{},delivery=String(d.delivery_method||'code');
+    if(delivery==='code'){
+      const code=String(d.code||'').trim();
+      if(!code||code.length>8000)return res.status(400).json({error:'Введите цифровой ключ или код (до 8 000 символов).'});
+      privateData={delivery_method:'code',code};
+    }else if(delivery==='file'){
+      const file=d.file&&typeof d.file==='object'?d.file:{},name=String(file.name||'').trim(),data=String(file.data||'');
+      if(!name||name.length>180||data.length>7*1024*1024||!/^data:[^;]+;base64,/.test(data))return res.status(400).json({error:'Загрузите файл выдачи размером не более 5 МБ.'});
+      privateData={delivery_method:'file',file:{name,mime:String(file.mime||'application/octet-stream'),data}};
+    }else return res.status(400).json({error:'Выберите выдачу кодом или файлом.'});
   }
   if(productType==='telegram_account'){
     const d=b.private_data&&typeof b.private_data==='object'?b.private_data:{};
@@ -571,7 +583,7 @@ app.post('/api/products/add',roles('seller','admin','owner'),async(req,res)=>{
      !price||!allowed.includes(productType)||(b.price_from&&(!max||max<price))||(special&&b.price_from))
     return res.status(400).json({error:'Проверьте название, тип объявления, категорию и цену. Для Robux указывается цена за 1 Robux.'});
   try{
-    const encrypted=['roblox_account','telegram_account'].includes(productType)?encryptPrivateData(privateData):{};
+    const encrypted=['roblox_account','telegram_account','digital_key'].includes(productType)?encryptPrivateData(privateData):{};
     const r=await pool.query("INSERT INTO products (title,description,price,price_from,max_price,category,subcategory,seller_id,status,product_type,private_data,image_data,image_mime) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending',$9,$10,$11,$12) RETURNING id",
       [b.title.trim(),b.description||'',price,Boolean(b.price_from),max,b.category,b.subcategory||'',req.user.telegram_id,productType,JSON.stringify(encrypted),imageData||null,imageData?imageMime:null]);
     const m=await pool.query("INSERT INTO moderation_requests(kind,requested_by,product_id,reason) VALUES ('product',$1,$2,'Проверка нового товара') RETURNING id",[req.user.telegram_id,r.rows[0].id]);
@@ -777,7 +789,7 @@ app.post('/api/buy',async(req,res)=>{
     await c.query("INSERT INTO transactions (telegram_id,amount,type,reference,description) VALUES ($1,$2,'purchase',$3,$4),($5,$6,'sale',$7,$8)",
       [req.user.telegram_id,-amount,ref,'Покупка товара #'+order.rows[0].id,product.seller_id,sellerAmount,ref+'_seller','Продажа товара #'+order.rows[0].id]);
     if(promoId){await c.query('INSERT INTO promo_redemptions(promo_id,user_id,order_id,reward_amount) VALUES($1,$2,$3,$4)',[promoId,req.user.telegram_id,order.rows[0].id,originalAmount-amount]);await c.query('UPDATE promo_codes SET uses_count=uses_count+1 WHERE id=$1',[promoId]);await c.query('DELETE FROM bot_settings WHERE setting_key=$1',[pendingPromoKey]);}
-    if(['roblox_account','telegram_account'].includes(type))await c.query("UPDATE products SET status='sold' WHERE id=$1",[id]);
+    if(['roblox_account','telegram_account','digital_key'].includes(type))await c.query("UPDATE products SET status='sold' WHERE id=$1",[id]);
     await c.query('COMMIT');
     const info=Object.entries(clean).map(([k,v])=>k+': '+v).join('\n');
     const sellerMessage='🛒 Новый оплаченный заказ #'+order.rows[0].id+'\nТовар: '+product.title+'\nСумма: '+amount.toFixed(2)+' ₽\nПокупатель: '+(req.user.username?'@'+req.user.username:'без username')+(info?'\nДанные покупателя:\n'+info:'');
@@ -794,8 +806,16 @@ app.get('/api/orders/:id/delivery',async(req,res)=>{
     const q=await pool.query("SELECT o.id,o.buyer_id,o.status,p.product_type,p.private_data FROM orders o JOIN products p ON p.id=o.product_id WHERE o.id=$1 AND o.buyer_id=$2",[id,req.user.telegram_id]);
     if(!q.rowCount)return res.status(404).json({error:'Заказ не найден.'});
     const row=q.rows[0];if(!['paid','delivered','completed'].includes(row.status))return res.status(409).json({error:'Данные заказа пока недоступны.'});
-    if(!['roblox_account','telegram_account'].includes(row.product_type))return res.json({success:true,delivery:null});
+    if(!['roblox_account','telegram_account','digital_key'].includes(row.product_type))return res.json({success:true,delivery:null});
     const d=decryptPrivateData(row.private_data);
+    if(row.product_type==='digital_key'){
+      if(d.delivery_method==='file'){
+        const m=/^data:([^;]+);base64,([A-Za-z0-9+/=]+)$/.exec(String(d.file?.data||''));
+        if(!m)return res.status(410).json({error:'Файл выдачи недоступен. Обратитесь в поддержку.'});
+        return res.json({success:true,delivery:{type:'file',file_name:d.file.name,mime:m[1],file_data:m[2]}});
+      }
+      return res.json({success:true,delivery:{type:'code',code:d.code}});
+    }
     if(row.product_type==='telegram_account'){
       if(d.delivery_method==='file'){
         const m=/^data:([^;]+);base64,([A-Za-z0-9+/=]+)$/.exec(String(d.file?.data||''));
