@@ -564,6 +564,7 @@ input:focus,select:focus{border-color:#54b9ed;box-shadow:0 0 0 3px rgba(64,163,2
                 <option value="channel_customization">Кастомизация Telegram-канала</option>
                 <option value="telegram_stars">Telegram Stars</option>
                 <option value="telegram_premium">Telegram Premium</option>
+                <option value="digital_key">Цифровой ключ / VPN / eSIM</option>
                 <option value="subscription">Подписки на сервисы и магазины</option>
                 <option value="loyalty_points">Баллы магазинов / программы лояльности</option><option value="robux">Robux — продажа валюты</option><option value="roblox_account">Аккаунт Roblox</option><option value="telegram_account">Telegram-аккаунт</option>
             </select>
@@ -583,13 +584,20 @@ input:focus,select:focus{border-color:#54b9ed;box-shadow:0 0 0 3px rgba(64,163,2
               <div id="telegramFileFields"><label>Файл (до 5 МБ)</label><input id="telegramAccountFile" type="file"><small>Файл будет доступен покупателю после оплаты.</small></div>
               <div id="telegramPhoneFields" class="hidden"><label>Номер телефона</label><input id="telegramAccountPhone" type="tel" placeholder="+79990000000"><small>Коды входа и облачные пароли не собираются и не пересылаются.</small></div>
             </div>
+            <div id="newDigitalKeyFields" class="hidden" style="padding:12px;border:1px solid var(--border-color);border-radius:12px;margin:10px 0;">
+              <b>Цифровая выдача после оплаты</b>
+              <label>Способ выдачи</label><select id="digitalDeliveryMethod" onchange="toggleDigitalDeliveryFields()"><option value="code">Ключ или код текстом</option><option value="file">Файл / QR eSIM / конфигурация VPN</option></select>
+              <div id="digitalCodeFields"><label>Ключ / код</label><textarea id="digitalKeyCode" rows="3" maxlength="8000" placeholder="Вставьте ключ или код"></textarea></div>
+              <div id="digitalFileFields" class="hidden"><label>Файл выдачи (до 5 МБ)</label><input id="digitalKeyFile" type="file"><small>Подойдёт файл конфигурации VPN или QR-код eSIM.</small></div>
+              <small>Данные будут зашифрованы и откроются покупателю только после успешной оплаты. Одноразовый товар автоматически станет проданным.</small>
+            </div>
             
             <label>Категория:</label>
             <select id="newCategory" onchange="updateSubcategoryOptions()">
                 <option value="Telegram">Telegram</option>
                 <option value="Instagram">Instagram</option><option value="TikTok">TikTok</option><option value="YouTube">YouTube</option><option value="Discord">Discord</option><option value="VK">ВКонтакте</option>
                 <option value="Roblox">Roblox</option><option value="Minecraft">Minecraft</option><option value="Genshin Impact">Genshin Impact</option><option value="PUBG Mobile">PUBG Mobile</option><option value="Free Fire">Free Fire</option><option value="Mobile Legends">Mobile Legends</option><option value="Brawl Stars">Brawl Stars</option><option value="Fortnite">Fortnite</option><option value="Valorant">Valorant</option><option value="CS2">CS2</option><option value="Dota 2">Dota 2</option><option value="Steam">Steam</option><option value="PlayStation">PlayStation</option><option value="Xbox">Xbox</option><option value="Nintendo">Nintendo</option>
-                <option value="VPN">VPN и прокси</option><option value="Подписки">Подписки и премиум</option><option value="Баллы магазинов">Баллы магазинов и программы лояльности</option><option value="Аккаунты">Аккаунты и профили</option><option value="Пополнение">Пополнение баланса и донат</option><option value="Программное обеспечение">Программы и ПО</option><option value="Дизайн">Дизайн и оформление</option><option value="Услуги">Услуги и другое</option>
+                <option value="eSIM">eSIM</option><option value="VPN">VPN и прокси</option><option value="Подписки">Подписки и премиум</option><option value="Баллы магазинов">Баллы магазинов и программы лояльности</option><option value="Аккаунты">Аккаунты и профили</option><option value="Пополнение">Пополнение баланса и донат</option><option value="Программное обеспечение">Программы и ПО</option><option value="Дизайн">Дизайн и оформление</option><option value="Услуги">Услуги и другое</option>
             </select>
 
             <label>Услуга / Подкатегория:</label>
