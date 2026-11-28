@@ -675,6 +675,21 @@ input:focus,select:focus{border-color:#54b9ed;box-shadow:0 0 0 3px rgba(64,163,2
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
 <script src="script.js"></script>
 <script src="support-widget.js"></script>
+
+<style id="wts-motion-polish">
+@keyframes wtsMiniIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes wtsMiniGlow{0%,100%{box-shadow:0 8px 24px rgba(2,8,23,.18)}50%{box-shadow:0 10px 28px rgba(34,211,238,.1)}}
+.card,.product-item{animation:wtsMiniIn .35s both;transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease}
+.product-item{border-color:rgba(148,163,184,.16)!important}
+.product-item:active{transform:scale(.99)}
+.nav-item{transition:color .2s ease,transform .2s ease,background .2s ease}
+.nav-item:active{transform:translateY(-2px)}
+button{transition:transform .16s ease,filter .2s ease,box-shadow .2s ease}
+button:active{transform:scale(.98)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid rgba(56,189,248,.85);outline-offset:2px}
+@media(prefers-reduced-motion:reduce){.card,.product-item,.nav-item,button{animation:none!important;transition:none!important}}
+</style>
+
 </body>
 </html>
 
