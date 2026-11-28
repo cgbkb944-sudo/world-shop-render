@@ -1,8 +1,5 @@
 'use strict';
 
-const OPENAI_ENDPOINT = 'https://api.openai.com/v1/responses';
-const DEFAULT_MODEL = process.env.OPENAI_MODEL || 'gpt-6.2-astra';
-
 async function initSupport(pool) {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS support_tickets (
@@ -55,7 +52,7 @@ async function openTicket(pool, userId, source='bot', subject='Обращени�
   return Number(created.rows[0].id);
 }
 
-async function callOpenAI(pool, ticketId) {
+async function callGemini(pool, ticketId) {
   const key = String(process.env.GEMINI_API_KEY || '').trim();
   if (!key) throw new Error('GEMINI_API_KEY is not configured in Render');
   const model = String(process.env.GEMINI_MODEL || 'gemini-3.8-flash').trim();
@@ -91,7 +88,7 @@ async function callOpenAI(pool, ticketId) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error?.message || 'Gemini request failed (' + response.status + ')');
   const output = (data.candidates?.[0]?.content?.parts || [])
-    .map(part => part.text || '').join('\\n').trim();
+    .map(part => part.text || '').join('\n').trim();
   if (!output) throw new Error('Gemini returned an empty response');
   return output;
 }
@@ -134,7 +131,7 @@ async function telegramSend(telegramRequest, chatId, text, replyMarkup) {
 async function startBotTicket(pool, telegramRequest, ownerId, user, source='bot') {
   const id = await openTicket(pool, user.id, source);
   await telegramSend(telegramRequest, user.id,
-    '🆘 Обращение №' + id + ' открыто.\n\nОпишите вопрос — специалист поддержки ответит здесь. Чтобы позвать оператора, напишите «оператор».',
+    '🆘 Обращение №' + id + ' открыто.\n\nОпишите вопрос — поддержка ответит здесь. Если потребуется сотрудник, мы подключим его отдельно.',
     { inline_keyboard: [[{ text: '✖️ Закрыть обращение', callback_data: 'support:close:' + id }], [{ text: '👤 Профиль', callback_data: 'bot:profile' }, { text: '💳 Пополнить баланс', callback_data: 'bot:topup' }]] }
   );
   return id;
@@ -163,10 +160,10 @@ async function handleBotMessage(message, { pool, telegramRequest, ownerId }) {
     const ticketId = Number(parts[1]);
     const reply = parts.slice(2).join(' ').trim();
     if (!Number.isSafeInteger(ticketId) || !reply) {
-      await telegramSend(telegramRequest, chatId, 'Формат: /reply НОМЕР_ОБРАЩЕНИЯ текст ответа');
+      await telegramSend(telegramRequest, chatId, 'Формат: /reply НОМЕР_ОБРАЩЕНИЯ текст ответа (только после запроса оператора)');
       return true;
     }
-    const ticket = await pool.query("SELECT user_id FROM support_tickets WHERE id=$1 AND status<>'closed'", [ticketId]);
+    const ticket = await pool.query("SELECT user_id FROM support_tickets WHERE id=$1 AND status='human'", [ticketId]);
     if (!ticket.rowCount) {
       await telegramSend(telegramRequest, chatId, 'Открытое обращение не найдено.');
       return true;
@@ -213,9 +210,9 @@ async function handleBotMessage(message, { pool, telegramRequest, ownerId }) {
     return true;
   }
   try {
-    const answer = await callOpenAI(pool, ticketId);
+    const answer = await callGemini(pool, ticketId);
     if (answer.startsWith('[HANDOFF]')) {
-      const humanAnswer=answer.replace(/^\\[HANDOFF\\]\\s*/,'').trim()||'Подключаю сотрудника поддержки.';
+      const humanAnswer=answer.replace(/^\[HANDOFF\]\s*/,'').trim()||'Подключаю сотрудника поддержки.';
       await pool.query("UPDATE support_tickets SET status='human',updated_at=NOW() WHERE id=$1",[ticketId]);
       await addMessage(pool,ticketId,null,'assistant',humanAnswer);
       await telegramSend(telegramRequest,chatId,humanAnswer);
@@ -226,9 +223,9 @@ async function handleBotMessage(message, { pool, telegramRequest, ownerId }) {
     await telegramSend(telegramRequest, chatId, answer);
   } catch (error) {
     console.error('[Support AI]', error.message);
-    await telegramSend(telegramRequest, chatId, 'Сейчас не удалось отправить ответ. Я передал обращение оператору — пожалуйста, ожидайте.');
-    await pool.query("UPDATE support_tickets SET status='human',updated_at=NOW() WHERE id=$1", [ticketId]);
-    await telegramSend(telegramRequest, ownerId, '⚠️ Ошибка ответа в обращении №' + ticketId + ': ' + error.message);
+    await telegramSend(telegramRequest, chatId, 'Не получилось отправить ответ из-за временной технической ошибки. Напишите ещё раз немного позже — обращение остаётся в очереди поддержки.');
+    await pool.query("UPDATE support_tickets SET status='ai',updated_at=NOW() WHERE id=$1 AND status='ai'", [ticketId]);
+    console.error('[Support AI unavailable; ticket remains AI-first]', error.message);
   }
   return true;
 }
@@ -271,9 +268,9 @@ function mountSupportRoutes(app, { pool, authMiddleware, telegramRequest=default
           answer='Запрос передан владельцу и администраторам. Они проверят переписку и сообщат решение. Пока решение не принято, никаких изменений с балансом или заказом не выполняется.';
           await addMessage(pool,id,null,'assistant',answer); forwarded=true;
         }else{
-          answer=await callOpenAI(pool,id);
+          answer=await callGemini(pool,id);
           if(answer.startsWith('[HANDOFF]')){
-            answer=answer.replace(/^\\[HANDOFF\\]\\s*/,'').trim()||'Подключаю сотрудника поддержки.';
+            answer=answer.replace(/^\[HANDOFF\]\s*/,'').trim()||'Подключаю сотрудника поддержки.';
             await pool.query("UPDATE support_tickets SET status='human',updated_at=NOW() WHERE id=$1",[id]);
             await notifyStaff(pool,telegramRequest,ownerId,'🆘 AI запросил подключение сотрудника. Обращение №'+id+' · Пользователь '+req.user.telegram_id+'\\n'+body.slice(0,1200));
             forwarded=true;
@@ -323,9 +320,9 @@ function mountSupportRoutes(app, { pool, authMiddleware, telegramRequest=default
         await notifyStaff(pool,telegramRequest,ownerId,'🆘 Новое сообщение в обращении №'+id+' от пользователя '+req.user.telegram_id+':\n'+body.slice(0,1200));
         return res.json({success:true,forwarded_to_operator:true});
       }
-      const answer=await callOpenAI(pool,id);
+      const answer=await callGemini(pool,id);
       if(answer.startsWith('[HANDOFF]')){
-        const humanAnswer=answer.replace(/^\\[HANDOFF\\]\\s*/,'').trim()||'Подключаю сотрудника поддержки.';
+        const humanAnswer=answer.replace(/^\[HANDOFF\]\s*/,'').trim()||'Подключаю сотрудника поддержки.';
         await pool.query("UPDATE support_tickets SET status='human',updated_at=NOW() WHERE id=$1",[id]);
         await addMessage(pool,id,null,'assistant',humanAnswer);
         await notifyStaff(pool,telegramRequest,ownerId,'🆘 AI запросил подключение сотрудника. Обращение №'+id+' · Пользователь '+req.user.telegram_id+'\\n'+body.slice(0,1200));
@@ -362,8 +359,9 @@ function mountSupportRoutes(app, { pool, authMiddleware, telegramRequest=default
   app.post('/api/support/tickets/:id/takeover', authMiddleware, async (req, res) => {
     if (!['owner','admin','support'].includes(req.user.role)) return res.status(403).json({ error: 'Недостаточно прав.' });
     try {
-      const q = await pool.query("UPDATE support_tickets SET status='human',updated_at=NOW() WHERE id=$1 AND status<>'closed' RETURNING id", [Number(req.params.id)]);
+      const q = await pool.query("SELECT id,status FROM support_tickets WHERE id=$1 AND status<>'closed'", [Number(req.params.id)]);
       if (!q.rowCount) return res.status(404).json({ error: 'Открытое обращение не найдено.' });
+      if (q.rows[0].status !== 'human') return res.status(409).json({ error: 'Поддержка остаётся в режиме автоматических ответов. Подключение сотрудника возможно только после запроса от поддержки или пользователя.' });
       res.json({ success: true });
     } catch (e) { res.status(503).json({ error: 'Не удалось подключить оператора.' }); }
   });
