@@ -124,8 +124,8 @@ app.post('/api/buy',webAuth,async(req,res)=>{
     await c.query('UPDATE web_purchase_keys SET order_id=$3 WHERE telegram_id=$1 AND idempotency_key=$2',[req.user.telegram_id,idem,order.rows[0].id]);
     await c.query('COMMIT');
     const orderId=order.rows[0].id;
-    const detailText=Object.entries(clean).map(([k,v])=>k+': '+v).join('\\n');
-    const sellerText='🛒 Новый оплаченный заказ #'+orderId+'\\nТовар: '+product.title+'\\nСумма: '+amount.toFixed(2)+' ₽\\nПокупатель: '+(req.user.username?'@'+req.user.username:'ID '+req.user.telegram_id)+(detailText?'\\nДанные заказа:\\n'+detailText:'');
+    const detailText=Object.entries(clean).map(([k,v])=>k+': '+v).join('\n');
+    const sellerText='🛒 Новый оплаченный заказ #'+orderId+'\nТовар: '+product.title+'\nСумма: '+amount.toFixed(2)+' ₽\nПокупатель: '+(req.user.username?'@'+req.user.username:'ID '+req.user.telegram_id)+(detailText?'\nДанные заказа:\n'+detailText:'');
     const sendTelegram=(chatId,text)=>fetch('https://api.telegram.org/bot'+BOT_TOKEN+'/sendMessage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:String(chatId),text:String(text).slice(0,3500)}),signal:AbortSignal.timeout(10000)}).then(r=>r.json()).then(d=>{if(!d.ok)throw new Error(d.description||'Telegram notification failed')});
     await Promise.all([
       sendTelegram(product.seller_id,sellerText).catch(e=>console.error('Website seller notification:',e.message)),
