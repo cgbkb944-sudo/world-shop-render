@@ -349,7 +349,7 @@ function renderProducts(products) {
                     <br><small style="color:var(--text-muted);">${escapeHtml(p.category)} / ${escapeHtml(p.subcategory || 'Общее')} · ${escapeHtml(p.seller_name||'Магазин')}</small>
                 </div>
                 <div style="text-align: right;">
-                    <b style="display:block; margin-bottom:6px; color:#818cf8;">${p.product_type === 'telegram_stars' ? `${Number(p.price).toFixed(2)} ₽ / ⭐` : p.product_type === 'robux' ? `${Number(p.price).toFixed(2)} ₽ / Robux` : priceText}</b>
+                    <b style="display:block; margin-bottom:6px; color:#818cf8;">${p.product_type === 'telegram_stars' ? `${Number(p.price).toFixed(2)} ₽ / ⭐` : p.product_type === 'telegram_premium' ? `${Number(p.price).toFixed(2)} ₽ / месяц Premium` : p.product_type === 'robux' ? `${Number(p.price).toFixed(2)} ₽ / Robux` : priceText}</b>
                     <button style="width:auto; padding:6px 14px; margin:0; font-size:13px;" onclick="buyProduct(${p.id})">Купить</button>
                 </div>
             </div>
@@ -440,15 +440,16 @@ function toggleMaxPriceField() {
 
 function updateProductTypeHelp() {
     const type=document.getElementById('newProductType')?.value||'standard',help=document.getElementById('newProductTypeHelp'),priceLabel=document.getElementById('newPriceLabel');
-    const special=['telegram_stars','robux','roblox_account','telegram_account'].includes(type);
+    const special=['telegram_stars','telegram_premium','robux','roblox_account','telegram_account'].includes(type);
     if(help)help.textContent=type==='telegram_stars'?'Укажите цену за одну звезду. Покупатель выберет от 50 до 1 000.':
+      type==='telegram_premium'?'Укажите цену за 1 месяц Premium. Покупатель выберет срок от 1 до 12 месяцев и получателя.':
       type==='robux'?'Укажите цену за 1 Robux. Покупатель сможет заказать от 10 до 100 000 Robux.':
       type==='roblox_account'?'Добавьте данные аккаунта Roblox.':
       type==='telegram_account'?'Выберите Premium и способ передачи: файл выдаётся после оплаты, по номеру покупатель получает номер телефона.':
       type==='channel_customization'?'После покупки покупатель укажет username владельца и ссылку на канал.':
       type==='subscription'?'Покупатель укажет аккаунт или данные для оформления подписки.':
       type==='loyalty_points'?'Покупатель укажет номер телефона или идентификатор карты лояльности.':'Обычный товар или услуга.';
-    if(priceLabel)priceLabel.textContent=type==='telegram_stars'?'Цена за одну звезду (₽):':type==='robux'?'Цена за 1 Robux (₽):':'Цена (₽):';
+    if(priceLabel)priceLabel.textContent=type==='telegram_stars'?'Цена за одну звезду (₽):':type==='telegram_premium'?'Цена за 1 месяц Premium (₽):':type==='robux'?'Цена за 1 Robux (₽):':'Цена (₽):';
     document.getElementById('newPriceFrom')?.closest('div')?.classList.toggle('hidden',special);
     document.getElementById('newRobloxPrivateFields')?.classList.toggle('hidden',type!=='roblox_account');
     document.getElementById('newTelegramAccountFields')?.classList.toggle('hidden',type!=='telegram_account');
@@ -483,7 +484,7 @@ async function addNewProduct() {
     if(product_type==='roblox_account'&&(!private_data.roblox_username||!private_data.account_email||!private_data.account_password||!private_data.email_password)){alert('Заполните username Roblox, почту и оба пароля.');return;}
     if(product_type==='telegram_account'&&private_data.delivery_method==='phone'&&!private_data.phone){alert('Укажите номер телефона.');return;}
     apiFetch('/api/products/add',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({title,product_type,category,subcategory,price,price_from:['telegram_stars','robux','roblox_account','telegram_account'].includes(product_type)?false:price_from,max_price,private_data})})
+      body:JSON.stringify({title,product_type,category,subcategory,price,price_from:['telegram_stars','telegram_premium','robux','roblox_account','telegram_account'].includes(product_type)?false:price_from,max_price,private_data})})
     .then(async res=>{const data=await res.json();if(res.ok&&data.success){alert('Заявка отправлена на модерацию. Товар появится в каталоге после одобрения.');location.reload();}else alert(data.error||'Ошибка публикации товара');})
     .catch(()=>alert('Ошибка соединения с сервером'));
 }
@@ -884,7 +885,11 @@ async function buyProduct(productId) {
     const product=allProducts.find(p=>Number(p.id)===Number(productId));
     if(!product){alert('Товар не найден. Обновите каталог.');return;}
     const type=product.product_type||'standard';let quantity=1,details={};
-    if(type==='telegram_stars'){
+    if(type==='telegram_premium'){
+      const raw=prompt('На сколько месяцев оформить Telegram Premium? От 1 до 12.','3');
+      if(raw===null)return;quantity=Number(raw);if(!Number.isInteger(quantity)||quantity<1||quantity>12){alert('Срок должен быть от 1 до 12 месяцев.');return;}
+      const recipient=prompt('Укажите Telegram username получателя Premium:');if(recipient===null)return;details.recipient_username=recipient.trim();
+    }else if(type==='telegram_stars'){
       const raw=prompt('Сколько Telegram Stars нужно купить? Введите от 50 до 1 000.','50');
       if(raw===null)return;quantity=Number(raw);if(!Number.isInteger(quantity)||quantity<50||quantity>1000){alert('Можно купить от 50 до 1 000 звёзд.');return;}
       const recipient=prompt('Укажите Telegram username аккаунта, куда прислать звёзды:');if(recipient===null)return;details.recipient_username=recipient.trim();
@@ -902,7 +907,7 @@ async function buyProduct(productId) {
       const account=prompt(type==='subscription'?'Укажите аккаунт или данные для оформления подписки:':'Укажите номер телефона или номер карты лояльности:');if(account===null)return;details.account=account.trim();
     }
     const total=Math.round(Number(product.price)*quantity*100)/100;
-    const label=type==='robux'?quantity+' Robux × '+Number(product.price).toFixed(2)+' ₽ = ':type==='telegram_stars'?quantity+' ⭐ × '+Number(product.price).toFixed(2)+' ₽ = ':'';
+    const label=type==='robux'?quantity+' Robux × '+Number(product.price).toFixed(2)+' ₽ = ':type==='telegram_stars'?quantity+' ⭐ × '+Number(product.price).toFixed(2)+' ₽ = ':type==='telegram_premium'?quantity+' мес. Premium × '+Number(product.price).toFixed(2)+' ₽ = ':'';
     const promoCode=(prompt('Промокод на скидку (оставьте поле пустым, если его нет):','')||'').trim().toUpperCase();
     if(!confirm('Подтвердить покупку «'+product.title+'»?\\n'+label+total.toFixed(2)+' ₽'+(promoCode?'\\nПромокод: '+promoCode:'')))return;
     try{
