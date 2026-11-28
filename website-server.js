@@ -66,9 +66,10 @@ app.post('/api/buy',webAuth,async(req,res)=>{
     if(product.status==='frozen'){await c.query('ROLLBACK');return res.status(409).json({error:'Товар временно заморожен и недоступен для покупки. Ожидается решение владельца.'});}
     if(product.status!=='active'){await c.query('ROLLBACK');return res.status(404).json({error:'Товар больше недоступен для покупки.'});}
     if(String(product.seller_id)===String(req.user.telegram_id)){await c.query('ROLLBACK');return res.status(400).json({error:'Нельзя купить собственный товар.'});}
-    const type=product.product_type||'standard',quantity=['telegram_stars','robux'].includes(type)?Number(req.body?.quantity):1;
+    const type=product.product_type||'standard',quantity=['telegram_stars','telegram_premium','robux'].includes(type)?Number(req.body?.quantity):1;
     if(type==='telegram_stars'&&(!Number.isInteger(quantity)||quantity<50||quantity>1000)){await c.query('ROLLBACK');return res.status(400).json({error:'Количество Telegram Stars должно быть от 50 до 1 000.'});}
     if(type==='robux'&&(!Number.isInteger(quantity)||quantity<10||quantity>100000)){await c.query('ROLLBACK');return res.status(400).json({error:'Количество Robux должно быть от 10 до 100 000.'});}
+    if(type==='telegram_premium'&&(!Number.isInteger(quantity)||quantity<1||quantity>12)){await c.query('ROLLBACK');return res.status(400).json({error:'Срок Telegram Premium должен быть от 1 до 12 месяцев.'});}
     const details=req.body?.details&&typeof req.body.details==='object'&&!Array.isArray(req.body.details)?req.body.details:{},clean={};
     if(type==='robux'||type==='roblox_account'){
       const telegram=String(details.telegram_username||'').trim().replace(/^@/,'');
@@ -91,6 +92,10 @@ app.post('/api/buy',webAuth,async(req,res)=>{
       const recipient=String(details.recipient_username||'').trim().replace(/^@/,'');
       if(!/^[A-Za-z0-9_]{5,32}$/.test(recipient)){await c.query('ROLLBACK');return res.status(400).json({error:'Укажите Telegram username получателя звёзд.'});}
       clean.recipient_username='@'+recipient;clean.quantity=quantity;
+    }else if(type==='telegram_premium'){
+      const recipient=String(details.recipient_username||'').trim().replace(/^@/,'');
+      if(!/^[A-Za-z0-9_]{5,32}$/.test(recipient)){await c.query('ROLLBACK');return res.status(400).json({error:'Укажите Telegram username получателя Premium.'});}
+      clean.recipient_username='@'+recipient;clean.duration_months=quantity;
     }else if(type==='subscription'||type==='loyalty_points'){
       const account=String(details.account||'').trim().slice(0,120);
       if(account.length<3){await c.query('ROLLBACK');return res.status(400).json({error:'Укажите аккаунт, номер телефона или идентификатор для зачисления.'});}
