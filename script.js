@@ -396,6 +396,7 @@ function filterProducts() {
 
 const subsByCat = {
  'Telegram':['Дизайн ТГК','Аренда NFT','Разработка ботов','Stars','Telegram Premium','Подписчики','Просмотры и реакции'],
+  'eSIM':['eSIM QR-код','Интернет 1 ГБ','Интернет 3 ГБ','Интернет 5 ГБ','Интернет 10 ГБ','Региональный пакет'],
  'Instagram':['Аккаунты','Подписчики','Лайки','Просмотры','Комментарии'],
  'TikTok':['Аккаунты','Подписчики','Лайки','Просмотры'],
  'YouTube':['Каналы','Подписчики','Просмотры','Монетизация'],
@@ -440,9 +441,10 @@ function toggleMaxPriceField() {
 
 function updateProductTypeHelp() {
     const type=document.getElementById('newProductType')?.value||'standard',help=document.getElementById('newProductTypeHelp'),priceLabel=document.getElementById('newPriceLabel');
-    const special=['telegram_stars','telegram_premium','robux','roblox_account','telegram_account'].includes(type);
+    const special=['telegram_stars','telegram_premium','robux','roblox_account','telegram_account','digital_key'].includes(type);
     if(help)help.textContent=type==='telegram_stars'?'Укажите цену за одну звезду. Покупатель выберет от 50 до 1 000.':
       type==='telegram_premium'?'Укажите цену за 1 месяц Premium. Покупатель выберет срок от 1 до 12 месяцев и получателя.':
+      type==='digital_key'?'Добавьте одноразовый цифровой ключ, VPN-конфигурацию или QR-файл eSIM. Покупатель получит его после оплаты.':
       type==='robux'?'Укажите цену за 1 Robux. Покупатель сможет заказать от 10 до 100 000 Robux.':
       type==='roblox_account'?'Добавьте данные аккаунта Roblox.':
       type==='telegram_account'?'Выберите Premium и способ передачи: файл выдаётся после оплаты, по номеру покупатель получает номер телефона.':
@@ -453,10 +455,12 @@ function updateProductTypeHelp() {
     document.getElementById('newPriceFrom')?.closest('div')?.classList.toggle('hidden',special);
     document.getElementById('newRobloxPrivateFields')?.classList.toggle('hidden',type!=='roblox_account');
     document.getElementById('newTelegramAccountFields')?.classList.toggle('hidden',type!=='telegram_account');
+    document.getElementById('newDigitalKeyFields')?.classList.toggle('hidden',type!=='digital_key');
     if(special){const range=document.getElementById('newPriceFrom');if(range)range.checked=false;document.getElementById('maxPriceContainer')?.classList.add('hidden');}
 }
 
 function toggleTelegramDeliveryFields(){const m=document.getElementById('telegramDeliveryMethod')?.value||'file';document.getElementById('telegramFileFields')?.classList.toggle('hidden',m!=='file');document.getElementById('telegramPhoneFields')?.classList.toggle('hidden',m!=='phone');}
+function toggleDigitalDeliveryFields(){const m=document.getElementById('digitalDeliveryMethod')?.value||'code';document.getElementById('digitalCodeFields')?.classList.toggle('hidden',m!=='code');document.getElementById('digitalFileFields')?.classList.toggle('hidden',m!=='file');}
 
 async function addNewProduct() {
     const title=document.getElementById('newTitle').value,product_type=document.getElementById('newProductType')?.value||'standard';
@@ -469,6 +473,17 @@ async function addNewProduct() {
       account_password:document.getElementById('robloxAccountPassword').value,
       email_password:document.getElementById('robloxEmailPassword').value
     };
+    if(product_type==='digital_key'){
+      const delivery_method=document.getElementById('digitalDeliveryMethod').value;
+      private_data={delivery_method};
+      if(delivery_method==='code')private_data.code=document.getElementById('digitalKeyCode').value.trim();
+      else {
+        const file=document.getElementById('digitalKeyFile').files[0];
+        if(!file){alert('Загрузите файл выдачи.');return;}
+        if(file.size>5*1024*1024){alert('Максимальный размер файла — 5 МБ.');return;}
+        private_data.file={name:file.name,mime:file.type||'application/octet-stream',data:await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file);})};
+      }
+    }
     if(product_type==='telegram_account'){
       const delivery_method=document.getElementById('telegramDeliveryMethod').value;
       private_data={delivery_method,premium:document.getElementById('telegramPremium').value};
@@ -483,8 +498,9 @@ async function addNewProduct() {
     if(!title||!price){alert('Заполните название и цену!');return;}
     if(product_type==='roblox_account'&&(!private_data.roblox_username||!private_data.account_email||!private_data.account_password||!private_data.email_password)){alert('Заполните username Roblox, почту и оба пароля.');return;}
     if(product_type==='telegram_account'&&private_data.delivery_method==='phone'&&!private_data.phone){alert('Укажите номер телефона.');return;}
+    if(product_type==='digital_key'&&private_data.delivery_method==='code'&&!private_data.code){alert('Введите цифровой ключ или код.');return;}
     apiFetch('/api/products/add',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({title,product_type,category,subcategory,price,price_from:['telegram_stars','telegram_premium','robux','roblox_account','telegram_account'].includes(product_type)?false:price_from,max_price,private_data})})
+      body:JSON.stringify({title,product_type,category,subcategory,price,price_from:['telegram_stars','telegram_premium','robux','roblox_account','telegram_account','digital_key'].includes(product_type)?false:price_from,max_price,private_data})})
     .then(async res=>{const data=await res.json();if(res.ok&&data.success){alert('Заявка отправлена на модерацию. Товар появится в каталоге после одобрения.');location.reload();}else alert(data.error||'Ошибка публикации товара');})
     .catch(()=>alert('Ошибка соединения с сервером'));
 }
@@ -885,7 +901,13 @@ async function buyProduct(productId) {
     const product=allProducts.find(p=>Number(p.id)===Number(productId));
     if(!product){alert('Товар не найден. Обновите каталог.');return;}
     const type=product.product_type||'standard';let quantity=1,details={};
-    if(type==='telegram_premium'){
+    if(type==='digital_key'){
+      const delivery=await apiFetch('/api/orders/'+data.order_id+'/delivery').then(r=>r.json());
+      if(!delivery.success||!delivery.delivery)throw new Error(delivery.error||'Данные выдачи пока недоступны. Обратитесь в поддержку.');
+      const d=delivery.delivery;
+      if(d.type==='code'){alert('Ваш цифровой ключ / код:\n\n'+d.code);try{await navigator.clipboard.writeText(d.code)}catch{}}
+      else if(d.type==='file'){const bytes=Uint8Array.from(atob(d.file_data),c=>c.charCodeAt(0));const blob=new Blob([bytes],{type:d.mime||'application/octet-stream'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=d.file_name||'digital-delivery.bin';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);alert('Файл заказа #'+data.order_id+' загружен.');}
+    }else if(type==='telegram_premium'){
       const raw=prompt('На сколько месяцев оформить Telegram Premium? От 1 до 12.','3');
       if(raw===null)return;quantity=Number(raw);if(!Number.isInteger(quantity)||quantity<1||quantity>12){alert('Срок должен быть от 1 до 12 месяцев.');return;}
       const recipient=prompt('Укажите Telegram username получателя Premium:');if(recipient===null)return;details.recipient_username=recipient.trim();
